@@ -102,7 +102,6 @@ margin resolve FILE ID ["closing note"]
 margin add FILE --quote "text" "question"
 margin open FILE             show a document to the user (returns at once)
 margin wait [FILE…]          block until the user comments, then print the threads
-margin status                what the user has open, focused and selected
 ```
 
 Every listing command takes `--json`. `margin --help` has the rest. The

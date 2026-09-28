@@ -138,13 +138,6 @@ pub enum Command {
         json: bool,
     },
 
-    /// Show the documents open in the editor: which has focus, the cursor
-    /// line, the selection and the focused comment thread.
-    Status {
-        #[arg(long)]
-        json: bool,
-    },
-
     /// Print where a document's comments are stored.
     Where { file: PathBuf },
 }
@@ -518,44 +511,6 @@ pub fn run(cmd: Command) -> Result<i32> {
             timeout,
             json,
         } => return wait(files, timeout, json),
-        Command::Status { json } => {
-            let status = crate::status::read();
-            if json {
-                print(&serde_json::to_string_pretty(&status.map(|s| s.docs).unwrap_or_default())?);
-                return Ok(0);
-            }
-            let Some(status) = status else {
-                print("Margin is not running.");
-                return Ok(0);
-            };
-            if status.docs.is_empty() {
-                print("Margin is running with no documents open.");
-                return Ok(0);
-            }
-            let mut out = String::new();
-            for d in &status.docs {
-                let mut parts = vec![format!("line {}", d.line)];
-                if let Some(id) = d.focused_thread {
-                    parts.push(format!("thread #{id} focused"));
-                }
-                parts.push(match d.open_threads {
-                    0 => "no open threads".to_string(),
-                    1 => "1 open thread".to_string(),
-                    n => format!("{n} open threads"),
-                });
-                out.push_str(&format!(
-                    "{} {}: {}{}\n",
-                    if d.focused { "*" } else { " " },
-                    display_path(&d.doc),
-                    parts.join(", "),
-                    if d.focused { " (focused window)" } else { "" }
-                ));
-                if let Some(sel) = &d.selection {
-                    out.push_str(&format!("    selected: {}\n", quote_line(sel)));
-                }
-            }
-            print(&out);
-        }
         Command::Where { file } => {
             let store = Store::for_doc(&file)?;
             print(&store.path.display().to_string());

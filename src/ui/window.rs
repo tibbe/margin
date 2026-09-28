@@ -21,32 +21,10 @@ use std::time::Duration;
 
 thread_local! {
     static WINDOWS: RefCell<Vec<Rc<DocWindow>>> = const { RefCell::new(Vec::new()) };
-    static STATUS_TIMER: RefCell<Option<glib::SourceId>> = const { RefCell::new(None) };
 }
 
 pub fn all() -> Vec<Rc<DocWindow>> {
     WINDOWS.with(|w| w.borrow().clone())
-}
-
-/// Publishes what the editor shows, for `margin status`.
-pub fn publish_status() {
-    let docs = all().iter().map(|w| w.status_entry()).collect();
-    if let Err(e) = crate::status::write(docs) {
-        eprintln!("margin: writing status: {e:#}");
-    }
-}
-
-pub fn publish_status_soon() {
-    STATUS_TIMER.with(|t| {
-        if let Some(id) = t.borrow_mut().take() {
-            id.remove();
-        }
-        let id = glib::timeout_add_local_once(Duration::from_millis(300), || {
-            STATUS_TIMER.with(|t| t.borrow_mut().take());
-            publish_status();
-        });
-        t.replace(Some(id));
-    });
 }
 
 pub struct DocWindow {
@@ -269,7 +247,6 @@ pub fn open(app: &adw::Application, path: &Path, look: Look) -> Result<Rc<DocWin
     WINDOWS.with(|w| w.borrow_mut().push(win.clone()));
     win.window.present();
     view.grab_focus();
-    publish_status();
     Ok(win)
 }
 
@@ -292,28 +269,6 @@ impl DocWindow {
 
     pub fn toast(&self, text: &str) {
         self.toasts.add_toast(adw::Toast::new(text));
-    }
-
-    fn status_entry(&self) -> crate::status::OpenDoc {
-        let (line, selection) = {
-            let st = self.buffer.state();
-            let cursor = self.buffer.cursor_byte();
-            let line = st.doc.line_index(cursor.min(st.text.len())) + 1;
-            let sel = self
-                .buffer
-                .selection_bytes()
-                .and_then(|r| st.text.get(r))
-                .map(|t| t.chars().take(2000).collect::<String>());
-            (line, sel)
-        };
-        crate::status::OpenDoc {
-            doc: self.path(),
-            focused: self.window.is_active(),
-            line,
-            selection,
-            focused_thread: self.layer.active(),
-            open_threads: self.layer.open_count(),
-        }
     }
 
     pub fn is_draft(&self) -> bool {
@@ -374,14 +329,7 @@ impl DocWindow {
             {
                 w.save();
             }
-            publish_status_soon();
         });
-        self.buffer.connect_mark_set(|b, _, mark| {
-            if *mark == b.get_insert() || *mark == b.selection_bound() {
-                publish_status_soon();
-            }
-        });
-        self.layer.connect_changed(publish_status_soon);
         let weak = self.weak();
         self.window.connect_close_request(move |_| {
             if let Some(w) = weak.upgrade() {
@@ -407,7 +355,6 @@ impl DocWindow {
                     m.cancel();
                 }
                 WINDOWS.with(|ws| ws.borrow_mut().retain(|x| !Rc::ptr_eq(x, &w)));
-                publish_status();
             }
             glib::Propagation::Proceed
         });
@@ -977,7 +924,6 @@ impl DocWindow {
         self.layer.attach(new_store);
         self.watch();
         self.update_title();
-        publish_status();
         Ok(())
     }
 

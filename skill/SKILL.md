@@ -16,7 +16,6 @@ Threads are numbered per document (`#3`). Locations are `file:line:column`,
 ## Address comments
 
 1. **Find the document.** Use the file the user named. Otherwise run
-   `margin status` (what they have open, focused and selected) or
    `margin comments` (documents under the current directory with open threads).
 2. **Read the threads in context:** `margin context FILE` prints the document
    with each open thread under the line it anchors to. `margin comments FILE

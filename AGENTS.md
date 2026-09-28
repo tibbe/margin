@@ -11,7 +11,7 @@ CLI that agents use to read and answer them. See `README.md` for what it does.
   pure functions from source + analysis to a `Plan` of byte-range changes.
 - `src/comments/`: the thread store (one JSON file per document under
   `$XDG_DATA_HOME/margin/docs`, locked read-modify-write) and anchor mapping.
-- `src/cli.rs`: agent commands. `src/status.rs`: what the running editor shows.
+- `src/cli.rs`: agent commands.
 - `src/ui/`: `buffer.rs` (TextBuffer subclass: routes edits through
   `md::edit`, restyles changed lines), `view.rs` (TextView subclass: draws
   bullets, checkboxes, quote bars, code boxes), `comments.rs` + `card.rs` (the

@@ -1,7 +1,6 @@
 mod cli;
 mod comments;
 mod md;
-mod status;
 mod ui;
 
 use clap::Parser;

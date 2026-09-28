@@ -232,10 +232,6 @@ pub fn run(files: Vec<PathBuf>) -> anyhow::Result<i32> {
         }
     });
 
-    app.connect_shutdown(|_| {
-        let _ = std::fs::remove_file(crate::status::path());
-    });
-
     let mut args = vec!["margin".to_string()];
     args.extend(files.iter().map(|f| f.to_string_lossy().into_owned()));
     Ok(i32::from(app.run_with_args(&args)))

@@ -178,10 +178,6 @@ impl CommentLayer {
         self.threads.borrow().iter().filter(|t| !t.thread.is_open()).count()
     }
 
-    pub fn active(&self) -> Option<u64> {
-        self.active.get()
-    }
-
     pub fn store(&self) -> Option<Store> {
         self.store.borrow().clone()
     }
