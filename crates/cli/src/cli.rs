@@ -527,6 +527,9 @@ fn last_activity(c: &Comments) -> Option<DateTime<Utc>> {
 }
 
 fn find_occurrence(text: &str, quote: &str, occurrence: Option<usize>) -> Result<std::ops::Range<usize>> {
+    if quote.is_empty() {
+        bail!("--quote must not be empty");
+    }
     let hits: Vec<usize> = text.match_indices(quote).map(|(i, _)| i).collect();
     match (hits.len(), occurrence) {
         (0, _) => bail!(

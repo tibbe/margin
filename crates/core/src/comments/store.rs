@@ -262,10 +262,23 @@ impl Store {
         self.path.exists()
     }
 
-    /// Deletes the stored threads.
-    pub fn remove(&self) {
-        let _ = fs::remove_file(&self.path);
-        let _ = fs::remove_file(self.lock_path());
+    /// Deletes the stored threads under the same lock used by updates. The
+    /// lock file stays in place so another process cannot lock a new inode.
+    pub fn remove(&self) -> Result<()> {
+        let dir = self.path.parent().context("store has no directory")?;
+        fs::create_dir_all(dir).with_context(|| format!("creating {}", dir.display()))?;
+        let lock = fs::OpenOptions::new()
+            .create(true)
+            .truncate(false)
+            .write(true)
+            .open(self.lock_path())
+            .context("opening store lock")?;
+        lock.lock().context("locking comment store")?;
+        match fs::remove_file(&self.path) {
+            Ok(()) => Ok(()),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+            Err(e) => Err(e).with_context(|| format!("removing {}", self.path.display())),
+        }
     }
 
     /// Loads the threads, or an empty set if there are none yet.

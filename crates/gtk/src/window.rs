@@ -47,6 +47,7 @@ pub struct DocWindow {
     save_timer: RefCell<Option<glib::SourceId>>,
     disk_timer: RefCell<Option<glib::SourceId>>,
     store_timer: RefCell<Option<glib::SourceId>>,
+    conflict_pending: Cell<bool>,
     monitors: RefCell<Vec<gio::FileMonitor>>,
     loading: Cell<bool>,
     this: RefCell<Weak<DocWindow>>,
@@ -208,6 +209,7 @@ pub fn open(app: &adw::Application, path: &Path, look: Look) -> Result<Rc<DocWin
         save_timer: RefCell::new(None),
         disk_timer: RefCell::new(None),
         store_timer: RefCell::new(None),
+        conflict_pending: Cell::new(false),
         monitors: RefCell::new(Vec::new()),
         loading: Cell::new(true),
         this: RefCell::new(Weak::new()),
@@ -470,28 +472,56 @@ impl DocWindow {
 
     /// Writes the document if it changed, then records comment anchors
     /// against the saved text.
-    pub fn save(&self) {
+    pub fn save(&self) -> bool {
         if let Some(id) = self.save_timer.take() {
             id.remove();
         }
-        let text = self.buffer.text_string();
-        if text == *self.last_saved.borrow() {
-            return;
+        if self.conflict_pending.get() {
+            return false;
         }
-        let out = if self.crlf.get() {
-            text.replace('\n', "\r\n")
-        } else {
-            text.clone()
-        };
-        match atomic_write(&self.path(), out.as_bytes()) {
-            Ok(()) => {
-                self.last_saved.replace(text);
-                self.buffer.set_modified(false);
-                self.update_title();
-                self.layer.persist_anchors();
+        // A file monitor event may still be waiting for its debounce timer.
+        // Check the disk here before an autosave can overwrite outside edits.
+        // One retry lets a clean merge finish saving during this call.
+        for attempt in 0..2 {
+            let text = self.buffer.text_string();
+            let (disk, crlf) = match read_doc(&self.path()) {
+                Ok(raw) => normalize_newlines(raw),
+                Err(e) => {
+                    self.toast(&format!("Could not check document before saving: {e:#}"));
+                    return false;
+                }
+            };
+            if disk != *self.last_saved.borrow() {
+                self.apply_disk_change(disk, crlf);
+                if attempt == 0 && !self.conflict_pending.get() {
+                    continue;
+                }
+                return false;
             }
-            Err(e) => self.toast(&format!("Could not save: {e}")),
+            self.crlf.set(crlf);
+            if text == *self.last_saved.borrow() {
+                return true;
+            }
+            let out = if self.crlf.get() {
+                text.replace('\n', "\r\n")
+            } else {
+                text.clone()
+            };
+            return match atomic_write(&self.path(), out.as_bytes()) {
+                Ok(()) => {
+                    self.last_saved.replace(text);
+                    self.buffer.set_modified(false);
+                    self.update_title();
+                    self.layer.persist_anchors();
+                    true
+                }
+                Err(e) => {
+                    self.toast(&format!("Could not save: {e}"));
+                    false
+                }
+            };
         }
+        false
     }
 
     // --- Following outside changes ------------------------------------------
@@ -545,10 +575,17 @@ impl DocWindow {
 
     /// Picks up edits made to the file by someone else.
     fn check_disk(&self) {
-        let Ok(bytes) = fs::read(self.path()) else { return };
-        let Ok(text) = String::from_utf8(bytes) else { return };
+        if self.conflict_pending.get() {
+            return;
+        }
+        let Ok(text) = read_doc(&self.path()) else { return };
         let (disk, crlf) = normalize_newlines(text);
+        self.apply_disk_change(disk, crlf);
+    }
+
+    fn apply_disk_change(&self, disk: String, crlf: bool) {
         if disk == *self.last_saved.borrow() {
+            self.crlf.set(crlf);
             return;
         }
         let ours = self.buffer.text_string();
@@ -586,6 +623,10 @@ impl DocWindow {
     }
 
     fn ask_conflict(&self, disk: String) {
+        self.conflict_pending.set(true);
+        if let Some(id) = self.save_timer.take() {
+            id.remove();
+        }
         let name = self.display_name();
         let dialog = adw::AlertDialog::new(
             Some("Document Changed on Disk"),
@@ -600,10 +641,12 @@ impl DocWindow {
         let weak = self.weak();
         dialog.connect_response(None, move |_, resp| {
             let Some(w) = weak.upgrade() else { return };
+            w.conflict_pending.set(false);
             if resp == "disk" {
                 w.buffer.apply_external(&disk);
                 w.last_saved.replace(disk.clone());
                 w.after_external_change();
+                w.check_disk();
             } else {
                 w.last_saved.replace(disk.clone());
                 w.save();
@@ -887,8 +930,13 @@ impl DocWindow {
     /// Comments move with it; a draft's own file is removed.
     pub fn move_to(&self, new: &Path) -> Result<()> {
         // Anchors are stored against the saved text.
-        self.save();
+        if !self.save() {
+            anyhow::bail!("could not save the current document before Save As");
+        }
         let new = if new.extension().is_none() { new.with_extension("md") } else { new.to_path_buf() };
+        if canonical_doc_path(&new)? == self.path() {
+            return Ok(());
+        }
         let text = self.buffer.text_string();
         let out = if self.crlf.get() { text.replace('\n', "\r\n") } else { text.clone() };
         atomic_write(&new, out.as_bytes())?;
@@ -896,8 +944,6 @@ impl DocWindow {
         let old = self.path();
         let was_draft = self.draft.get();
         let new_store = Store::for_doc(&new)?;
-        // Threads left from a file we just replaced no longer apply.
-        new_store.remove();
         if let Some(old_store) = self.layer.store()
             && old_store.exists()
         {
@@ -909,8 +955,11 @@ impl DocWindow {
                 Ok(())
             })?;
             if was_draft {
-                old_store.remove();
+                old_store.remove()?;
             }
+        } else {
+            // Threads left from a file we just replaced no longer apply.
+            new_store.remove()?;
         }
         if was_draft {
             let _ = fs::remove_file(&old);
@@ -929,7 +978,9 @@ impl DocWindow {
 
     fn discard_draft(&self) {
         if let Some(store) = self.layer.store() {
-            store.remove();
+            if let Err(e) = store.remove() {
+                self.toast(&format!("Could not remove draft comments: {e:#}"));
+            }
         }
         for m in self.monitors.take() {
             m.cancel();
