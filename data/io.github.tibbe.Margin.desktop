@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Name=Margin
+GenericName=Markdown Editor
+Comment=Edit Markdown documents and leave comments for coding agents
+Exec=margin --foreground %F
+Icon=io.github.tibbe.Margin
+Terminal=false
+Categories=Office;TextEditor;Utility;
+MimeType=text/markdown;text/x-markdown;
+Keywords=markdown;notes;comments;review;agent;claude;
+StartupNotify=true
+StartupWMClass=io.github.tibbe.Margin
