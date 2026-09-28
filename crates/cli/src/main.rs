@@ -1,9 +1,7 @@
 mod cli;
-mod comments;
-mod md;
-mod ui;
 
 use clap::Parser;
+use margin_core::comments;
 use std::path::PathBuf;
 use std::process::ExitCode;
 
@@ -16,7 +14,7 @@ fn open(files: Vec<PathBuf>, foreground: bool) -> anyhow::Result<i32> {
         || std::env::var_os("MARGIN_FOREGROUND").is_some()
         || std::env::var_os("MARGIN_SCRIPT").is_some();
     if stay {
-        return ui::run(files);
+        return margin_gtk::run(files);
     }
     use std::os::unix::process::CommandExt;
     let files: Vec<PathBuf> = files

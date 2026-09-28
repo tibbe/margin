@@ -1,7 +1,7 @@
 //! Comment cards shown in the gutter, and the text box used to write
 //! comments and replies.
 
-use crate::comments::{Status, Thread};
+use margin_core::comments::{Status, Thread};
 use chrono::{DateTime, Local, Utc};
 use gtk::{gdk, glib, pango, prelude::*};
 use std::cell::RefCell;

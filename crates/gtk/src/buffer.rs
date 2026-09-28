@@ -1,11 +1,11 @@
 //! The document buffer. Its text is exactly the Markdown file; editing
-//! commands go through [`crate::md::edit`] so that typing behaves like a
+//! commands go through [`margin_core::md::edit`] so that typing behaves like a
 //! word processor, and styling is re-derived from the analysis after every
 //! change, touching only the lines whose styling actually changed.
 
 use super::theme::{rgba, rgba_alpha, Fonts, Palette};
-use crate::md::edit::{self, Change, Plan};
-use crate::md::{self, Doc, LineKind, Style};
+use margin_core::md::edit::{self, Change, Plan};
+use margin_core::md::{self, Doc, LineKind, Style};
 use gtk::{glib, pango, prelude::*, subclass::prelude::*};
 use similar::{Algorithm, DiffTag, TextDiff};
 use std::cell::{Cell, Ref, RefCell};

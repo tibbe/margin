@@ -124,7 +124,7 @@ GDK_BACKEND=broadway BROADWAY_DISPLAY=:7 MARGIN_DATA_DIR=/tmp/margin-test \
 ```
 
 The script language (type text, press keys, add comments, take screenshots)
-is documented at the top of [`src/ui/debug.rs`](src/ui/debug.rs).
+is documented at the top of [`crates/gtk/src/debug.rs`](crates/gtk/src/debug.rs).
 `tools/run-ui-script.sh SCRIPT DOC` does the same with real mouse clicks and
 key presses sent through the display, which is how anything the mouse does is
 tested. [`AGENTS.md`](AGENTS.md) explains the architecture and its

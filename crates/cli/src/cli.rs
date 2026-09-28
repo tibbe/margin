@@ -1,8 +1,8 @@
 //! The command-line interface: opening documents in the app, and the
 //! commands coding agents use to read and answer comments.
 
-use crate::comments::anchor::{line_col, line_start};
-use crate::comments::{all_stores, read_doc, Comments, Status, Store, Thread};
+use margin_core::comments::anchor::{line_col, line_start};
+use margin_core::comments::{all_stores, read_doc, Comments, Status, Store, Thread};
 use anyhow::{bail, Context, Result};
 use chrono::{DateTime, Local, Utc};
 use clap::{Parser, Subcommand};

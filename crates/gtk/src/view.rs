@@ -5,7 +5,7 @@
 
 use super::buffer::{DocBuffer, ITEM_STEP, QUOTE_STEP};
 use super::theme::{rgba, rgba_alpha};
-use crate::md::{edit, Container, InlineKind, LineKind};
+use margin_core::md::{edit, Container, InlineKind, LineKind};
 use gtk::{gdk, gio, glib, graphene, prelude::*, subclass::prelude::*};
 use std::cell::{Cell, RefCell};
 

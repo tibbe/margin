@@ -703,15 +703,39 @@ dependencies = [
  "anyhow",
  "chrono",
  "clap",
- "gtk4",
- "libadwaita",
- "pangocairo",
+ "margin-core",
+ "margin-gtk",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "margin-core"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "chrono",
  "pulldown-cmark",
  "serde",
  "serde_json",
  "sha2",
  "similar",
  "unicode-segmentation",
+]
+
+[[package]]
+name = "margin-gtk"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "gtk4",
+ "libadwaita",
+ "margin-core",
+ "pangocairo",
+ "serde",
+ "serde_json",
+ "similar",
 ]
 
 [[package]]

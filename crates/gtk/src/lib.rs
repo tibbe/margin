@@ -1,4 +1,4 @@
-//! The editor app.
+//! Margin's editor for Linux (Omarchy), with GTK 4 and libadwaita.
 
 mod buffer;
 mod card;

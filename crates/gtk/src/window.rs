@@ -6,9 +6,9 @@ use super::buffer::{DocBuffer, Look};
 use super::comments::CommentLayer;
 use super::find::FindBar;
 use super::view::DocView;
-use crate::comments::{canonical_doc_path, data_dir, read_doc, Store};
-use crate::md::edit::{self, BlockType};
-use crate::md::InlineKind;
+use margin_core::comments::{canonical_doc_path, data_dir, read_doc, Store};
+use margin_core::md::edit::{self, BlockType};
+use margin_core::md::InlineKind;
 use anyhow::Result;
 use adw::prelude::*;
 use gtk::{gio, glib};
@@ -760,7 +760,7 @@ impl DocWindow {
             self.toast("No open comments");
             return;
         }
-        let text = crate::comments::export::for_agent(&self.path(), &self.buffer.text_string(), &threads);
+        let text = margin_core::comments::export::for_agent(&self.path(), &self.buffer.text_string(), &threads);
         self.window.clipboard().set_text(&text);
         self.toast(&match threads.len() {
             1 => "Copied 1 open comment".to_string(),

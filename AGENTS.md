@@ -5,18 +5,26 @@ CLI that agents use to read and answer them. See `README.md` for what it does.
 
 ## Layout
 
-- `src/md/doc.rs`: analysis of Markdown source (pulldown-cmark offsets): which
-  bytes are syntax to hide, line styles, list items, quotes, code blocks.
-- `src/md/edit.rs`: editing commands (typing, Enter, Backspace, formatting) as
-  pure functions from source + analysis to a `Plan` of byte-range changes.
-- `src/comments/`: the thread store (one JSON file per document under
-  `$XDG_DATA_HOME/margin/docs`, locked read-modify-write) and anchor mapping.
-- `src/cli.rs`: agent commands.
-- `src/ui/`: `buffer.rs` (TextBuffer subclass: routes edits through
-  `md::edit`, restyles changed lines), `view.rs` (TextView subclass: draws
-  bullets, checkboxes, quote bars, code boxes), `comments.rs` + `card.rs` (the
-  gutter), `window.rs` (files, drafts, autosave, watching, menus), `find.rs`,
-  `print.rs`, `settings.rs`, `debug.rs` (script driver).
+A Cargo workspace:
+
+- `crates/core` (`margin-core`): everything platform-independent.
+  - `src/md/doc.rs`: analysis of Markdown source (pulldown-cmark offsets):
+    which bytes are syntax to hide, line styles, list items, quotes, code
+    blocks.
+  - `src/md/edit.rs`: editing commands (typing, Enter, Backspace, formatting)
+    as pure functions from source + analysis to a `Plan` of byte-range
+    changes.
+  - `src/comments/`: the thread store (one JSON file per document under
+    `$XDG_DATA_HOME/margin/docs`, locked read-modify-write) and anchor
+    mapping.
+- `crates/cli` (`margin`): the binary: agent commands in `src/cli.rs`, and
+  opening documents in the editor.
+- `crates/gtk` (`margin-gtk`): the GTK editor. `buffer.rs` (TextBuffer
+  subclass: routes edits through `md::edit`, restyles changed lines),
+  `view.rs` (TextView subclass: draws bullets, checkboxes, quote bars, code
+  boxes), `comments.rs` + `card.rs` (the gutter), `window.rs` (files, drafts,
+  autosave, watching, menus), `find.rs`, `print.rs`, `settings.rs`,
+  `debug.rs` (script driver).
 
 ## Invariants
 
@@ -57,5 +65,5 @@ CLI that agents use to read and answer them. See `README.md` for what it does.
 editor on a Broadway display with `MARGIN_SCRIPT` (see `README.md`); take
 screenshots with the `shot` step and read them. Set `MARGIN_DATA_DIR` so test
 comments stay out of the real store. Anything a mouse does must be tested
-with real clicks (`tools/run-ui-script.sh`, see `src/ui/debug.rs`): scripted
+with real clicks (`tools/run-ui-script.sh`, see `crates/gtk/src/debug.rs`): scripted
 steps bypass GTK's event routing, where click bugs live.

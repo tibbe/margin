@@ -3,7 +3,7 @@
 //! boundaries.
 
 use super::buffer::{DocBuffer, ITEM_STEP, QUOTE_STEP};
-use crate::md::{BlockKind, Container, Doc, LineKind, Style};
+use margin_core::md::{BlockKind, Container, Doc, LineKind, Style};
 use gtk::{pango, prelude::*};
 use std::cell::RefCell;
 use std::rc::Rc;

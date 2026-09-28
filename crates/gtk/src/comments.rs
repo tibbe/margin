@@ -5,8 +5,8 @@
 use super::buffer::DocBuffer;
 use super::card::{Card, CardActions, DraftCard};
 use super::view::DocView;
-use crate::comments::{Comments, Status, Store, Thread};
-use crate::md::edit;
+use margin_core::comments::{Comments, Status, Store, Thread};
+use margin_core::md::edit;
 use adw::prelude::*;
 use gtk::glib;
 use std::cell::{Cell, RefCell};

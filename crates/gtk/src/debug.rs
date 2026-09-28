@@ -150,8 +150,8 @@ fn step(win: &DocWindow, line: &str) -> u64 {
                 view.emit_delete_from_cursor(gtk::DeleteType::Chars, 1);
             }
         }
-        "tab" => buf.run(|s, d, c, sel| crate::md::edit::indent(s, d, sel.unwrap_or(c..c), false)),
-        "shift-tab" => buf.run(|s, d, c, sel| crate::md::edit::indent(s, d, sel.unwrap_or(c..c), true)),
+        "tab" => buf.run(|s, d, c, sel| margin_core::md::edit::indent(s, d, sel.unwrap_or(c..c), false)),
+        "shift-tab" => buf.run(|s, d, c, sel| margin_core::md::edit::indent(s, d, sel.unwrap_or(c..c), true)),
         "home" => view.emit_move_cursor(gtk::MovementStep::DisplayLineEnds, -1, false),
         "end" => view.emit_move_cursor(gtk::MovementStep::DisplayLineEnds, 1, false),
         "left" => view.emit_move_cursor(gtk::MovementStep::VisualPositions, -n(), false),

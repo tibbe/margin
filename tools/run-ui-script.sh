@@ -1,6 +1,6 @@
 #!/bin/sh
 # Runs Margin headlessly on a GTK Broadway display with a test script (see
-# src/ui/debug.rs), with tools/broadway-click.py connected so that `sh echo
+# crates/gtk/src/debug.rs), with tools/broadway-click.py connected so that `sh echo
 # "click X Y" > "$MARGIN_CLICK_FIFO"` steps send real mouse clicks.
 #
 #   tools/run-ui-script.sh SCRIPT DOC [DISPLAY]

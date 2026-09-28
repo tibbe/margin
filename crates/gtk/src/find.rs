@@ -4,7 +4,7 @@
 
 use super::buffer::DocBuffer;
 use super::view::DocView;
-use crate::md::{edit, search};
+use margin_core::md::{edit, search};
 use gtk::{gdk, glib, prelude::*};
 use std::cell::{Cell, RefCell};
 use std::ops::Range;
