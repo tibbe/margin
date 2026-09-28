@@ -10,8 +10,9 @@ to read and answer them. See `README.md` for what it does.
   stories, and the decisions that don't follow from them.
 - `docs/linux/design_system.md`: decisions for the Omarchy (GTK) editor: look,
   colors, fonts, menus, key bindings, storage, lifecycle.
-- `docs/macos/design_system.md`: decisions for the macOS (AppKit) editor, built
-  and proposed.
+- `docs/macos/design_system.md`: decisions for the macOS (AppKit) editor.
+- `margin --help` documents the CLI's commands; `skill/SKILL.md` teaches
+  agents the workflow. The spec holds the CLI's decisions.
 
 Anything that differs by platform belongs in that platform's design system,
 not in the spec. Keep the docs in step with behavior changes.

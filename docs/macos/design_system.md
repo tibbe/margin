@@ -1,8 +1,7 @@
 # Margin on macOS: design system
 
-The decisions the [product spec](../spec.md) leaves to macOS. Margin follows
-Apple's Human Interface Guidelines and the conventions of Apple's document
-apps (TextEdit, Pages, Notes); this records what those leave open.
+Margin on macOS follows Apple's Human Interface Guidelines and the
+conventions of Apple's document apps (TextEdit, Pages, Notes).
 
 ## Look
 
@@ -17,7 +16,7 @@ apps (TextEdit, Pages, Notes); this records what those leave open.
   the cards, with no separator. Not a comments sidebar as in Pages: that
   would be a list, not notes beside their lines.
 - Clicking the left margin places the cursor. Over the gutter the pointer is
-  the arrow, and clicks there never reach the text.
+  the arrow.
 - Comment cards: the control background, an 8pt corner radius and a 1pt
   separator border; the focused card's border is the accent color at 2pt.
   Resolved cards are at 70% opacity.
@@ -57,13 +56,11 @@ macOS has no desktop-wide document font, so Margin needs its own choice.
 - Body: the system font (SF Pro) at 15pt, before zoom.
 - Code: SF Mono.
 - Cards: the system font at the regular and small sizes.
-- Margin's zoom applies on top.
 - A Settings window picks the body font (SF Pro or New York) and size.
 
 Open questions:
 
-- Do the spec's heading sizes, tuned with Adwaita Sans, need adjusting for
-  SF Pro or New York?
+- Do the spec's heading sizes need adjusting for SF Pro or New York?
 - Should Margin follow a system text size setting, if macOS offers one to
   third-party apps?
 
@@ -97,19 +94,15 @@ Documents follow the spec's saving rules rather than the Mac's own autosave,
 so there is no version history (Revert To ▸ Browse All Versions) and no
 "changed by another application" alert.
 
-- Documents save themselves 0.7s after the last change, when their window
-  loses focus, and when they close. Saves keep the file's permissions,
-  Finder tags and extended attributes.
+- Saves keep the file's Finder tags and extended attributes too.
 - **Save As…** writes the document under a new name and continues there;
   its comments move along. **Rename…** and **Move To…** move the file itself,
   with its comments. **Duplicate** opens an untitled copy, comments included.
   **Revert to Last Opened** is one undoable step.
 - A change an agent makes to the file, or a merge, is one undo step ("Undo
   Outside Change"), so earlier steps stay undoable.
-- Comment changes (resolving, reopening, deleting, Resolve All) are undoable
-  with ⌘Z too; the banner's Undo does the same while it's the latest step.
-- Untitled documents are kept as drafts until saved, and reopen after a
-  crash or relaunch.
+- Comment changes are on the Edit menu's Undo too, in order with text
+  edits.
 - Windows reopen where they were after a relaunch, and documents can share a
   window as tabs; "+" in the tab bar opens an untitled document.
 - The conflict ("Keep My Version", "Load Disk Version") and Unsaved Changes
@@ -119,9 +112,8 @@ so there is no version history (Revert To ▸ Browse All Versions) and no
 ## Text input
 
 - **No substitutions:** smart quotes, smart dashes, text replacement,
-  autocorrect and link detection are off, because the spec requires the file
-  to hold exactly what was typed. Inline predictions are on: accepting one
-  inserts text like typing does.
+  autocorrect and link detection are off. Inline predictions are on:
+  accepting one inserts text like typing does.
 - **Spelling** underlines are on, except in code, links and hidden syntax.
   Grammar is off.
 - **Input methods** (Japanese, Chinese, dead keys) compose where typed text
@@ -130,16 +122,13 @@ so there is no version history (Revert To ▸ Browse All Versions) and no
   replace the letter like typing does.
 - **Edits the system makes** (deleting a word, Transpose, dragging text,
   spelling corrections, Writing Tools) follow the same editing rules as
-  typing. A replacement inside plain text keeps the formatting around it. A
-  multiple selection (Command-drag) becomes its first range.
+  typing. A multiple selection (Command-drag) becomes its first range.
 - **Writing Tools** run in their panel, not inline, and their results
   arrive as ordinary replacements.
 
 ## Key bindings
 
-Mac equivalents of the Linux bindings: Cmd for Ctrl, Option for Alt, and
-Apple's standard bindings where they exist. Conflicts with macOS conventions
-are resolved in favor of macOS.
+Command is the main modifier and Option the second.
 
 | Command | Keys |
 | --- | --- |
@@ -152,27 +141,24 @@ are resolved in favor of macOS.
 | Show Markdown, Reflow Paragraphs | Cmd+/, Cmd+Option+Z |
 | Bold, Italic, Strikethrough, Inline Code | Cmd+B, Cmd+I, Cmd+Shift+X, Cmd+Shift+E |
 | Link | Cmd+K |
-| Normal Text, Heading 1–6 | Cmd+Option+0, Cmd+Option+1…6 (as in Google Docs for Mac) |
-| Numbered List, Bulleted List, Checklist | Cmd+Shift+7, 8, 9 (by physical key) |
+| Normal Text, Heading 1–6 | Cmd+Option+0, Cmd+Option+1…6 |
+| Numbered List, Bulleted List, Checklist | Cmd+Shift+7, 8, 9 |
 | Quote, Code Block | Cmd+Option+Q, Cmd+Option+C |
 | Indent, Outdent | Tab or Cmd+], Shift+Tab or Cmd+[ |
 | Toggle Task | Cmd+Return |
 | Open Link | Cmd+click under the pointer; Cmd+Option+Return at the cursor |
-| Comment on Selection | Cmd+Option+M (as in Google Docs for Mac) |
+| Comment on Selection | Cmd+Option+M |
 | Copy Open Comments | Cmd+Shift+C |
 | Next Comment, Previous Comment | Cmd+Option+Down, Cmd+Option+Up |
 | Reply, Post | Cmd+Option+R, Cmd+Return |
 | Leave Comment, close Find | Escape |
 | Keyboard Shortcuts | in the Help menu |
 
-Why these differ from Linux:
+Keys macOS gives to something else:
 
-- **Cmd+H** hides the app, so Find and Replace is Cmd+Option+F, as in
-  Apple's apps.
 - **Cmd+E** is Use Selection for Find, so Inline Code is Cmd+Shift+E.
-- **Option+letter types characters** (Option+Z is Ω), so Reflow Paragraphs
-  can't be Alt+Z, and no command is Option-only.
-- **F10 and F11** have no role with a menu bar; full screen is Ctrl+Cmd+F.
+- **Option+letter types characters** (Option+Z is Ω), so no command is
+  Option-only.
 - **Cmd+?** opens the Help menu's search, so Keyboard Shortcuts has no key.
 
 Open question: Cmd+Option+Q (Quote) sits next to Cmd+Q; is that too close?
@@ -198,19 +184,15 @@ Margin is in the background?
 
 ## App lifecycle
 
-- One instance. `margin FILE…` opens the files in the running app (starting
-  it if needed) and returns at once; `--foreground` waits for the app to
-  quit. Files that don't exist yet are created.
+- One instance. `margin FILE…` creates files that don't exist yet before
+  opening them, rather than on first save: Finder only opens existing
+  files.
 - Margin is an editor for Markdown files in Finder's Open With, and opens
   them on double-click.
-- Launched without files, Margin reopens drafts left by a crash, and
-  otherwise shows the Open panel.
 - The app keeps running when its last window closes, as Mac document apps
   do; clicking its Dock icon then shows the Open panel.
-- Quitting keeps untitled documents (they reopen at the next launch) and
-  asks, one window at a time, only about text whose save failed; Don't Save
-  finishes quitting.
-- Printing sets the body at 11pt, in the light appearance.
+- Quitting keeps untitled documents and asks, one window at a time, only
+  about text whose save failed; Don't Save finishes quitting.
 
 ## Distribution
 

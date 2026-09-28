@@ -1,13 +1,8 @@
 # Margin on Linux: design system
 
 The Linux editor is built for [Omarchy](https://omarchy.org) with GTK 4
-(4.20+) and libadwaita (1.8+). This document records every decision the
-[product spec](../spec.md) leaves to the platform. The goal is for Margin to
-feel like one of Omarchy's own apps (such as Omawrite).
-
-Toolkit workarounds that constrain the implementation (spacing only above
-lines, the gutter overlay, gutter click handling) are in
-[`AGENTS.md`](../../AGENTS.md#invariants).
+(4.20+) and libadwaita (1.8+). The goal is for Margin to feel like one of
+Omarchy's own apps (such as Omawrite).
 
 ## Look
 
@@ -137,7 +132,8 @@ navigation commands are keyboard only.
 
 ## Key bindings
 
-Google Docs' bindings where it has one, otherwise GNOME conventions.
+Ctrl is the main modifier and Alt the second; the platform's conventions
+are GNOME's.
 
 | Command | Keys |
 | --- | --- |
@@ -164,9 +160,6 @@ Google Docs' bindings where it has one, otherwise GNOME conventions.
 | Undo, Redo, Cut, Copy, Paste, Select All | GTK's: Ctrl+Z, Ctrl+Shift+Z, Ctrl+X, Ctrl+C, Ctrl+V, Ctrl+A |
 | Emoji, move focus out of the text | GTK's: Ctrl+., Ctrl+Tab |
 
-- Ctrl+Shift+7/8/9 match the number row's physical keys, as Google Docs
-  does, so they work on any keyboard layout (as characters they are Ctrl+&,
-  Ctrl+* and Ctrl+( on a US layout).
 - The pointer becomes a hand over checkboxes, and over links while Ctrl is
   held. A link's tooltip is its URL and "Ctrl+click to open".
 
@@ -190,10 +183,10 @@ XDG base directories:
 - `margin FILE…` from a terminal starts the editor detached, in its own
   process group, and returns at once. The launcher runs
   `margin --foreground %F`.
-- Launched without files and with no drafts to recover, Margin shows the
-  Open dialog; cancelling it quits.
+- Launched without files and with no drafts to recover, cancelling the Open
+  dialog quits.
 - The app quits when its last window closes.
-- Printing uses GTK's print dialog, with body text at 11pt on paper.
+- Printing uses GTK's print dialog.
 
 ## Installation
 

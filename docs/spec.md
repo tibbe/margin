@@ -3,10 +3,6 @@
 
 Margin is a Markdown editor for one person working with coding agents, and
 the `margin` CLI those agents use to read and answer the person's comments.
-This spec holds the decisions shared by every platform. Decisions that differ
-by platform (keys, menus, look, fonts, storage paths, lifecycle) live in
-[`linux/design_system.md`](linux/design_system.md) and
-[`macos/design_system.md`](macos/design_system.md).
 
 ## Problem Statement
 
@@ -100,6 +96,9 @@ agent**.
 - CRLF files are written back as CRLF; a missing final newline is added.
 - Documents save shortly after the last change, on focus loss and on close.
   Saves never leave a half-written file and keep the file's permissions.
+- Untitled documents are kept as drafts until saved, and come back after a
+  crash or relaunch. Launched without files, the editor reopens them, or
+  with none asks for a file.
 - Closing asks only for an untitled document with text, or one whose save
   failed. Empty untitled documents are discarded silently.
 - Outside changes: reload if there are no unsaved edits; otherwise a
@@ -147,7 +146,11 @@ Every editor produces the same source for the same keys. The choices:
 - Find ignores case by default and treats line breaks inside paragraphs as
   spaces. Replace edits in place when the match is plain text, otherwise
   deletes and retypes through the editing rules.
-- Print renders the document as shown, without comments.
+- Replacing a selection (typing or pasting over it, a spelling correction)
+  edits in place when it lies in plain text, keeping the formatting around
+  it; otherwise it deletes and then types through the editing rules.
+- Print renders the document as shown, without comments, with the body at
+  11pt in the light appearance.
 
 ### Comments
 
@@ -165,6 +168,8 @@ Every editor produces the same source for the same keys. The choices:
   nothing while focus is in a card.
 - Agent activity is announced ("1 new reply, 2 comments resolved"); what was
   there when the document opened is not.
+- Resolving, reopening, deleting and Resolve All can be undone from the
+  notification that reports them.
 - Copy Open Comments format, with paths relative to the git repository when
   there is one:
 
@@ -178,15 +183,13 @@ Every editor produces the same source for the same keys. The choices:
 
 ### CLI
 
-`margin --help` documents the commands; `skill/SKILL.md` teaches agents the
-workflow. The decisions:
-
 - Locations are 1-based `file:line:column`, columns in characters, against
   the file as it is now; every read re-anchors first.
 - Without files, `comments`, `files` and `wait` look at documents under the
   current directory (`--all` for anywhere, where offered).
 - `margin FILE…` opens in the running editor and returns at once, after
-  reporting problems with the files.
+  reporting problems with the files; `--foreground` waits until the editor
+  quits.
 - `add --quote` refuses an ambiguous quote, listing the lines, until
   `--occurrence N` picks one; `--line` anchors from the first non-blank
   character.
@@ -198,8 +201,7 @@ workflow. The decisions:
 
 Every editor shares the core: Markdown analysis, editing rules, find, the
 comment store and anchoring, and the CLI. Each platform provides the UI and
-system integration, routes every edit through the core, and records its
-choices in its design system.
+system integration, and routes every edit through the core.
 
 - Each editor uses its platform's own pieces wherever one exists: menus,
   window chrome, dialogs, file pickers, the print dialog, system colors and
@@ -207,3 +209,11 @@ choices in its design system.
   (the comment gutter, the drawn Markdown blocks).
 - Where platform conventions differ, each editor follows its own, even when
   that makes the editors differ; the behavior in this spec stays the same.
+- A command's keys are, in order: the platform's own binding for it, if
+  the platform has one; else Google Docs' binding on that platform; else
+  Margin's own. A key the platform gives to something else (a system
+  shortcut, a standard command, a character it types) stays with that, and
+  the command takes a nearby combination. Margin's own commands keep the
+  same letter on every platform, under that platform's modifiers.
+- List shortcuts (numbered, bulleted, checklist) go by the number row's
+  physical keys, as in Google Docs, so they work on any keyboard layout.
