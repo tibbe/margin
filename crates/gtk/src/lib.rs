@@ -1,4 +1,7 @@
-//! Margin's editor for Linux (Omarchy), with GTK 4 and libadwaita.
+//! Margin's editor for Linux (Omarchy), with GTK 4 and libadwaita. Empty
+//! on macOS, whose editor is the native app in `macos/`.
+
+#![cfg(not(target_os = "macos"))]
 
 mod buffer;
 mod card;

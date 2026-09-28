@@ -1,0 +1,1045 @@
+//! Margin's core for the macOS editor, through UniFFI. Positions are UTF-16
+//! offsets, as `NSString` counts; the core works in UTF-8 bytes, so every
+//! position crosses [`Utf16Index`].
+
+use margin_core::comments::anchor::floor_char_boundary;
+use margin_core::comments::{self, export, Comments, Message, Status, Store, Thread};
+use margin_core::md::edit::{self, BlockType, Plan};
+use margin_core::md::{self, search, Container, Doc, InlineKind, LineKind, Style};
+use std::ops::Range;
+use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex};
+
+uniffi::setup_scaffolding!();
+
+#[derive(Debug, uniffi::Error)]
+pub enum MarginError {
+    Failed { message: String },
+}
+
+impl std::fmt::Display for MarginError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            MarginError::Failed { message } => f.write_str(message),
+        }
+    }
+}
+
+impl std::error::Error for MarginError {}
+
+impl From<anyhow::Error> for MarginError {
+    fn from(e: anyhow::Error) -> Self {
+        MarginError::Failed { message: format!("{e:#}") }
+    }
+}
+
+type Result<T> = std::result::Result<T, MarginError>;
+
+/// Converts between byte offsets and UTF-16 offsets of one text.
+struct Utf16Index {
+    line_byte: Vec<usize>,
+    line_u16: Vec<usize>,
+    /// Lines of only ASCII, where bytes and UTF-16 units are one to one.
+    line_ascii: Vec<bool>,
+    len_u16: usize,
+}
+
+impl Utf16Index {
+    fn new(s: &str) -> Self {
+        let mut line_byte = vec![0];
+        let mut line_u16 = vec![0];
+        let mut line_ascii = vec![true];
+        let mut n = 0;
+        for (i, c) in s.char_indices() {
+            n += c.len_utf16();
+            if c == '\n' {
+                line_byte.push(i + 1);
+                line_u16.push(n);
+                line_ascii.push(true);
+            } else if !c.is_ascii() {
+                *line_ascii.last_mut().unwrap() = false;
+            }
+        }
+        Utf16Index { line_byte, line_u16, line_ascii, len_u16: n }
+    }
+
+    fn u16_of(&self, s: &str, byte: usize) -> u32 {
+        let byte = floor_char_boundary(s, byte.min(s.len()));
+        let l = self.line_byte.partition_point(|&b| b <= byte) - 1;
+        let start = self.line_byte[l];
+        if self.line_ascii[l] {
+            return (self.line_u16[l] + byte - start) as u32;
+        }
+        (self.line_u16[l] + s[start..byte].encode_utf16().count()) as u32
+    }
+
+    fn byte_of(&self, s: &str, u: u32) -> usize {
+        let u = (u as usize).min(self.len_u16);
+        let l = self.line_u16.partition_point(|&c| c <= u) - 1;
+        let mut byte = self.line_byte[l];
+        let mut left = u - self.line_u16[l];
+        if self.line_ascii[l] {
+            return (byte + left).min(s.len());
+        }
+        for c in s[byte..].chars() {
+            if left == 0 {
+                break;
+            }
+            // A position inside a surrogate pair rounds down.
+            if c.len_utf16() > left {
+                break;
+            }
+            left -= c.len_utf16();
+            byte += c.len_utf8();
+        }
+        byte
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Record)]
+pub struct TextRange {
+    pub start: u32,
+    pub end: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Enum)]
+pub enum SpanStyle {
+    Para,
+    Heading { level: u8 },
+    CodeBlock,
+    Fence,
+    Table,
+    HtmlBlock,
+    FrontMatter,
+    Rule,
+    Raw,
+    Quote,
+    Indent { quotes: u8, items: u8 },
+    Above { px: u16 },
+    Strong,
+    Emphasis,
+    Strike,
+    Code,
+    Link,
+    Image,
+    InlineHtml,
+    TableHeader,
+    TaskDone,
+    Hidden,
+}
+
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct StyleSpan {
+    pub start: u32,
+    pub end: u32,
+    pub style: SpanStyle,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum LineType {
+    Blank,
+    Paragraph,
+    Heading,
+    SetextUnderline,
+    CodeContent,
+    Fence,
+    Table,
+    Html,
+    FrontMatter,
+    Rule,
+    Raw,
+}
+
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct LineInfo {
+    pub start: u32,
+    /// Excludes the newline.
+    pub end: u32,
+    pub content_start: u32,
+    pub kind: LineType,
+    /// Enclosing block quotes and list items, for indentation.
+    pub quotes: u8,
+    pub items: u8,
+}
+
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct ItemInfo {
+    pub line: u32,
+    /// Quotes and items enclosing the item's text, itself included: the
+    /// marker is drawn left of this indentation.
+    pub quotes: u8,
+    pub items: u8,
+    pub depth: u32,
+    pub number: Option<u64>,
+    /// `Some(checked)` for a task item.
+    pub task: Option<bool>,
+}
+
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct QuoteInfo {
+    pub first_line: u32,
+    /// Trailing blank lines excluded.
+    pub last_line: u32,
+    /// Containers outside this quote, for where its bar goes.
+    pub quotes: u8,
+    pub items: u8,
+}
+
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct CodeBlockInfo {
+    /// Lines holding code, fences excluded; may be empty.
+    pub first_content_line: u32,
+    pub end_content_line: u32,
+    pub open_line: Option<u32>,
+    pub close_line: Option<u32>,
+    pub language: String,
+    pub quotes: u8,
+    pub items: u8,
+}
+
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct Replacement {
+    /// UTF-16 range of the text before the change.
+    pub start: u32,
+    pub end: u32,
+    pub text: String,
+}
+
+/// An editing command's result: changes against the current text, sorted
+/// and non-overlapping, and the cursor and selection in the new text.
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct EditPlan {
+    pub changes: Vec<Replacement>,
+    pub cursor: u32,
+    pub selection: Option<TextRange>,
+}
+
+#[derive(Debug, Clone, Copy, uniffi::Enum)]
+pub enum InlineStyle {
+    Bold,
+    Italic,
+    Strikethrough,
+    Code,
+}
+
+#[derive(Debug, Clone, Copy, uniffi::Enum)]
+pub enum BlockStyle {
+    Paragraph,
+    Heading { level: u8 },
+    Bulleted,
+    Numbered,
+    Checklist,
+    Quote,
+    CodeBlock,
+}
+
+fn counts(containers: &[Container]) -> (u8, u8) {
+    let quotes = containers.iter().filter(|c| matches!(c, Container::Quote(_))).count() as u8;
+    (quotes, containers.len() as u8 - quotes)
+}
+
+/// The analysis of one version of a document, and the editing commands
+/// against it.
+#[derive(uniffi::Object)]
+pub struct Analysis {
+    text: String,
+    doc: Doc,
+    index: Utf16Index,
+}
+
+impl Analysis {
+    fn u(&self, byte: usize) -> u32 {
+        self.index.u16_of(&self.text, byte)
+    }
+
+    fn b(&self, u: u32) -> usize {
+        self.index.byte_of(&self.text, u)
+    }
+
+    fn range(&self, r: Range<usize>) -> TextRange {
+        TextRange { start: self.u(r.start), end: self.u(r.end) }
+    }
+
+    fn bytes(&self, start: u32, end: u32) -> Range<usize> {
+        let (a, b) = (self.b(start), self.b(end));
+        a.min(b)..a.max(b)
+    }
+
+    fn plan(&self, p: Plan) -> EditPlan {
+        let new = p.apply(&self.text);
+        let new_index = Utf16Index::new(&new);
+        EditPlan {
+            changes: p
+                .changes
+                .iter()
+                .map(|c| Replacement {
+                    start: self.u(c.range.start),
+                    end: self.u(c.range.end),
+                    text: c.text.clone(),
+                })
+                .collect(),
+            cursor: new_index.u16_of(&new, p.cursor),
+            selection: p.selection.map(|r| TextRange {
+                start: new_index.u16_of(&new, r.start),
+                end: new_index.u16_of(&new, r.end),
+            }),
+        }
+    }
+
+    fn link(&self, b: usize, inclusive_end: bool) -> Option<String> {
+        self.doc
+            .inlines
+            .iter()
+            .find(|e| {
+                let c = e.content();
+                matches!(e.kind, InlineKind::Link | InlineKind::Image)
+                    && c.start <= b
+                    && if inclusive_end { b <= c.end } else { b < c.end.max(c.start + 1) }
+            })
+            .and_then(|e| e.url.clone())
+    }
+}
+
+#[uniffi::export]
+impl Analysis {
+    #[uniffi::constructor]
+    pub fn new(text: String) -> Arc<Self> {
+        let doc = md::parse(&text);
+        let index = Utf16Index::new(&text);
+        Arc::new(Analysis { text, doc, index })
+    }
+
+    /// From the text as UTF-8 bytes, which Foundation produces much faster
+    /// than a Swift string conversion. Invalid bytes are replaced.
+    #[uniffi::constructor]
+    pub fn from_utf8(bytes: Vec<u8>) -> Arc<Self> {
+        let text = String::from_utf8(bytes).unwrap_or_else(|e| String::from_utf8_lossy(e.as_bytes()).into_owned());
+        Analysis::new(text)
+    }
+
+    pub fn length(&self) -> u32 {
+        self.index.len_u16 as u32
+    }
+
+    pub fn spans(&self) -> Vec<StyleSpan> {
+        self.doc
+            .spans
+            .iter()
+            .map(|s| StyleSpan {
+                start: self.u(s.range.start),
+                end: self.u(s.range.end),
+                style: match s.style {
+                    Style::Para => SpanStyle::Para,
+                    Style::Heading(level) => SpanStyle::Heading { level },
+                    Style::CodeBlock => SpanStyle::CodeBlock,
+                    Style::Fence => SpanStyle::Fence,
+                    Style::Table => SpanStyle::Table,
+                    Style::HtmlBlock => SpanStyle::HtmlBlock,
+                    Style::FrontMatter => SpanStyle::FrontMatter,
+                    Style::Rule => SpanStyle::Rule,
+                    Style::Raw => SpanStyle::Raw,
+                    Style::Quote => SpanStyle::Quote,
+                    Style::Indent { quotes, items } => SpanStyle::Indent { quotes, items },
+                    Style::Above(px) => SpanStyle::Above { px },
+                    Style::Strong => SpanStyle::Strong,
+                    Style::Emphasis => SpanStyle::Emphasis,
+                    Style::Strike => SpanStyle::Strike,
+                    Style::Code => SpanStyle::Code,
+                    Style::Link => SpanStyle::Link,
+                    Style::Image => SpanStyle::Image,
+                    Style::InlineHtml => SpanStyle::InlineHtml,
+                    Style::TableHeader => SpanStyle::TableHeader,
+                    Style::TaskDone => SpanStyle::TaskDone,
+                    Style::Hidden => SpanStyle::Hidden,
+                },
+            })
+            .collect()
+    }
+
+    /// The style spans packed for speed: four little-endian `u32`s each,
+    /// start, end (UTF-16), style code and parameter. Codes follow
+    /// [`SpanStyle`]'s order; the parameter is the heading level, the space
+    /// above in pixels, or quotes << 8 | items for indentation.
+    pub fn spans_packed(&self) -> Vec<u8> {
+        let mut out = Vec::with_capacity(self.doc.spans.len() * 16);
+        for s in &self.doc.spans {
+            let (code, param): (u32, u32) = match s.style {
+                Style::Para => (0, 0),
+                Style::Heading(level) => (1, level as u32),
+                Style::CodeBlock => (2, 0),
+                Style::Fence => (3, 0),
+                Style::Table => (4, 0),
+                Style::HtmlBlock => (5, 0),
+                Style::FrontMatter => (6, 0),
+                Style::Rule => (7, 0),
+                Style::Raw => (8, 0),
+                Style::Quote => (9, 0),
+                Style::Indent { quotes, items } => (10, (quotes as u32) << 8 | items as u32),
+                Style::Above(px) => (11, px as u32),
+                Style::Strong => (12, 0),
+                Style::Emphasis => (13, 0),
+                Style::Strike => (14, 0),
+                Style::Code => (15, 0),
+                Style::Link => (16, 0),
+                Style::Image => (17, 0),
+                Style::InlineHtml => (18, 0),
+                Style::TableHeader => (19, 0),
+                Style::TaskDone => (20, 0),
+                Style::Hidden => (21, 0),
+            };
+            for v in [self.u(s.range.start), self.u(s.range.end), code, param] {
+                out.extend_from_slice(&v.to_le_bytes());
+            }
+        }
+        out
+    }
+
+    /// The lines packed for speed: six little-endian `u32`s each: start,
+    /// end, content start (UTF-16), kind (in [`LineType`]'s order), quotes
+    /// and items.
+    pub fn lines_packed(&self) -> Vec<u8> {
+        let mut out = Vec::with_capacity(self.doc.lines.len() * 24);
+        for l in &self.doc.lines {
+            let (quotes, items) = counts(&l.containers);
+            let kind: u32 = match l.kind {
+                LineKind::Blank => 0,
+                LineKind::Paragraph => 1,
+                LineKind::Heading(_) => 2,
+                LineKind::SetextUnderline => 3,
+                LineKind::CodeContent => 4,
+                LineKind::Fence => 5,
+                LineKind::Table => 6,
+                LineKind::Html => 7,
+                LineKind::FrontMatter => 8,
+                LineKind::Rule => 9,
+                LineKind::Raw => 10,
+            };
+            for v in [self.u(l.start), self.u(l.end), self.u(l.content_start), kind, quotes as u32, items as u32] {
+                out.extend_from_slice(&v.to_le_bytes());
+            }
+        }
+        out
+    }
+
+    pub fn lines(&self) -> Vec<LineInfo> {
+        self.doc
+            .lines
+            .iter()
+            .map(|l| {
+                let (quotes, items) = counts(&l.containers);
+                LineInfo {
+                    start: self.u(l.start),
+                    end: self.u(l.end),
+                    content_start: self.u(l.content_start),
+                    kind: match l.kind {
+                        LineKind::Blank => LineType::Blank,
+                        LineKind::Paragraph => LineType::Paragraph,
+                        LineKind::Heading(_) => LineType::Heading,
+                        LineKind::SetextUnderline => LineType::SetextUnderline,
+                        LineKind::CodeContent => LineType::CodeContent,
+                        LineKind::Fence => LineType::Fence,
+                        LineKind::Table => LineType::Table,
+                        LineKind::Html => LineType::Html,
+                        LineKind::FrontMatter => LineType::FrontMatter,
+                        LineKind::Rule => LineType::Rule,
+                        LineKind::Raw => LineType::Raw,
+                    },
+                    quotes,
+                    items,
+                }
+            })
+            .collect()
+    }
+
+    pub fn items(&self) -> Vec<ItemInfo> {
+        self.doc
+            .items
+            .iter()
+            .enumerate()
+            .filter_map(|(ii, it)| {
+                let line = &self.doc.lines[it.line];
+                let k = line.containers.iter().position(|c| *c == Container::Item(ii))?;
+                let (quotes, items) = counts(&line.containers[..=k]);
+                Some(ItemInfo {
+                    line: it.line as u32,
+                    quotes,
+                    items,
+                    depth: it.depth as u32,
+                    number: it.number,
+                    task: it.task.as_ref().map(|(checked, _)| *checked),
+                })
+            })
+            .collect()
+    }
+
+    pub fn quotes(&self) -> Vec<QuoteInfo> {
+        self.doc
+            .quotes
+            .iter()
+            .enumerate()
+            .map(|(qi, q)| {
+                let mut last = q.last_line;
+                while last > q.first_line && self.doc.lines[last].kind == LineKind::Blank {
+                    last -= 1;
+                }
+                let lf = &self.doc.lines[q.first_line];
+                let k = lf.containers.iter().position(|c| *c == Container::Quote(qi)).unwrap_or(0);
+                let (quotes, items) = counts(&lf.containers[..k]);
+                QuoteInfo { first_line: q.first_line as u32, last_line: last as u32, quotes, items }
+            })
+            .collect()
+    }
+
+    pub fn code_blocks(&self) -> Vec<CodeBlockInfo> {
+        self.doc
+            .code_blocks
+            .iter()
+            .map(|cb| {
+                let lines = cb.content_lines();
+                let first = &self.doc.lines[lines.start.min(self.doc.lines.len() - 1)];
+                let (quotes, items) = counts(&first.containers);
+                CodeBlockInfo {
+                    first_content_line: lines.start as u32,
+                    end_content_line: lines.end as u32,
+                    open_line: cb.open_line.map(|l| l as u32),
+                    close_line: cb.close_line.map(|l| l as u32),
+                    language: cb.info.split_whitespace().next().unwrap_or("").to_string(),
+                    quotes,
+                    items,
+                }
+            })
+            .collect()
+    }
+
+    /// Newlines inside paragraphs, which Reflow Paragraphs shows as spaces.
+    pub fn soft_breaks(&self) -> Vec<u32> {
+        self.doc.soft_breaks.iter().map(|&b| self.u(b)).collect()
+    }
+
+    pub fn line_index(&self, pos: u32) -> u32 {
+        self.doc.line_index(self.b(pos).min(self.text.len())) as u32
+    }
+
+    /// Where the cursor belongs: never inside hidden syntax.
+    pub fn visual_pos(&self, pos: u32) -> u32 {
+        self.u(edit::visual_pos(&self.doc, self.b(pos)))
+    }
+
+    /// The run of hidden syntax containing `pos`, if any.
+    pub fn hidden_run(&self, pos: u32) -> Option<TextRange> {
+        self.doc.hidden_run_at(self.b(pos)).map(|r| self.range(r))
+    }
+
+    /// Where text typed at `pos` goes (e.g. after a link, not into it).
+    pub fn insertion_point(&self, pos: u32) -> u32 {
+        self.u(edit::insertion_point(&self.doc, self.b(pos)))
+    }
+
+    pub fn word_at(&self, pos: u32) -> Option<TextRange> {
+        edit::word_at(&self.text, &self.doc, self.b(pos)).map(|r| self.range(r))
+    }
+
+    /// `start..end` without whitespace and hidden syntax at its ends.
+    pub fn trim_segment(&self, start: u32, end: u32) -> Option<TextRange> {
+        let r = self.bytes(start, end);
+        edit::trim_segment(&self.text, &self.doc, r.start, r.end).map(|r| self.range(r))
+    }
+
+    /// The destination of the link whose text contains `pos`.
+    pub fn link_at(&self, pos: u32) -> Option<String> {
+        self.link(self.b(pos), false)
+    }
+
+    /// The link at the cursor, which may sit right after the link's text.
+    pub fn link_at_cursor(&self, pos: u32) -> Option<String> {
+        self.link(self.b(pos), true)
+    }
+
+    /// The task item on the line of `pos`, as an index for `toggle_task`.
+    pub fn task_on_line_of(&self, pos: u32) -> Option<u32> {
+        let li = self.doc.line_index(self.b(pos).min(self.text.len()));
+        self.doc
+            .item_on_line(li)
+            .filter(|&i| self.doc.items[i].task.is_some())
+            .map(|i| i as u32)
+    }
+
+    /// The task item drawn on `line`, as an index for `toggle_task`.
+    pub fn task_on_line(&self, line: u32) -> Option<u32> {
+        self.doc
+            .item_on_line(line as usize)
+            .filter(|&i| self.doc.items[i].task.is_some())
+            .map(|i| i as u32)
+    }
+
+    pub fn insert(&self, pos: u32, text: String) -> EditPlan {
+        let text = text.replace("\r\n", "\n").replace('\r', "\n");
+        self.plan(edit::insert(&self.text, &self.doc, self.b(pos), &text))
+    }
+
+    pub fn newline(&self, pos: u32, soft: bool) -> EditPlan {
+        self.plan(edit::newline(&self.text, &self.doc, self.b(pos), soft))
+    }
+
+    pub fn backspace(&self, pos: u32) -> EditPlan {
+        self.plan(edit::backspace(&self.text, &self.doc, self.b(pos)))
+    }
+
+    pub fn delete_forward(&self, pos: u32) -> EditPlan {
+        self.plan(edit::delete_forward(&self.text, &self.doc, self.b(pos)))
+    }
+
+    pub fn delete_range(&self, start: u32, end: u32) -> EditPlan {
+        self.plan(edit::delete_range(&self.text, &self.doc, self.bytes(start, end)))
+    }
+
+    pub fn toggle_inline(&self, start: u32, end: u32, style: InlineStyle) -> EditPlan {
+        let kind = match style {
+            InlineStyle::Bold => InlineKind::Strong,
+            InlineStyle::Italic => InlineKind::Emphasis,
+            InlineStyle::Strikethrough => InlineKind::Strike,
+            InlineStyle::Code => InlineKind::Code,
+        };
+        self.plan(edit::toggle_inline(&self.text, &self.doc, self.bytes(start, end), kind))
+    }
+
+    pub fn set_block(&self, start: u32, end: u32, style: BlockStyle) -> EditPlan {
+        let kind = match style {
+            BlockStyle::Paragraph => BlockType::Paragraph,
+            BlockStyle::Heading { level } => BlockType::Heading(level),
+            BlockStyle::Bulleted => BlockType::Bullet,
+            BlockStyle::Numbered => BlockType::Numbered,
+            BlockStyle::Checklist => BlockType::Task,
+            BlockStyle::Quote => BlockType::Quote,
+            BlockStyle::CodeBlock => BlockType::Code,
+        };
+        self.plan(edit::set_block(&self.text, &self.doc, self.bytes(start, end), kind))
+    }
+
+    pub fn indent(&self, start: u32, end: u32, outdent: bool) -> EditPlan {
+        self.plan(edit::indent(&self.text, &self.doc, self.bytes(start, end), outdent))
+    }
+
+    pub fn toggle_task(&self, item: u32, cursor: u32) -> EditPlan {
+        self.plan(edit::toggle_task(&self.text, &self.doc, item as usize, self.b(cursor)))
+    }
+
+    pub fn make_link(&self, start: u32, end: u32, url: String) -> EditPlan {
+        self.plan(edit::make_link(&self.text, &self.doc, self.bytes(start, end), &url))
+    }
+
+    pub fn remove_link(&self, pos: u32) -> Option<EditPlan> {
+        edit::remove_link(&self.doc, self.b(pos)).map(|p| self.plan(p))
+    }
+
+    /// Replaces a find match in place, keeping formatting around it, when
+    /// it lies in plain text.
+    pub fn replace_plain(&self, start: u32, end: u32, with: String) -> Option<EditPlan> {
+        edit::replace_plain(&self.text, &self.doc, self.bytes(start, end), &with).map(|p| self.plan(p))
+    }
+
+    /// Replace All: every match of `needle` (as shown) replaced by `with`,
+    /// in place where it lies in plain text, else deleted and retyped. One
+    /// plan of minimal changes against the current text.
+    pub fn replace_all(&self, needle: String, match_case: bool, with: String) -> Option<EditPlan> {
+        let matches = search::find_all(&self.text, &self.doc, &needle, match_case);
+        let first = matches.first()?.start;
+        // Last to first, so earlier matches keep their offsets.
+        let mut text = self.text.clone();
+        for r in matches.iter().rev() {
+            let doc = md::parse(&text);
+            let plan = match edit::replace_plain(&text, &doc, r.clone(), &with) {
+                Some(p) => p,
+                None => {
+                    let deleted = edit::delete_range(&text, &doc, r.clone());
+                    let after = deleted.apply(&text);
+                    if with.is_empty() {
+                        text = after;
+                        continue;
+                    }
+                    let doc = md::parse(&after);
+                    let inserted = edit::insert(&after, &doc, deleted.cursor, &with);
+                    text = inserted.apply(&after);
+                    continue;
+                }
+            };
+            text = plan.apply(&text);
+        }
+        let changes = margin_core::diff::diff_changes(&self.text, &text);
+        let cursor = edit::map_pos(&changes, first, false);
+        let new_index = Utf16Index::new(&text);
+        Some(EditPlan {
+            changes: changes
+                .iter()
+                .map(|c| Replacement { start: self.u(c.range.start), end: self.u(c.range.end), text: c.text.clone() })
+                .collect(),
+            cursor: new_index.u16_of(&text, cursor),
+            selection: None,
+        })
+    }
+
+    /// The selection's Markdown, with inline syntax balanced.
+    pub fn copy_source(&self, start: u32, end: u32) -> String {
+        edit::copy_source(&self.text, &self.doc, self.bytes(start, end))
+    }
+
+    pub fn find_all(&self, needle: String, match_case: bool) -> Vec<TextRange> {
+        search::find_all(&self.text, &self.doc, &needle, match_case)
+            .into_iter()
+            .map(|r| self.range(r))
+            .collect()
+    }
+}
+
+// --- Files ------------------------------------------------------------------
+
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct LoadedText {
+    /// With `\n` newlines and a final newline.
+    pub text: String,
+    /// The file used CRLF, to be written back the same way.
+    pub crlf: bool,
+}
+
+/// The text as the editor holds it: `\n` newlines and a final newline.
+#[uniffi::export]
+pub fn normalize_newlines(text: String) -> LoadedText {
+    let (mut text, crlf) = if text.contains('\r') {
+        let crlf = text.contains("\r\n");
+        (text.replace("\r\n", "\n").replace('\r', "\n"), crlf)
+    } else {
+        (text, false)
+    };
+    if !text.is_empty() && !text.ends_with('\n') {
+        text.push('\n');
+    }
+    LoadedText { text, crlf }
+}
+
+/// Reads a document as UTF-8, normalized; a missing file reads as empty.
+#[uniffi::export]
+pub fn read_document(path: String) -> Result<LoadedText> {
+    Ok(normalize_newlines(comments::read_doc(Path::new(&path))?))
+}
+
+/// Absolute, symlink-free path of a document that may not exist yet.
+#[uniffi::export]
+pub fn canonical_path(path: String) -> Result<String> {
+    Ok(comments::canonical_doc_path(Path::new(&path))?.display().to_string())
+}
+
+/// Three-way merge by lines; `None` when the changes overlap.
+#[uniffi::export]
+pub fn merge_texts(base: String, ours: String, theirs: String) -> Option<String> {
+    let merge = similar::TextMerge::from_lines(&base, &ours, &theirs);
+    (!merge.is_conflicted()).then(|| merge.to_string())
+}
+
+/// Minimal replacements turning `old` into `new`, as UTF-16 ranges of
+/// `old`, so that applying them keeps the cursor and anchors on unchanged
+/// text.
+#[uniffi::export]
+pub fn text_changes(old: String, new: String) -> Vec<Replacement> {
+    let index = Utf16Index::new(&old);
+    margin_core::diff::diff_changes(&old, &new)
+        .into_iter()
+        .map(|c| Replacement {
+            start: index.u16_of(&old, c.range.start),
+            end: index.u16_of(&old, c.range.end),
+            text: c.text,
+        })
+        .collect()
+}
+
+#[uniffi::export]
+pub fn data_dir() -> String {
+    comments::data_dir().display().to_string()
+}
+
+// --- Comments ---------------------------------------------------------------
+
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct ThreadMessage {
+    /// Milliseconds since the Unix epoch.
+    pub at_ms: i64,
+    pub body: String,
+}
+
+/// A thread with its anchor as a UTF-16 range of the text it was read
+/// against.
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct CommentThread {
+    pub id: u64,
+    pub resolved: bool,
+    pub detached: bool,
+    pub start: u32,
+    pub end: u32,
+    pub quote: String,
+    pub messages: Vec<ThreadMessage>,
+    pub resolved_at_ms: Option<i64>,
+}
+
+/// Where the editor has a thread's text now.
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct ThreadAnchor {
+    pub id: u64,
+    pub start: u32,
+    pub end: u32,
+    pub detached: bool,
+}
+
+#[derive(Debug, Clone, uniffi::Enum)]
+pub enum CommentChange {
+    /// Only record the editor's anchors.
+    Anchors,
+    Add { start: u32, end: u32, body: String },
+    Reply { id: u64, body: String },
+    SetResolved { ids: Vec<u64>, resolved: bool },
+    Delete { id: u64 },
+    /// Puts back a deleted thread (Undo).
+    Restore { thread: CommentThread },
+}
+
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct CommentState {
+    pub threads: Vec<CommentThread>,
+    /// The thread `Add` created.
+    pub added: Option<u64>,
+}
+
+fn ms(t: &chrono::DateTime<chrono::Utc>) -> i64 {
+    t.timestamp_millis()
+}
+
+fn from_ms(ms: i64) -> chrono::DateTime<chrono::Utc> {
+    chrono::DateTime::from_timestamp_millis(ms).unwrap_or_default()
+}
+
+fn to_ffi(t: &Thread, text: &str, index: &Utf16Index) -> CommentThread {
+    CommentThread {
+        id: t.id,
+        resolved: t.status == Status::Resolved,
+        detached: t.anchor.detached,
+        start: index.u16_of(text, t.anchor.start),
+        end: index.u16_of(text, t.anchor.end),
+        quote: t.anchor.quote.clone(),
+        messages: t.messages.iter().map(|m| ThreadMessage { at_ms: ms(&m.at), body: m.body.clone() }).collect(),
+        resolved_at_ms: t.resolved_at.as_ref().map(ms),
+    }
+}
+
+fn threads_of(c: &Comments, text: &str, index: &Utf16Index) -> Vec<CommentThread> {
+    c.threads.iter().map(|t| to_ffi(t, text, index)).collect()
+}
+
+/// One document's comment threads, shared with the CLI through the store.
+#[derive(uniffi::Object)]
+pub struct CommentStore {
+    store: Mutex<Store>,
+}
+
+#[uniffi::export]
+impl CommentStore {
+    #[uniffi::constructor]
+    pub fn new(document: String) -> Result<Arc<Self>> {
+        Ok(Arc::new(CommentStore { store: Mutex::new(Store::for_doc(Path::new(&document))?) }))
+    }
+
+    /// The store's file, to watch for changes agents make.
+    pub fn path(&self) -> String {
+        self.store.lock().unwrap().path.display().to_string()
+    }
+
+    /// The threads, re-anchored against `text` (the document now).
+    pub fn load(&self, text: String) -> Result<Vec<CommentThread>> {
+        let store = self.store.lock().unwrap().clone();
+        let mut c = store.load()?;
+        c.sync(&text);
+        Ok(threads_of(&c, &text, &Utf16Index::new(&text)))
+    }
+
+    /// Records the editor's anchors against `text`, then makes `change`,
+    /// under the store's lock.
+    pub fn update(&self, text: String, anchors: Vec<ThreadAnchor>, change: CommentChange) -> Result<CommentState> {
+        let store = self.store.lock().unwrap().clone();
+        if matches!(change, CommentChange::Anchors) && !store.exists() {
+            return Ok(CommentState { threads: Vec::new(), added: None });
+        }
+        let index = Utf16Index::new(&text);
+        let bytes = |u: u32| index.byte_of(&text, u);
+        let (c, added) = store.update(|c| {
+            c.sync(&text);
+            for a in &anchors {
+                if let Ok(t) = c.thread_mut(a.id) {
+                    let (s, e) = (bytes(a.start), bytes(a.end));
+                    if a.detached || s >= e {
+                        t.anchor.start = s;
+                        t.anchor.end = s;
+                        t.anchor.detached = true;
+                    } else {
+                        t.anchor.start = s;
+                        t.anchor.end = e;
+                        t.anchor.quote = text[s..e].to_string();
+                        t.anchor.detached = false;
+                    }
+                }
+            }
+            let mut added = None;
+            match &change {
+                CommentChange::Anchors => {}
+                CommentChange::Add { start, end, body } => {
+                    let (s, e) = (bytes(*start), bytes(*end));
+                    added = Some(c.add(&text, s.min(e)..s.max(e), body));
+                }
+                CommentChange::Reply { id, body } => c.reply(*id, body)?,
+                CommentChange::SetResolved { ids, resolved } => {
+                    for id in ids {
+                        c.set_resolved(*id, *resolved)?;
+                    }
+                }
+                CommentChange::Delete { id } => c.delete(*id)?,
+                CommentChange::Restore { thread } => {
+                    if c.thread(thread.id).is_none() {
+                        let (s, e) = (bytes(thread.start), bytes(thread.end));
+                        let detached = thread.detached || s >= e;
+                        c.threads.push(Thread {
+                            id: thread.id,
+                            status: if thread.resolved { Status::Resolved } else { Status::Open },
+                            anchor: comments::Anchor {
+                                start: s,
+                                end: if detached { s } else { e },
+                                quote: if detached { thread.quote.clone() } else { text[s..e].to_string() },
+                                detached,
+                            },
+                            messages: thread
+                                .messages
+                                .iter()
+                                .map(|m| Message { at: from_ms(m.at_ms), body: m.body.clone() })
+                                .collect(),
+                            resolved_at: thread.resolved_at_ms.map(from_ms),
+                        });
+                        c.threads.sort_by_key(|t| t.id);
+                    }
+                }
+            }
+            Ok((c.clone(), added))
+        })?;
+        Ok(CommentState { threads: threads_of(&c, &text, &index), added })
+    }
+
+    /// Moves the threads to `new_document` (Save As), re-anchored against
+    /// `text`. Threads stored for the file being replaced are dropped; with
+    /// `remove_old`, this store is deleted.
+    pub fn move_to(&self, new_document: String, text: String, remove_old: bool) -> Result<()> {
+        let mut store = self.store.lock().unwrap();
+        let new_store = Store::for_doc(Path::new(&new_document))?;
+        if new_store.path == store.path {
+            return Ok(());
+        }
+        if store.exists() {
+            let mut c = store.load()?;
+            c.sync(&text);
+            c.doc = new_store.doc.clone();
+            new_store.update(|n| {
+                *n = c;
+                Ok(())
+            })?;
+            if remove_old {
+                store.remove()?;
+            }
+        } else {
+            new_store.remove()?;
+        }
+        *store = new_store;
+        Ok(())
+    }
+
+    /// Copies the threads to `new_document` (Duplicate), re-anchored
+    /// against `text`; this store stays as it is.
+    pub fn copy_to(&self, new_document: String, text: String) -> Result<()> {
+        let store = self.store.lock().unwrap().clone();
+        let new_store = Store::for_doc(Path::new(&new_document))?;
+        if new_store.path == store.path || !store.exists() {
+            return Ok(());
+        }
+        let mut c = store.load()?;
+        c.sync(&text);
+        c.doc = new_store.doc.clone();
+        new_store.update(|n| {
+            *n = c;
+            Ok(())
+        })?;
+        Ok(())
+    }
+
+    /// Deletes the stored threads (a discarded draft).
+    pub fn remove(&self) -> Result<()> {
+        self.store.lock().unwrap().remove().map_err(Into::into)
+    }
+}
+
+/// Open comments as a numbered list to paste into a coding agent.
+#[uniffi::export]
+pub fn comments_for_agent(document: String, text: String, threads: Vec<CommentThread>) -> String {
+    let index = Utf16Index::new(&text);
+    let threads: Vec<Thread> = threads
+        .iter()
+        .map(|t| {
+            let start = index.byte_of(&text, t.start);
+            let end = index.byte_of(&text, t.end).max(start);
+            Thread {
+                id: t.id,
+                status: if t.resolved { Status::Resolved } else { Status::Open },
+                anchor: comments::Anchor {
+                    start,
+                    end: if t.detached { start } else { end },
+                    quote: if t.detached { t.quote.clone() } else { text[start..end].to_string() },
+                    detached: t.detached,
+                },
+                messages: t.messages.iter().map(|m| Message { at: from_ms(m.at_ms), body: m.body.clone() }).collect(),
+                resolved_at: t.resolved_at_ms.map(from_ms),
+            }
+        })
+        .collect();
+    export::for_agent(&PathBuf::from(document), &text, &threads)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn utf16_offsets_round_trip() {
+        let s = "a\u{e9}\u{1F600}b\nc";
+        let ix = Utf16Index::new(s);
+        assert_eq!(ix.u16_of(s, 0), 0);
+        assert_eq!(ix.u16_of(s, 3), 2); // after é (2 bytes, 1 unit)
+        assert_eq!(ix.u16_of(s, 7), 4); // after 😀 (4 bytes, 2 units)
+        assert_eq!(ix.byte_of(s, 4), 7);
+        assert_eq!(ix.byte_of(s, 3), 3); // inside the pair rounds down
+        assert_eq!(ix.byte_of(s, 6), 9); // start of "c"
+        assert_eq!(ix.u16_of(s, 9), 6);
+    }
+
+    #[test]
+    fn utf16_offsets_round_trip_at_every_boundary() {
+        let s = "plain\ncaf\u{e9} \u{1F600} x\n\nascii again\n\u{4e2d}\u{6587}\n";
+        let ix = Utf16Index::new(s);
+        let mut u = 0u32;
+        for (b, c) in s.char_indices().chain(std::iter::once((s.len(), ' '))) {
+            assert_eq!(ix.u16_of(s, b), u, "u16_of({b})");
+            assert_eq!(ix.byte_of(s, u), b, "byte_of({u})");
+            u += c.len_utf16() as u32;
+        }
+    }
+
+    #[test]
+    fn plans_are_in_utf16() {
+        let a = Analysis::new("\u{1F600} **b**\n".into());
+        // Backspace after "b" deletes it and its markers.
+        let p = a.backspace(7);
+        assert_eq!(p.changes.len(), 1);
+        assert_eq!((p.changes[0].start, p.changes[0].end), (3, 8));
+        assert_eq!(p.cursor, 3);
+    }
+}

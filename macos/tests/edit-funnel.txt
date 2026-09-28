@@ -1,0 +1,18 @@
+# Edits AppKit makes itself go through the editing rules too.
+reset x **bold**\n
+find bold**
+key opt-backspace
+dump
+reset ab cd\n
+find ab
+key ctrl-t
+dump
+reset some **teh** text\n
+select teh
+change-spelling the
+dump
+reset one two three four\n
+select-ranges two|four
+selection
+type X
+dump

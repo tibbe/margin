@@ -1,0 +1,27 @@
+# Keys sent as OS keyboard events with only a key code, so macOS translates
+# them through the keyboard layout. Assumes the ABC (or US) layout.
+reset x\n
+find x
+os-key 14 opt
+os-key 14
+dump
+reset x\n
+find x
+os-key 0
+os-key 1
+dump
+reset a\n
+find a
+os-key 36 shift
+os-key 11
+dump
+reset some word here\n
+find wor
+os-key 11 cmd
+dump
+reset - one\n
+find one
+os-key 36
+os-key 48
+os-key 17
+dump

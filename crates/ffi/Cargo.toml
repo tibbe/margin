@@ -1,0 +1,22 @@
+[package]
+name = "margin-ffi"
+description = "Margin's core for the native macOS editor, through UniFFI"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[lib]
+name = "margin_ffi"
+crate-type = ["staticlib", "cdylib", "lib"]
+
+[[bin]]
+name = "uniffi-bindgen"
+path = "uniffi-bindgen.rs"
+
+[dependencies]
+margin-core.workspace = true
+anyhow.workspace = true
+chrono.workspace = true
+similar.workspace = true
+uniffi = { version = "0.32", features = ["cli"] }

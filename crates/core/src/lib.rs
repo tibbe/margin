@@ -3,4 +3,5 @@
 //! document text (`comments`). No UI here.
 
 pub mod comments;
+pub mod diff;
 pub mod md;

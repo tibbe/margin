@@ -1,7 +1,20 @@
 # Margin
 
-A GTK 4 / libadwaita Markdown editor with comment threads, plus the `margin`
-CLI that agents use to read and answer them. See `README.md` for what it does.
+A Markdown editor with comment threads, native per platform (GTK 4 /
+libadwaita on Linux, AppKit on macOS), plus the `margin` CLI that agents use
+to read and answer them. See `README.md` for what it does.
+
+## Specs
+
+- `docs/spec.md`: the product spec, for every platform: problem, user
+  stories, and the decisions that don't follow from them.
+- `docs/linux/design_system.md`: decisions for the Omarchy (GTK) editor: look,
+  colors, fonts, menus, key bindings, storage, lifecycle.
+- `docs/macos/design_system.md`: decisions for the macOS (AppKit) editor, built
+  and proposed.
+
+Anything that differs by platform belongs in that platform's design system,
+not in the spec. Keep the docs in step with behavior changes.
 
 ## Layout
 
@@ -14,9 +27,10 @@ A Cargo workspace:
   - `src/md/edit.rs`: editing commands (typing, Enter, Backspace, formatting)
     as pure functions from source + analysis to a `Plan` of byte-range
     changes.
-  - `src/comments/`: the thread store (one JSON file per document under
-    `$XDG_DATA_HOME/margin/docs`, locked read-modify-write) and anchor
-    mapping.
+  - `src/comments/`: the thread store (one JSON file per document in the
+    data folder's `docs/`, locked read-modify-write) and anchor mapping.
+  - `src/diff.rs`: minimal edits between two texts, for applying outside
+    changes without moving the cursor or anchors.
 - `crates/cli` (`margin`): the binary: agent commands in `src/cli.rs`, and
   opening documents in the editor.
 - `crates/gtk` (`margin-gtk`): the GTK editor. `buffer.rs` (TextBuffer
@@ -24,7 +38,18 @@ A Cargo workspace:
   `view.rs` (TextView subclass: draws bullets, checkboxes, quote bars, code
   boxes), `comments.rs` + `card.rs` (the gutter), `window.rs` (files, drafts,
   autosave, watching, menus), `find.rs`, `print.rs`, `settings.rs`,
-  `debug.rs` (script driver).
+  `debug.rs` (script driver). Compiles to nothing on macOS.
+- `crates/ffi` (`margin-ffi`): the core for Swift, through UniFFI. Positions
+  cross as UTF-16 offsets; hot per-keystroke data (spans, lines) as packed
+  bytes.
+- `macos/`: the AppKit editor. `build.sh` builds `build/Margin.app` (Rust
+  static library, generated bindings, `swiftc`, the CLI in
+  `Contents/Helpers/`). `DocTextView.swift` (NSTextView on TextKit 1: routes
+  edits through the core, hides syntax as null glyphs, draws markers),
+  `Styler.swift` (incremental restyling), `Page.swift` (the scrolling page:
+  text view beside the gutter view), `Comments.swift` + `Cards.swift` (the
+  gutter's cards), `DocumentWindow.swift` (files, drafts, autosave, watching),
+  `AppDelegate.swift` (menus, lifecycle), `ScriptDriver.swift` (tests).
 
 ## Invariants
 
@@ -67,3 +92,15 @@ screenshots with the `shot` step and read them. Set `MARGIN_DATA_DIR` so test
 comments stay out of the real store. Anything a mouse does must be tested
 with real clicks (`tools/run-ui-script.sh`, see `crates/gtk/src/debug.rs`): scripted
 steps bypass GTK's event routing, where click bugs live.
+
+On macOS, `macos/tests/run.sh` runs the UI scripts in `macos/tests/` against
+a test build (`macos/build.sh debug`; release builds have no script driver)
+and diffs their output; add a script there for new behavior. Edits of every
+kind must reach `DocTextView.shouldChangeText(inRanges:…)` or an action
+override, so they go through the core; the cursor is kept out of hidden
+syntax in the selection delegate method, not in movement overrides.
+TextKit 1 attaches the null glyphs of a hidden line prefix to the previous
+line's fragment, so a line whose prefix is hidden starts mid-paragraph:
+`HidingLayoutDelegate` collapses fully hidden fragments and adds the space
+above such lines itself. Find a line's position through a visible character
+(its content start or newline), not its first character.

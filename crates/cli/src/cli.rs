@@ -20,7 +20,7 @@ Agent workflow:
   margin add plan.md --quote \"retry budget\" \"Is 3 enough?\"
 
 Threads are numbered per document. Locations are file:line:column, 1-based.
-Comments live outside the document, under $XDG_DATA_HOME/margin.";
+Comments live outside the document; `margin where FILE` prints where.";
 
 #[derive(Parser, Debug)]
 #[command(

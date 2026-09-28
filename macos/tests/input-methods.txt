@@ -1,0 +1,36 @@
+# Input method calls (NSTextInputClient), as Japanese or Chinese input
+# methods make them, and press-and-hold accents.
+reset # Title\n
+find-before Title
+ime-mark に
+ime-mark にほん
+ime-commit 日本
+dump
+key cmd-z
+dump
+reset [docs](u) z\n
+find docs
+ime-mark ご
+ime-commit 語
+dump
+reset a **bold** c\n
+find bold
+ime-mark に
+ime-commit 日
+dump
+reset a **word** b\n
+select word
+ime-mark に
+ime-commit 日
+dump
+reset keep\n
+find keep
+ime-mark に
+ime-mark
+ime-commit
+dump
+reset abc\n
+find abc
+type e
+hold-accent é
+dump

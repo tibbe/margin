@@ -1,7 +1,7 @@
 //! Comment threads for a document, persisted outside the document itself.
 //!
 //! Each document's threads live in one JSON file under
-//! `$XDG_DATA_HOME/margin/docs/`, keyed by the document's canonical path.
+//! [`data_dir`]`/docs/`, keyed by the document's canonical path.
 //! The app and the CLI both edit it, so every write happens under a file
 //! lock as read-modify-write, and files are replaced atomically.
 
@@ -207,18 +207,24 @@ pub struct Store {
     pub path: PathBuf,
 }
 
+/// Where comments and drafts live: `MARGIN_DATA_DIR`, else
+/// `$XDG_DATA_HOME/margin`, else the platform's place for app data.
 pub fn data_dir() -> PathBuf {
     if let Some(d) = std::env::var_os("MARGIN_DATA_DIR") {
         return PathBuf::from(d);
     }
-    let base = std::env::var_os("XDG_DATA_HOME")
+    if let Some(base) = std::env::var_os("XDG_DATA_HOME")
         .map(PathBuf::from)
         .filter(|p| p.is_absolute())
-        .unwrap_or_else(|| {
-            let home = std::env::var_os("HOME").map(PathBuf::from).unwrap_or_default();
-            home.join(".local/share")
-        });
-    base.join("margin")
+    {
+        return base.join("margin");
+    }
+    let home = std::env::var_os("HOME").map(PathBuf::from).unwrap_or_default();
+    if cfg!(target_os = "macos") {
+        home.join("Library/Application Support/Margin")
+    } else {
+        home.join(".local/share/margin")
+    }
 }
 
 /// Absolute, symlink-free path of a document that may not exist yet.

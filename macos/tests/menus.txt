@@ -1,0 +1,15 @@
+# Menu items' enabled and checked states follow the window.
+reset Some **bold** text\n
+menu Show Markdown
+key cmd-/
+menu Show Markdown
+menu Bold
+key cmd-/
+menu Show Markdown
+menu Show Resolved
+action marginToggleShowResolved:
+menu Show Resolved
+menu Reflow Paragraphs
+key cmd-opt-z
+menu Reflow Paragraphs
+menu Reply

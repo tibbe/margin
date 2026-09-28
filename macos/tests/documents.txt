@@ -1,0 +1,41 @@
+# Documents: outside changes, comments' undo, Rename, Duplicate, Revert,
+# checkboxes and Replace All.
+reset First line.\n
+save
+title
+external First line.\nAdded by an agent.\n
+wait-banner Updated from disk
+dump
+key cmd-z
+wait 100
+dump
+key cmd-shift-z
+wait 100
+dump
+select First
+key cmd-opt-m
+compose Why?
+key cmd-enter
+wait 100
+action marginResolveAll:
+comments
+key cmd-z
+comments
+key cmd-shift-z
+comments
+rename renamed.md
+path
+stored
+action marginDuplicate:
+wait 300
+windows
+action marginRevertToLastOpened:
+dump
+reset - [ ] task\n
+click-checkbox 0
+dump
+reset a **bold** b bold\n
+replace-all bold|strong
+dump
+key cmd-z
+dump
