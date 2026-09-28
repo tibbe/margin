@@ -1,0 +1,5 @@
+context menu: Comment on Selection, —
+focus Optional(Margin.ComposerTextView)
+#1 open [0,5) ["Why?"]
+draft [0,5)
+active none

@@ -35,6 +35,8 @@ final class CommentLayer {
     private(set) var store: CommentStore?
     private(set) var items: [ThreadItem] = []
     private var draft: Draft?
+    /// The range the draft comments on, if one is open.
+    var draftRange: NSRange? { draft.map { NSRange(location: $0.start, length: $0.end - $0.start) } }
     private(set) var active: UInt64?
     var showResolved = false {
         didSet {
@@ -44,7 +46,6 @@ final class CommentLayer {
             sync()
         }
     }
-    let addButton: NSButton
     /// The counts changed.
     var onChange: (() -> Void)?
     /// Says something at the bottom of the window, with an optional Undo.
@@ -61,17 +62,6 @@ final class CommentLayer {
     init(page: PageView) {
         self.page = page
         view = page.textView
-        addButton = NSButton(image: NSImage(systemSymbolName: "plus.bubble", accessibilityDescription: "Comment on Selection")!,
-                             target: nil, action: nil)
-        addButton.bezelStyle = .toolbar
-        addButton.isBordered = true
-        addButton.toolTip = "Comment on Selection (⌥⌘M)"
-        addButton.isHidden = true
-        addButton.refusesFirstResponder = true
-        addButton.frame = NSRect(x: 0, y: 0, width: 32, height: 28)
-        addButton.target = self
-        addButton.action = #selector(addClicked)
-        page.gutter.addSubview(addButton)
     }
 
     var openCount: Int { items.filter { !$0.thread.resolved }.count }
@@ -242,10 +232,6 @@ final class CommentLayer {
     }
 
     // MARK: - Commands
-
-    @objc private func addClicked() {
-        beginDraft()
-    }
 
     /// Starts a comment on the selection, or the word at the cursor.
     func beginDraft() {
@@ -431,7 +417,6 @@ final class CommentLayer {
     }
 
     func cursorMoved() {
-        queueRelayout()
         if view.selection != nil || draft != nil { return }
         let c = view.cursor
         let hit = items
@@ -533,11 +518,5 @@ final class CommentLayer {
             e.card.frame = NSRect(x: x, y: ys[i], width: width, height: e.h)
         }
         page.gutterExtent = gutter.convert(NSPoint(x: 0, y: max(bottom, 0)), to: page).y
-        if draft == nil, store != nil, let sel = view.selection {
-            addButton.frame.origin = NSPoint(x: edge + CommentLayer.activeShift, y: max(minTop, top(sel.location)))
-            addButton.isHidden = false
-        } else {
-            addButton.isHidden = true
-        }
     }
 }

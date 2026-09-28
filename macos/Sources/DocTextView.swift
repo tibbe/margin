@@ -93,11 +93,9 @@ final class DocTextView: NSTextView, NSTextStorageDelegate, NSTextViewDelegate, 
         isAutomaticTextCompletionEnabled = false
         isContinuousSpellCheckingEnabled = true
         isGrammarCheckingEnabled = false
-        if #available(macOS 15.0, *) {
-            // Writing Tools in their panel: their rewrites arrive as ordinary
-            // replacements, which go through the editing rules.
-            writingToolsBehavior = .limited
-        }
+        // Writing Tools in their panel: their rewrites arrive as ordinary
+        // replacements, which go through the editing rules.
+        writingToolsBehavior = .limited
         drawsBackground = true
         backgroundColor = .textBackgroundColor
         isVerticallyResizable = true
@@ -1090,6 +1088,15 @@ final class DocTextView: NSTextView, NSTextStorageDelegate, NSTextViewDelegate, 
             }
             self.window?.makeFirstResponder(self)
         }
+    }
+
+    /// The text's right-click menu leads with Comment on Selection, as in
+    /// Pages and Preview.
+    override func menu(for event: NSEvent) -> NSMenu? {
+        let menu = super.menu(for: event) ?? NSMenu()
+        menu.insertItem(NSMenuItem(title: "Comment on Selection", action: #selector(DocumentWindow.marginCommentOnSelection(_:)), keyEquivalent: ""), at: 0)
+        menu.insertItem(.separator(), at: 1)
+        return menu
     }
 
     override func validateMenuItem(_ item: NSMenuItem) -> Bool {

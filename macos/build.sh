@@ -13,7 +13,7 @@ profile=${1:-release}
 build="$PWD/build"
 gen="$build/gen"
 app="$build/Margin.app"
-min=14.0
+min=26.0
 
 if [ "$profile" = release ]; then
     cargo_flag=--release

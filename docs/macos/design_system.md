@@ -88,6 +88,9 @@ The standard menus, with Margin's commands where Mac users look for them:
 - **Help**: Keyboard Shortcuts, a window listing every shortcut, read from
   the menus.
 
+The text's right-click menu starts with Comment on Selection, above the
+system's own items, as in Pages and Preview.
+
 ## Documents
 
 Documents follow the spec's saving rules rather than the Mac's own autosave,

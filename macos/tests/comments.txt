@@ -1,0 +1,15 @@
+# Comments: the text's right-click menu.
+reset First line.\nSecond line.\n
+save
+select First
+key cmd-opt-m
+compose Why?
+key cmd-enter
+wait 100
+# Comment on Selection leads the menu, and starts a draft on the selection,
+# even on a line that has a thread.
+select First
+context-menu Comment on Selection
+wait 100
+focus
+comments

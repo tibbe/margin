@@ -209,9 +209,18 @@ enum ScriptDriver {
             if let it = w.layer.items.first(where: { $0.thread.id == UInt64(arg) ?? 0 }), let b = it.card.resolveButton {
                 click(b, at: NSPoint(x: b.bounds.midX, y: b.bounds.midY))
             }
-        case "click-add":
-            let b = w.layer.addButton
-            if b.isHidden { print("script: add button hidden") } else { click(b, at: NSPoint(x: b.bounds.midX, y: b.bounds.midY)) }
+        case "context-menu":
+            // The text's right-click menu at the selection: prints its first two
+            // items, and with an argument chooses that item as AppKit would.
+            let at = view.firstRect(forCharacterRange: view.selectedRange(), actualRange: nil)
+            let p = win.convertPoint(fromScreen: NSPoint(x: at.midX, y: at.midY))
+            guard let e = NSEvent.mouseEvent(with: .rightMouseDown, location: p, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+                                             windowNumber: win.windowNumber, context: nil, eventNumber: 1, clickCount: 1, pressure: 1),
+                  let menu = view.menu(for: e) else { print("script: no context menu"); break }
+            print("context menu: \(menu.items.prefix(2).map { $0.isSeparatorItem ? "—" : "\($0.title)\(validate($0, in: win) ? "" : " (disabled)")" }.joined(separator: ", "))")
+            if !arg.isEmpty, let item = menu.items.first(where: { $0.title == arg }), let action = item.action {
+                NSApp.sendAction(action, to: NSApp.isActive ? nil : target(for: action, in: win), from: item)
+            }
         case "click-checkbox":
             let n = Int(arg) ?? 0
             view.display()
@@ -307,6 +316,7 @@ enum ScriptDriver {
                 let t = it.thread
                 print("#\(t.id) \(t.resolved ? "resolved" : "open")\(it.detached ? " detached" : "") [\(it.start),\(it.end)) \(t.messages.map { $0.body })")
             }
+            if let d = w.layer.draftRange { print("draft [\(d.location),\(NSMaxRange(d)))") }
             print("active \(w.layer.active.map(String.init) ?? "none")")
         case "menu":
             // Validates a menu item as AppKit does before showing the menu.
