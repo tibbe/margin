@@ -1,79 +1,23 @@
 # Margin on macOS: design system
 
-The macOS editor lives in `macos/`. This document records the decisions the
-[product spec](../spec.md) leaves to the platform, so that Margin feels like
-a Mac app rather than a Linux app ported to the Mac. It follows Apple's
-Human Interface Guidelines and the conventions of Apple's own document apps
-(TextEdit, Pages, Notes).
-
-Decisions are marked **built** when the editor does them, and **proposed**
-when they are still waiting. Open questions are listed with each section.
-
-## Principles
-
-- Use the system's own pieces wherever one exists: the menu bar, standard
-  window chrome, sheets, the Open and Save panels, the print panel, system
-  colors and fonts. Draw custom UI only for what the Mac has no equivalent of
-  (the comment gutter, the drawn Markdown blocks).
-- Follow macOS conventions over Linux ones where they differ, even when that
-  makes the two editors behave differently; the spec's behavior stays the
-  same.
-- Omarchy's square, flat look is a Linux decision and doesn't apply here.
-
-## Toolkit
-
-**Built:** AppKit in Swift, over the Rust core through UniFFI
-(`crates/ffi`), linked as a static library.
-
-- **`NSTextView` on TextKit 1.** The text storage holds the file's text.
-  Hidden syntax is laid out as null glyphs by an `NSLayoutManagerDelegate`,
-  and lines that are hidden entirely get zero-height line fragments. TextKit
-  2 has no way to hide characters: its layout fragments can skip drawing
-  them, but caret movement, hit-testing and selection around them would have
-  to be rebuilt, which is a text engine's worth of work.
-- **Edits go through the core.** The view overrides the typing, newline,
-  delete, tab and clipboard actions, and `shouldChangeText` catches every
-  other edit (deleting a word, dragging text, a spelling correction). Each
-  becomes a core command whose plan is applied as one undoable step. Plain
-  typing and single-character deletes that the core leaves unchanged are
-  handed back to `NSTextView`, which keeps its native undo coalescing.
-- **Positions are UTF-16 at the bridge.** The core works in UTF-8 bytes;
-  `crates/ffi` converts every position, with a fast path for ASCII lines.
-  Data sent for every keystroke (style spans, lines) crosses as packed
-  bytes rather than records.
-- **Styling is incremental.** Lines an edit touched are restyled; other
-  lines only when the spans over them change (compared by a per-line
-  signature). Drawing touches only the lines being redrawn. Typing costs
-  about 10 ms per key in a 2,800-line document (Apple silicon, release
-  build), and under 2 ms in a normal one.
-- **The page is two views.** The scroll view's document is a page holding
-  the text view (the left margin and the text column, so clicking the margin
-  places the cursor) beside a gutter view with the comment cards. The cards
-  are ordinary views, not text-view subviews, so the gutter has the arrow
-  cursor and its clicks never reach the text.
-- SwiftUI's `TextEditor` has no editing hooks, so it can't host Margin.
-
-Open questions:
-
-- TextKit 1 is not deprecated, but Apple's new work (Writing Tools inline)
-  goes to TextKit 2. A move would be a large project; watch for signs.
-- The core re-parses the whole document per keystroke (about 2 ms at 2,800
-  lines). Incremental parsing only matters for much larger documents.
+The decisions the [product spec](../spec.md) leaves to macOS. Margin follows
+Apple's Human Interface Guidelines and the conventions of Apple's document
+apps (TextEdit, Pages, Notes); this records what those leave open.
 
 ## Look
 
-**Built:**
-
 - Standard window with a unified toolbar. The title is the document name,
-  the subtitle its folder (`~/…`, or "Not saved yet"), with the system's
-  document proxy icon. Documents save themselves, so the edited dot on the
-  close button only shows while a save is failing, or on an untitled
-  document with text.
+  the subtitle its folder (`~/…`, or "Not saved yet"), with the document
+  proxy icon. Documents save themselves, so the edited dot on the close
+  button only shows while a save is failing, or on an untitled document with
+  text.
 - Light and dark follow the system appearance. The system accent color marks
   focus.
 - The gutter is the page's margin: one text background behind the text and
-  the cards, with no separator. (A comments sidebar, as in Pages, would be a
-  different design: a list, not notes beside their lines.)
+  the cards, with no separator. Not a comments sidebar as in Pages: that
+  would be a list, not notes beside their lines.
+- Clicking the left margin places the cursor. Over the gutter the pointer is
+  the arrow, and clicks there never reach the text.
 - Comment cards: the control background, an 8pt corner radius and a 1pt
   separator border; the focused card's border is the accent color at 2pt.
   Resolved cards are at 70% opacity.
@@ -89,8 +33,8 @@ Open questions:
 
 ## Color
 
-**Built:** system semantic colors, so every appearance, accent and
-accessibility setting (Increase Contrast, Reduce Transparency) works.
+System semantic colors, so every appearance, accent and accessibility
+setting (Increase Contrast, Reduce Transparency) works.
 
 | Role | Color |
 | --- | --- |
@@ -110,15 +54,11 @@ accessibility setting (Increase Contrast, Reduce Transparency) works.
 
 macOS has no desktop-wide document font, so Margin needs its own choice.
 
-**Built:**
-
 - Body: the system font (SF Pro) at 15pt, before zoom.
-- Code: SF Mono (`monospacedSystemFont`).
+- Code: SF Mono.
 - Cards: the system font at the regular and small sizes.
 - Margin's zoom applies on top.
-
-**Proposed:** a Settings window to pick the body font (SF Pro or New York)
-and size.
+- A Settings window picks the body font (SF Pro or New York) and size.
 
 Open questions:
 
@@ -129,8 +69,7 @@ Open questions:
 
 ## Menu bar
 
-**Built:** the standard menus, with Margin's commands where Mac users look
-for them:
+The standard menus, with Margin's commands where Mac users look for them:
 
 - **Margin**: About Margin, Services, Hide, Hide Others, Show All, Quit.
 - **File**: New, Open…, Open Recent, Close, Save, Save As…, Duplicate,
@@ -151,43 +90,30 @@ for them:
 
 ## Documents
 
-**Built:** Margin manages its own documents rather than building on
-`NSDocument`. The spec's saving rules (write only when changed, atomically,
-keeping permissions and CRLF; merge outside changes against the last saved
-text; ask only on overlap) don't fit NSDocument's autosave and its "changed
-by another application" handling.
+Documents follow the spec's saving rules rather than the Mac's own autosave,
+so there is no version history (Revert To ▸ Browse All Versions) and no
+"changed by another application" alert.
 
 - Documents save themselves 0.7s after the last change, when their window
-  loses focus, and when they close.
-- Outside changes are noticed by watching the file and its folder with
-  dispatch sources (a rename-replace, as agents and editors save, included),
-  and the comment store the same way.
+  loses focus, and when they close. Saves keep the file's permissions,
+  Finder tags and extended attributes.
 - **Save As…** writes the document under a new name and continues there;
-  its comments move along. **Rename…** and **Move To…** move the file itself
-  (keeping its metadata), with its comments. **Duplicate** opens an untitled
-  copy, comments included. **Revert to Last Opened** is one undoable step.
-- Saves replace the file through `NSFileCoordinator` and
-  `FileManager.replaceItemAt`, which keeps permissions, Finder tags and
-  extended attributes. Sudden termination is allowed except while a save is
-  pending.
-- Untitled documents live in the data folder's `drafts/` until saved, and
-  reopen after a crash or relaunch.
-- Windows reopen where they were after a relaunch (state restoration, by
-  path), and documents can share a window as tabs; "+" in the tab bar opens
-  an untitled document.
-- Open Recent works through an `NSDocumentController` subclass that opens
-  Margin's own windows.
-- The conflict ("Keep My Version", "Load Disk Version") and Unsaved Changes
-  prompts are sheets. Unsaved Changes uses the Mac wording: "Do you want to
-  save the changes made to “name”?" with Save…, Cancel and Don’t Save.
+  its comments move along. **Rename…** and **Move To…** move the file itself,
+  with its comments. **Duplicate** opens an untitled copy, comments included.
+  **Revert to Last Opened** is one undoable step.
 - A change an agent makes to the file, or a merge, is one undo step ("Undo
   Outside Change"), so earlier steps stay undoable.
 - Comment changes (resolving, reopening, deleting, Resolve All) are undoable
   with ⌘Z too; the banner's Undo does the same while it's the latest step.
+- Untitled documents are kept as drafts until saved, and reopen after a
+  crash or relaunch.
+- Windows reopen where they were after a relaunch, and documents can share a
+  window as tabs; "+" in the tab bar opens an untitled document.
+- The conflict ("Keep My Version", "Load Disk Version") and Unsaved Changes
+  prompts are sheets. Unsaved Changes uses the Mac wording: "Do you want to
+  save the changes made to “name”?" with Save…, Cancel and Don’t Save.
 
 ## Text input
-
-**Built:**
 
 - **No substitutions:** smart quotes, smart dashes, text replacement,
   autocorrect and link detection are off, because the spec requires the file
@@ -195,25 +121,22 @@ by another application" handling.
   inserts text like typing does.
 - **Spelling** underlines are on, except in code, links and hidden syntax.
   Grammar is off.
-- **Input methods** (Japanese, Chinese, dead keys) compose as usual. When a
-  composition starts, the cursor first moves to where the core would put
-  typed text (after a link, not inside it). While text is being composed it
-  is not restyled, so its marked-text underline stays; once committed it is
-  analyzed and styled like typed text. Press-and-hold accents replace the
-  letter through the core.
-- **Every edit goes through the core**, including those AppKit makes itself
-  (deleting a word, Transpose, dragging text, spelling corrections, Writing
-  Tools): `shouldChangeText` hands them to the editing rules. A replacement
-  inside plain text keeps the formatting around it. A multiple selection
-  (Command-drag) becomes its first range.
-- **Writing Tools** run in their panel (`.limited`): on TextKit 1 they can't
-  rewrite inline, and their results arrive as ordinary replacements.
+- **Input methods** (Japanese, Chinese, dead keys) compose where typed text
+  would go (after a link, not inside it). Text being composed keeps its
+  marked-text underline and is styled once committed. Press-and-hold accents
+  replace the letter like typing does.
+- **Edits the system makes** (deleting a word, Transpose, dragging text,
+  spelling corrections, Writing Tools) follow the same editing rules as
+  typing. A replacement inside plain text keeps the formatting around it. A
+  multiple selection (Command-drag) becomes its first range.
+- **Writing Tools** run in their panel, not inline, and their results
+  arrive as ordinary replacements.
 
 ## Key bindings
 
-**Built:** Mac equivalents of the Linux bindings: Cmd for Ctrl, Option for
-Alt, and Apple's standard bindings where they exist. Conflicts with macOS
-conventions are resolved in favor of macOS.
+Mac equivalents of the Linux bindings: Cmd for Ctrl, Option for Alt, and
+Apple's standard bindings where they exist. Conflicts with macOS conventions
+are resolved in favor of macOS.
 
 | Command | Keys |
 | --- | --- |
@@ -253,35 +176,30 @@ Open question: Cmd+Option+Q (Quote) sits next to Cmd+Q; is that too close?
 
 ## Notifications
 
-**Built:** AppKit has no toast, so a small banner at the bottom of the
-window (a HUD material with a 10pt radius) says "Updated from disk", "1 new
-reply" and the like, and fades after 3 seconds, or 6 when it has an Undo
-button. It is also announced to VoiceOver.
+The Mac has no toast, so a small banner at the bottom of the window (a HUD
+material with a 10pt radius) says "Updated from disk", "1 new reply" and the
+like, and fades after 3 seconds, or 6 when it has an Undo button. It is also
+announced to VoiceOver.
 
 Open question: should agent activity also post a system notification when
 Margin is in the background?
 
 ## Files and storage
 
-**Built:**
-
 - Comments in `~/Library/Application Support/Margin/docs/`, the Mac's place
   for app data, and drafts beside them in `drafts/`. `XDG_DATA_HOME`, when
   set, and `MARGIN_DATA_DIR` override it, so the CLI and the editor always
   agree.
-- Preferences (zoom, Reflow Paragraphs) in `UserDefaults` under
-  `io.github.tibbe.Margin`. Scripted test runs don't write them.
-
-**Proposed:** a Settings window for the body font and size.
+- Preferences (zoom, Reflow Paragraphs) in the user defaults under
+  `io.github.tibbe.Margin`.
 
 ## App lifecycle
 
-**Built:**
-
-- One instance, through Launch Services. `margin FILE…` (the CLI) runs
-  `open -b io.github.tibbe.Margin FILE…` and returns at once; `--foreground`
-  waits for the app to quit. It creates files that don't exist yet, since
-  Launch Services only opens existing ones.
+- One instance. `margin FILE…` opens the files in the running app (starting
+  it if needed) and returns at once; `--foreground` waits for the app to
+  quit. Files that don't exist yet are created.
+- Margin is an editor for Markdown files in Finder's Open With, and opens
+  them on double-click.
 - Launched without files, Margin reopens drafts left by a crash, and
   otherwise shows the Open panel.
 - The app keeps running when its last window closes, as Mac document apps
@@ -289,35 +207,11 @@ Margin is in the background?
 - Quitting keeps untitled documents (they reopen at the next launch) and
   asks, one window at a time, only about text whose save failed; Don't Save
   finishes quitting.
-- Printing uses `NSPrintOperation` with the body at 11pt, in the light
-  appearance.
-- Margin declares itself an editor for Markdown (`net.daringfireball.markdown`),
-  so Finder's Open With and double-click can open documents.
+- Printing sets the body at 11pt, in the light appearance.
 
+## Distribution
 
-## Building and installation
-
-**Built:** `macos/build.sh` builds `macos/build/Margin.app` with cargo and
-`swiftc` (no Xcode project): the Rust core as a static library, Swift
-bindings generated by UniFFI, the app, the icon's asset catalog (compiled
-with `actool`; `macos/tools/render-icon.swift` renders it from the SVG),
-and the `margin` CLI in `Contents/Helpers/`. Release builds are universal
-(Apple silicon and Intel) with a dSYM, signed ad hoc with the hardened
-runtime.
-
-**Proposed:** a Developer ID signature and notarization, distributed as a
-disk image or through Homebrew Cask, which links the CLI onto the PATH.
-
-## Testing
-
-**Built:** test builds (`macos/build.sh debug`) include a script driver,
-`MARGIN_SCRIPT` (see `macos/Sources/ScriptDriver.swift`); release builds
-don't. Keys and clicks are events sent through AppKit's own routing (menus,
-key equivalents, hit-testing), not calls into the editor. When macOS won't
-let the test activate the app (because you're using another one), the
-driver sends shortcuts and clicks where AppKit would. `os-key` posts
-keyboard events with only a key code, so the keyboard layout translates
-them, dead keys included. Input methods are exercised through the same
-`NSTextInputClient` calls they make. Test runs keep their preferences
-apart and take no part in window restoration. `macos/tests/run.sh` runs the
-scripts in `macos/tests/` and compares their output with what's expected.
+- The app runs on Apple silicon and Intel, and the `margin` CLI ships
+  inside it.
+- Signed with a Developer ID and notarized, distributed as a disk image or
+  through Homebrew Cask, which links the CLI onto the PATH.

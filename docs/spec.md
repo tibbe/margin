@@ -200,3 +200,10 @@ Every editor shares the core: Markdown analysis, editing rules, find, the
 comment store and anchoring, and the CLI. Each platform provides the UI and
 system integration, routes every edit through the core, and records its
 choices in its design system.
+
+- Each editor uses its platform's own pieces wherever one exists: menus,
+  window chrome, dialogs, file pickers, the print dialog, system colors and
+  fonts. It draws custom UI only for what the platform has no equivalent of
+  (the comment gutter, the drawn Markdown blocks).
+- Where platform conventions differ, each editor follows its own, even when
+  that makes the editors differ; the behavior in this spec stays the same.
