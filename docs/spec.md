@@ -98,8 +98,8 @@ agent**.
   created on first save.
 - Documents are identified by canonical path; one window per document.
 - CRLF files are written back as CRLF; a missing final newline is added.
-- Autosave 0.7s after the last change, on focus loss and on close. Saves are
-  atomic and keep permissions.
+- Documents save shortly after the last change, on focus loss and on close.
+  Saves never leave a half-written file and keep the file's permissions.
 - Closing asks only for an untitled document with text, or one whose save
   failed. Empty untitled documents are discarded silently.
 - Outside changes: reload if there are no unsaved edits; otherwise a
@@ -117,19 +117,16 @@ agent**.
   monospace source; images as italic, link-colored alt text; bare URLs and
   autolinks as links with the URL visible. Checked tasks are struck through
   and dimmed; Heading 6 is dimmed.
-- Bullets cycle `•` `◦` `▪` by depth; a code block shows its language in its
-  corner.
+- Bullets change shape with nesting depth; a code block shows its language.
 - The text column holds about 100 characters, with the comment gutter to its
-  right. Body line pitch 1.5; heading sizes 1.8, 1.42, 1.2, 1.07, 1.0, 0.94
-  of body. Zoom from 50% to 300%, shared by all windows and persisted, on top
-  of the platform's text size.
+  right. Spacing and sizes are proportional to the text size. Zoom is shared by all
+  windows and persisted, on top of the platform's text size.
 - Reflow Paragraphs is off by default, global and persisted. Show Markdown is
   per window and not persisted.
 
 ### Editing
 
-The core's `md::edit` tests are the specification of editing; every editor
-must produce the same source. The choices behind them:
+Every editor produces the same source for the same keys. The choices:
 
 - Shift+Enter writes a backslash hard break (`\`), not two spaces. In a
   heading it acts as Enter.
@@ -193,12 +190,9 @@ workflow. The decisions:
 - `add --quote` refuses an ambiguous quote, listing the lines, until
   `--occurrence N` picks one; `--line` anchors from the first non-blank
   character.
-- `wait` defaults to 540 seconds and exits 124 on timeout.
-- The store is one JSON file per document, shared by the editor and CLI
-  under an exclusive lock, replaced atomically. It keeps a snapshot of the
-  text its byte offsets refer to; without one, quotes are found nearest their
-  old position. Unknown fields are ignored and dropped on write.
-  `MARGIN_DATA_DIR` overrides its location everywhere.
+- `wait` has a timeout and a distinct exit code when it expires.
+- The editor and the CLI can change a document's comments at the same time
+  without losing either's changes.
 
 ### Platforms
 
