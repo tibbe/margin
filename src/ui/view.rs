@@ -9,7 +9,8 @@ use crate::md::{edit, Container, InlineKind, LineKind};
 use gtk::{gdk, gio, glib, graphene, prelude::*, subclass::prelude::*};
 use std::cell::{Cell, RefCell};
 
-pub const CARD_WIDTH: i32 = 300;
+/// Comment card width at the default text size.
+const CARD_WIDTH: i32 = 300;
 const GUTTER_GAP: i32 = 40;
 const SIDE_PAD: i32 = 28;
 
@@ -20,16 +21,20 @@ pub struct Geometry {
     pub left: i32,
     pub doc_width: i32,
     pub gutter_x: i32,
+    pub card_width: i32,
 }
 
-pub fn geometry(width: i32, scale: f64) -> Geometry {
+/// Layout for a view `width` wide, with `scale` the text's scale and
+/// `ui_scale` the interface's (see `Look`).
+pub fn geometry(width: i32, scale: f64, ui_scale: f64) -> Geometry {
+    let card = (CARD_WIDTH as f64 * ui_scale).round() as i32;
     // About 100 characters of the body font. Screen studies find no speed
     // or comprehension cost up to about 100 characters per line.
     let max_doc = (760.0 * scale) as i32;
-    let room = width - CARD_WIDTH - GUTTER_GAP - 2 * SIDE_PAD;
+    let room = width - card - GUTTER_GAP - 2 * SIDE_PAD;
     let doc_width = room.clamp(300, max_doc).min((width - 2 * SIDE_PAD).max(120));
     let mut left = (width - doc_width) / 2;
-    let needed = doc_width + GUTTER_GAP + CARD_WIDTH + SIDE_PAD;
+    let needed = doc_width + GUTTER_GAP + card + SIDE_PAD;
     if left + needed > width {
         left = (width - needed).max(SIDE_PAD);
     }
@@ -38,6 +43,7 @@ pub fn geometry(width: i32, scale: f64) -> Geometry {
         left,
         doc_width,
         gutter_x: left + doc_width + GUTTER_GAP,
+        card_width: card,
     }
 }
 
@@ -95,8 +101,10 @@ mod imp {
     impl WidgetImpl for DocView {
         fn size_allocate(&self, width: i32, height: i32, baseline: i32) {
             let obj = self.obj();
-            let scale = obj.doc_buffer_opt().map_or(1.0, |b| b.look().scale());
-            let g = geometry(width, scale);
+            let (scale, ui) = obj
+                .doc_buffer_opt()
+                .map_or((1.0, 1.0), |b| (b.look().scale(), b.look().ui_scale()));
+            let g = geometry(width, scale, ui);
             if g != self.geometry.get() {
                 self.geometry.set(g);
                 obj.set_left_margin(g.left);
@@ -627,13 +635,15 @@ mod tests {
 
     #[test]
     fn column_is_about_100_characters_beside_the_gutter() {
-        let g = geometry(1340, 1.0);
+        let g = geometry(1340, 1.0, 1.0);
         assert_eq!(g.doc_width, 760);
-        assert!(g.gutter_x + CARD_WIDTH <= 1340);
+        assert!(g.gutter_x + g.card_width <= 1340);
         // Narrower windows give the text what is left.
-        let g = geometry(1024, 1.0);
+        let g = geometry(1024, 1.0, 1.0);
         assert_eq!(g.doc_width, 1024 - CARD_WIDTH - GUTTER_GAP - 2 * SIDE_PAD);
-        // Larger text widens the column with it.
-        assert_eq!(geometry(2000, 1.25).doc_width, 950);
+        // Larger text widens the column and the cards with it.
+        let g = geometry(2400, 1.25, 1.25);
+        assert_eq!((g.doc_width, g.card_width), (950, 375));
+        assert!(g.gutter_x + g.card_width <= 2400);
     }
 }

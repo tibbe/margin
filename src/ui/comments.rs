@@ -919,11 +919,12 @@ impl CommentLayer {
         }
         let mut items: Vec<Item> = Vec::new();
         let active = self.active.get();
-        let width = super::view::CARD_WIDTH;
+        let width = g.card_width;
         for tu in self.threads.borrow().iter() {
             if !self.visible(&tu.thread) {
                 continue;
             }
+            tu.card.root.set_size_request(width, -1);
             let it = self.buffer.iter_at_mark(&tu.start);
             let y = self.view.iter_location(&it).y();
             let (h, _, _, _) = tu.card.root.measure(gtk::Orientation::Vertical, width);
@@ -936,6 +937,7 @@ impl CommentLayer {
             });
         }
         if let Some(d) = &*self.draft.borrow() {
+            d.card.root.set_size_request(width, -1);
             let it = self.buffer.iter_at_mark(&d.start);
             let (h, _, _, _) = d.card.root.measure(gtk::Orientation::Vertical, width);
             items.push(Item {

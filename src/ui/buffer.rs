@@ -93,9 +93,17 @@ pub struct Look {
 }
 
 impl Look {
-    /// Spacing scale relative to a 12pt body font.
+    /// Spacing scale: the body text's size on screen relative to 16px
+    /// (12pt at 96 dpi). It follows the font size, Margin's zoom and the
+    /// desktop's text scaling, so spacing stays in proportion to the text.
     pub fn scale(&self) -> f64 {
-        self.fonts.size / 12.0
+        self.fonts.size / 12.0 * self.fonts.text_scale
+    }
+
+    /// Scale for the interface around the text (the comment cards), which
+    /// follows only the desktop's text scaling.
+    pub fn ui_scale(&self) -> f64 {
+        self.fonts.text_scale
     }
 }
 

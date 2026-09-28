@@ -20,7 +20,7 @@
 //! bugs in how GTK routes pointer events; click through the real path when
 //! testing anything a mouse does.
 //! size W H | wait MS | shot PATH | shot-window N PATH | dump | probe | sh CMD | quit
-//! save-as PATH | print-pdf PATH | clipboard | find-state | scroll-state | scroll-top TEXT | windows | window N (steps act on window N) | close
+//! save-as PATH | print-pdf PATH | clipboard | find-state | scroll-state | scroll-top TEXT | xft-dpi N | windows | window N (steps act on window N) | close
 //! ```
 //!
 //! Text steps accept `\n` and `\t` escapes.
@@ -331,6 +331,13 @@ fn step(win: &DocWindow, line: &str) -> u64 {
                 view.scroll_to_mark(&mark, 0.0, true, 0.0, 0.0);
             }
             return 300;
+        }
+        "xft-dpi" => {
+            // Stands in for a desktop text size change: 96 * 1024 is 1.0.
+            if let (Some(s), Ok(v)) = (gtk::Settings::default(), arg.trim().parse::<i32>()) {
+                s.set_gtk_xft_dpi(v);
+            }
+            return 600;
         }
         "find-state" => println!("{}", win.find.describe()),
         "windows" => {

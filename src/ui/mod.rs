@@ -26,6 +26,7 @@ thread_local! {
     static CSS: RefCell<Option<gtk::CssProvider>> = const { RefCell::new(None) };
     static THEME_TIMER: RefCell<Option<glib::SourceId>> = const { RefCell::new(None) };
     static THEME_MONITOR: RefCell<Option<gio::FileMonitor>> = const { RefCell::new(None) };
+    static INTERFACE: RefCell<Option<gio::Settings>> = const { RefCell::new(None) };
 }
 
 fn look() -> Look {
@@ -124,8 +125,18 @@ fn schedule_refresh_look() {
     });
 }
 
-/// Follows Omarchy theme switches and the system dark/light preference.
+/// Follows Omarchy theme switches, the system dark/light preference, and
+/// font and text size changes (Omarchy's text size sets GNOME's
+/// text-scaling-factor, which GTK turns into its dpi).
 fn watch_theme() {
+    if let Some(s) = gtk::Settings::default() {
+        s.connect_gtk_xft_dpi_notify(|_| schedule_refresh_look());
+        s.connect_gtk_font_name_notify(|_| schedule_refresh_look());
+    }
+    if let Some(i) = theme::interface_settings() {
+        i.connect_changed(Some("document-font-name"), |_, _| schedule_refresh_look());
+        INTERFACE.with(|s| s.replace(Some(i)));
+    }
     if let Some(marker) = theme::omarchy_theme_marker()
         && let Some(dir) = marker.parent()
     {

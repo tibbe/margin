@@ -156,6 +156,12 @@ pub struct Fonts {
     pub mono: String,
     /// The body font's natural line height (ascent plus descent), in ems.
     pub body_height: f64,
+    /// The interface font family, for comment cards.
+    pub ui: String,
+    /// The desktop's text scaling (Omarchy's text size setting, GNOME's
+    /// text-scaling-factor), which GTK applies to every font size in
+    /// points. 1.0 at 96 dpi.
+    pub text_scale: f64,
 }
 
 /// Line pitch of body text, in ems of the font size: the value GitHub,
@@ -202,16 +208,25 @@ impl Fonts {
         {
             mono = family;
         }
+        let gtk_settings = gtk::Settings::default();
+        let ui = gtk_settings
+            .as_ref()
+            .and_then(|s| s.gtk_font_name())
+            .and_then(|n| parse_font(&n))
+            .map_or_else(|| body.0.clone(), |(family, _)| family);
+        let dpi = gtk_settings.map_or(-1, |s| s.gtk_xft_dpi());
         Fonts {
             body_height: natural_height(&body.0),
             body: body.0,
             size: body.1,
             mono,
+            ui,
+            text_scale: if dpi > 0 { dpi as f64 / 1024.0 / 96.0 } else { 1.0 },
         }
     }
 }
 
-fn interface_settings() -> Option<gio::Settings> {
+pub fn interface_settings() -> Option<gio::Settings> {
     let source = gio::SettingsSchemaSource::default()?;
     source.lookup("org.gnome.desktop.interface", true)?;
     Some(gio::Settings::new("org.gnome.desktop.interface"))
@@ -319,9 +334,6 @@ searchbar > revealer > box {{ box-shadow: none; border-bottom: 1px solid {border
         dim = p.dim,
         body = f.body,
         size = f.size,
-        ui_font = gtk::Settings::default()
-            .and_then(|s| s.gtk_font_name())
-            .and_then(|n| parse_font(&n))
-            .map_or_else(|| f.body.clone(), |(family, _)| family),
+        ui_font = f.ui,
     )
 }

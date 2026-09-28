@@ -7,7 +7,6 @@ use gtk::{gdk, glib, pango, prelude::*};
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use super::view::CARD_WIDTH;
 
 /// A multi-line text box with a placeholder and submit/cancel buttons.
 /// Ctrl+Enter submits; Escape cancels.
@@ -207,7 +206,6 @@ impl Card {
     pub fn new(thread: &Thread, actions: Rc<CardActions>) -> Rc<Card> {
         let root = gtk::Box::new(gtk::Orientation::Vertical, 8);
         root.add_css_class("comment-card");
-        root.set_size_request(CARD_WIDTH, -1);
         let content = gtk::Box::new(gtk::Orientation::Vertical, 6);
         root.append(&content);
         let composer = Composer::new("Reply…", "Reply", false);
@@ -381,7 +379,6 @@ impl DraftCard {
         let root = gtk::Box::new(gtk::Orientation::Vertical, 8);
         root.add_css_class("comment-card");
         root.add_css_class("active");
-        root.set_size_request(CARD_WIDTH, -1);
         let composer = Composer::new("Comment for the agent…", "Comment", true);
         root.append(&composer.root);
         DraftCard { root, composer }
