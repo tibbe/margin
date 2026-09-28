@@ -308,6 +308,19 @@ enum ScriptDriver {
                 g = NSMaxRange(r)
                 n += 1
             }
+        case "markers":
+            // Whether each list item's marker sits on its own text: on the
+            // baseline of the item's last character.
+            let lm = view.layoutManager!
+            lm.ensureLayout(for: view.textContainer!)
+            for it in view.items {
+                let line = view.lines[Int(it.line)]
+                let last = max(Int(line.contentStart), Int(line.end) - 1)
+                let text = view.fragmentRect(at: last).minY + lm.location(forGlyphAt: lm.glyphIndexForCharacter(at: last)).y
+                let off = view.markerPosition(it).baseline - text
+                let body = view.visibleText(NSRange(location: Int(line.contentStart), length: Int(line.end - line.contentStart)))
+                print("marker \(body.debugDescription): \(abs(off) < 0.5 ? "on its text" : "off by \(off)")")
+            }
         case "selection":
             let r = view.selectedRange()
             print("selection \(r.location) \(r.length)")

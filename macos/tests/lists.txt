@@ -1,0 +1,10 @@
+# Lists: where markers are drawn.
+# An item starting with hidden syntax (bold) after a blank line, a heading or
+# another item: its hidden prefix is laid out on the line before, and its
+# marker must not follow it there.
+reset ## Menu bar\n\nThe standard menus:\n\n- **Margin**: About.\n- **File**: New.\n\n## Text input\n\n- **No substitutions:** off.\n- plain\n1. **Numbered** bold\n- [ ] **Task** bold\n
+wait 200
+markers
+reset > **Quoted** bold\n> more\n\n- **A**\n
+wait 200
+markers

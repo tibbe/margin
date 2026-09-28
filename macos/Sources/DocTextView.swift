@@ -320,10 +320,19 @@ final class DocTextView: NSTextView, NSTextStorageDelegate, NSTextViewDelegate, 
         return lm.lineFragmentRect(forGlyphAt: g, effectiveRange: nil).offsetBy(dx: origin.x, dy: origin.y)
     }
 
+    /// A line's first visible character from its content start (or its
+    /// end): hidden syntax at the start of a line, such as the "**" of bold
+    /// text, is laid out on the line before, so positions are found here.
+    private func visibleStart(_ l: LineInfo) -> Int {
+        var ci = Int(min(l.contentStart, l.end))
+        while ci < Int(l.end) && isHidden(ci) { ci += 1 }
+        return ci
+    }
+
     /// The top of a line's text, below the space above it.
     func textTop(line li: Int) -> CGFloat {
         let l = lines[li]
-        let r = fragmentRect(at: Int(min(l.contentStart, l.end)))
+        let r = fragmentRect(at: visibleStart(l))
         let above = li < styler.metrics.count ? styler.metrics[li].spaceAbove : 0
         return r.minY + above
     }
@@ -419,10 +428,10 @@ final class DocTextView: NSTextView, NSTextStorageDelegate, NSTextViewDelegate, 
     }
 
     /// Where a list item's marker goes: its text's baseline and left edge.
-    private func markerPosition(_ it: ItemInfo) -> (baseline: CGFloat, xText: CGFloat) {
+    func markerPosition(_ it: ItemInfo) -> (baseline: CGFloat, xText: CGFloat) {
         let font = Theme.font(size: Theme.bodySize)
         let line = lines[Int(it.line)]
-        let ci = Int(min(line.contentStart, line.end))
+        let ci = visibleStart(line)
         let frag = fragmentRect(at: ci)
         var baseline = frag.minY + font.ascender
         if let lm = layoutManager, ci < (string as NSString).length {
