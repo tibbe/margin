@@ -3,6 +3,7 @@
 //!
 //! ```text
 //! type Hello **world**     insert text character by character
+//! type-over TEXT           type over the selection, as GTK does for a key
 //! enter | shift-enter | backspace | delete | tab | shift-tab
 //! home | end | left N | right N | up N | down N | undo N | redo N
 //! start | finish           cursor to start / end of document
@@ -115,6 +116,13 @@ fn step(win: &DocWindow, line: &str) -> u64 {
             for c in unescape(arg).chars() {
                 buf.insert_interactive_at_cursor(&c.to_string(), true);
             }
+        }
+        "type-over" => {
+            // What GTK does for a key typed over a selection.
+            buf.begin_user_action();
+            buf.delete_selection(true, true);
+            buf.insert_interactive_at_cursor(&unescape(arg), true);
+            buf.end_user_action();
         }
         "bench-type" => {
             let n: usize = arg.trim().parse().unwrap_or(100);

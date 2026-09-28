@@ -46,3 +46,15 @@ find Title
 key left left left left left left
 type x
 dump
+reset one two three\n
+select one
+type X
+dump
+reset a **bold** c\n
+select bold
+type Z
+dump
+reset one two\n
+select one
+key backspace
+dump

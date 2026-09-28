@@ -809,8 +809,11 @@ final class DocTextView: NSTextView, NSTextStorageDelegate, NSTextViewDelegate, 
             insertTab(nil)
             return
         }
+        if let sel = selection {
+            run { a, _, _ in a.replaceRange(start: UInt32(sel.location), end: UInt32(NSMaxRange(sel)), text: text) }
+            return
+        }
         grouped {
-            deleteSelectionThroughCore()
             ensureFresh()
             let p = cursor
             let plan = analysis.insert(pos: UInt32(p), text: text)
@@ -904,11 +907,10 @@ final class DocTextView: NSTextView, NSTextStorageDelegate, NSTextViewDelegate, 
         let changes = zip(affectedRanges.map(\.rangeValue), strings).sorted { $0.0.location > $1.0.location }
         grouped {
             for (range, text) in changes {
-                // A replacement inside plain text (a spelling correction)
-                // keeps the formatting around it.
-                if range.length > 0, !text.isEmpty,
-                   let plan = analysis.replacePlain(start: UInt32(range.location), end: UInt32(NSMaxRange(range)), with: text) {
-                    apply(plan)
+                // A replacement (a spelling correction, Writing Tools) is
+                // typing over a selection.
+                if range.length > 0, !text.isEmpty {
+                    run { a, _, _ in a.replaceRange(start: UInt32(range.location), end: UInt32(NSMaxRange(range)), text: text) }
                     continue
                 }
                 if range.length > 0 {
@@ -974,9 +976,10 @@ final class DocTextView: NSTextView, NSTextStorageDelegate, NSTextViewDelegate, 
             raw -= 1
             return
         }
-        grouped {
-            deleteSelectionThroughCore()
-            run { a, c, _ in a.insert(pos: UInt32(c), text: text) }
+        run { a, c, sel in
+            sel.length > 0
+                ? a.replaceRange(start: UInt32(sel.location), end: UInt32(NSMaxRange(sel)), text: text)
+                : a.insert(pos: UInt32(c), text: text)
         }
     }
 

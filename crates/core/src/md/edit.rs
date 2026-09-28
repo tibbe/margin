@@ -952,7 +952,33 @@ pub fn delete_range(src: &str, doc: &Doc, range: Range<usize>) -> Plan {
         visual_pos(doc, range.end).max(a)
     };
     let b = extend_over_trailing_hidden(doc, b, lb);
+    // From the start of a paragraph or heading, the whitespace after the
+    // selection would start the block: Markdown hides it (and four spaces
+    // would turn a paragraph into code), so it goes too.
+    let b = if matches!(a_line.kind, LineKind::Paragraph | LineKind::Heading(_)) && at_visual_start(doc, la, a) {
+        b + src[b..].bytes().take_while(|&c| c == b' ' || c == b'\t').count()
+    } else {
+        b
+    };
     delete_ranges(src, doc, vec![a..b], a)
+}
+
+/// Typing or pasting over a selection. In place when the selection lies in
+/// plain text, so the formatting and spacing around it stay (as in a word
+/// processor: typing over a bold word types bold); otherwise the selection
+/// is deleted and the text typed.
+pub fn replace_range(src: &str, doc: &Doc, range: Range<usize>, text: &str) -> Plan {
+    if range.is_empty() {
+        return insert(src, doc, range.start, text);
+    }
+    if let Some(p) = replace_plain(src, doc, range.clone(), text) {
+        return p;
+    }
+    let deleted = delete_range(src, doc, range);
+    let after = deleted.apply(src);
+    let typed = insert(&after, &super::parse(&after), deleted.cursor, text);
+    let result = typed.apply(&after);
+    Plan::at(crate::diff::diff_changes(src, &result), typed.cursor)
 }
 
 /// If `b` sits before hidden syntax that ends its line, include the syntax
@@ -1913,6 +1939,29 @@ mod tests {
             sel("a **b[old** te]xt\n", delete_range),
             "a **b|**xt\n"
         );
+    }
+
+    #[test]
+    fn delete_at_block_start_takes_exposed_space() {
+        assert_eq!(sel("[one] two\n", delete_range), "|two\n");
+        assert_eq!(sel("- [one] two\n", delete_range), "- |two\n");
+        assert_eq!(sel("# [one] two\n", delete_range), "# |two\n");
+        // Five spaces would have made the rest an indented code block.
+        assert_eq!(sel("[word]     rest\n", delete_range), "|rest\n");
+        // Inside a paragraph, and in code, spaces are text.
+        assert_eq!(sel("a [one] two\n", delete_range), "a | two\n");
+        assert_eq!(sel("```\n[x] y\n```\n", delete_range), "```\n| y\n```\n");
+    }
+
+    #[test]
+    fn typing_over_a_selection() {
+        let over = |s: &str, t: &'static str| sel(s, move |src, d, r| replace_range(src, d, r, t));
+        assert_eq!(over("[one] two three\n", "X"), "X| two three\n");
+        assert_eq!(over("- [one] two\n", "X"), "- X| two\n");
+        assert_eq!(over("a **[bold]** c\n", "Z"), "a **Z|** c\n");
+        // Across syntax: deleted, then typed.
+        assert_eq!(over("a **b[old** te]xt\n", "Z"), "a **bZ|**xt\n");
+        assert_eq!(over("[one] two\n", "a\nb"), "a\nb| two\n");
     }
 
     #[test]

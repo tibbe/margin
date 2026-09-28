@@ -577,6 +577,12 @@ impl Analysis {
         self.plan(edit::insert(&self.text, &self.doc, self.b(pos), &text))
     }
 
+    /// Typing or pasting over a selection.
+    pub fn replace_range(&self, start: u32, end: u32, text: String) -> EditPlan {
+        let text = text.replace("\r\n", "\n").replace('\r', "\n");
+        self.plan(edit::replace_range(&self.text, &self.doc, self.bytes(start, end), &text))
+    }
+
     pub fn newline(&self, pos: u32, soft: bool) -> EditPlan {
         self.plan(edit::newline(&self.text, &self.doc, self.b(pos), soft))
     }

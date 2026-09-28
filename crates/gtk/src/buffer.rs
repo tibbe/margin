@@ -144,6 +144,12 @@ mod imp {
         pub raw: Cell<u32>,
         /// Above zero: defer re-analysis until the batch ends.
         pub batch: Cell<u32>,
+        /// Depth of user actions (GTK groups one keystroke's edits in one).
+        pub user_action: Cell<u32>,
+        /// Deleting the selection, held back to the end of the user action:
+        /// GTK types over a selection by deleting it, then inserting at
+        /// the cursor, which together is one `edit::replace_range`.
+        pub pending_delete: RefCell<Option<Range<usize>>>,
         /// Above zero: we are applying our own tags.
         pub tagging: Cell<u32>,
         pub stale: Cell<bool>,
@@ -192,7 +198,27 @@ mod imp {
             }
             let obj = self.obj();
             self.ensure_fresh();
-            let pos = obj.byte_at(iter);
+            let mut pos = obj.byte_at(iter);
+            if let Some(sel) = self.pending_delete.take() {
+                let typed = !matches!(text, "\n" | "\r\n" | "\t");
+                if typed && (pos == sel.start || pos == sel.end) {
+                    let plan = {
+                        let st = self.state.borrow();
+                        edit::replace_range(&st.text, &st.doc, sel, &text.replace("\r\n", "\n"))
+                    };
+                    obj.apply_plan(&plan);
+                    *iter = obj.iter_at_mark(&obj.get_insert());
+                    return;
+                }
+                // Something else: the deletion goes first.
+                let plan = {
+                    let st = self.state.borrow();
+                    edit::delete_range(&st.text, &st.doc, sel)
+                };
+                obj.apply_plan(&plan);
+                pos = edit::map_pos(&plan.changes, pos, false);
+                self.ensure_fresh();
+            }
             let plan = {
                 let st = self.state.borrow();
                 match text {
@@ -218,6 +244,14 @@ mod imp {
             let obj = self.obj();
             self.ensure_fresh();
             let (a, b) = (obj.byte_at(start), obj.byte_at(end));
+            if self.user_action.get() > 0
+                && self.pending_delete.borrow().is_none()
+                && obj.selection_bytes() == Some(a.min(b)..a.max(b))
+            {
+                // Possibly typing over the selection: wait for the insert.
+                self.pending_delete.replace(Some(a.min(b)..a.max(b)));
+                return;
+            }
             let plan = {
                 let st = self.state.borrow();
                 edit::delete_range(&st.text, &st.doc, a.min(b)..a.max(b))
@@ -226,6 +260,27 @@ mod imp {
             let it = obj.iter_at_mark(&obj.get_insert());
             *start = it;
             *end = it;
+        }
+
+        fn begin_user_action(&self) {
+            self.user_action.set(self.user_action.get() + 1);
+            self.parent_begin_user_action();
+        }
+
+        fn end_user_action(&self) {
+            if self.user_action.get() == 1
+                && let Some(sel) = self.pending_delete.take()
+            {
+                let obj = self.obj();
+                self.ensure_fresh();
+                let plan = {
+                    let st = self.state.borrow();
+                    edit::delete_range(&st.text, &st.doc, sel)
+                };
+                obj.apply_plan(&plan);
+            }
+            self.parent_end_user_action();
+            self.user_action.set(self.user_action.get().saturating_sub(1));
         }
 
         fn apply_tag(&self, tag: &gtk::TextTag, start: &gtk::TextIter, end: &gtk::TextIter) {
@@ -832,10 +887,10 @@ impl DocBuffer {
             self.delete_selection(true, true);
             self.insert_at_cursor(&text);
         } else {
-            if let Some(sel) = self.selection_bytes() {
-                self.run(|src, doc, _, _| edit::delete_range(src, doc, sel));
+            match self.selection_bytes() {
+                Some(sel) => self.run(|src, doc, _, _| edit::replace_range(src, doc, sel.clone(), &text)),
+                None => self.run(|src, doc, c, _| edit::insert(src, doc, c, &text)),
             }
-            self.run(|src, doc, c, _| edit::insert(src, doc, c, &text));
         }
         self.end_user_action();
     }
