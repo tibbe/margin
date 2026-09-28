@@ -23,7 +23,9 @@ pub struct Geometry {
 }
 
 pub fn geometry(width: i32, scale: f64) -> Geometry {
-    let max_doc = (680.0 * scale) as i32;
+    // About 100 characters of the body font. Screen studies find no speed
+    // or comprehension cost up to about 100 characters per line.
+    let max_doc = (760.0 * scale) as i32;
     let room = width - CARD_WIDTH - GUTTER_GAP - 2 * SIDE_PAD;
     let doc_width = room.clamp(300, max_doc).min((width - 2 * SIDE_PAD).max(120));
     let mut left = (width - doc_width) / 2;
@@ -82,7 +84,7 @@ mod imp {
             let obj = self.obj();
             obj.set_wrap_mode(gtk::WrapMode::WordChar);
             obj.add_css_class("margin-doc");
-            obj.set_top_margin(56);
+            obj.set_top_margin(32);
             obj.set_bottom_margin(240);
             obj.set_accepts_tab(true);
             obj.set_has_tooltip(true);
@@ -99,6 +101,10 @@ mod imp {
                 self.geometry.set(g);
                 obj.set_left_margin(g.left);
                 obj.set_right_margin((width - g.left - g.doc_width).max(0));
+            }
+            let top = (32.0 * scale).round() as i32;
+            if obj.top_margin() != top {
+                obj.set_top_margin(top);
             }
             let bottom = (height * 2 / 5).max(120);
             if obj.bottom_margin() != bottom {
@@ -613,4 +619,21 @@ impl DocView {
 
 fn set_color(cr: &gtk::cairo::Context, c: &gdk::RGBA) {
     cr.set_source_rgba(c.red() as f64, c.green() as f64, c.blue() as f64, c.alpha() as f64);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn column_is_about_100_characters_beside_the_gutter() {
+        let g = geometry(1340, 1.0);
+        assert_eq!(g.doc_width, 760);
+        assert!(g.gutter_x + CARD_WIDTH <= 1340);
+        // Narrower windows give the text what is left.
+        let g = geometry(1024, 1.0);
+        assert_eq!(g.doc_width, 1024 - CARD_WIDTH - GUTTER_GAP - 2 * SIDE_PAD);
+        // Larger text widens the column with it.
+        assert_eq!(geometry(2000, 1.25).doc_width, 950);
+    }
 }

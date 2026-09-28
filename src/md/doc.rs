@@ -214,13 +214,15 @@ pub struct Doc {
     pub soft_breaks: Vec<usize>,
 }
 
-// Vertical spacing at a 12pt body size, in pixels.
+// Vertical spacing at a 12pt (16px) body size, in pixels, within the range
+// of common editors' and word processors' defaults. With a 24px line pitch,
+// a paragraph break is 1.5 lines.
 const GAP_ITEM: u16 = 5;
-const GAP_BLOCK: u16 = 14;
+const GAP_BLOCK: u16 = 12;
 const GAP_AFTER_HEADING: u16 = 6;
 const CODE_PAD: u16 = 10;
-const RULE_PAD: u16 = 8;
-const HEADING_ABOVE: [u16; 6] = [26, 22, 18, 14, 12, 12];
+const RULE_PAD: u16 = 4;
+const HEADING_ABOVE: [u16; 6] = [26, 22, 18, 14, 14, 14];
 
 fn options() -> Options {
     Options::ENABLE_TABLES

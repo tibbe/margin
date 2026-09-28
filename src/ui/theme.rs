@@ -154,6 +154,32 @@ pub struct Fonts {
     /// Body size in points.
     pub size: f64,
     pub mono: String,
+    /// The body font's natural line height (ascent plus descent), in ems.
+    pub body_height: f64,
+}
+
+/// Line pitch of body text, in ems of the font size: the value GitHub,
+/// Obsidian and Notion use for body text.
+pub const BODY_LINE_PITCH: f64 = 1.5;
+
+/// Natural line height of a font family, in ems.
+fn natural_height(family: &str) -> f64 {
+    let mut desc = pango::FontDescription::new();
+    desc.set_family(family);
+    desc.set_absolute_size(100.0 * pango::SCALE as f64);
+    let ctx = pangocairo::FontMap::default().create_context();
+    let m = ctx.metrics(Some(&desc), None);
+    let h = (m.ascent() + m.descent()) as f64 / pango::SCALE as f64 / 100.0;
+    if h > 0.5 { h } else { 1.2 }
+}
+
+impl Fonts {
+    /// Pango's line-height factor that gives body text
+    /// [`BODY_LINE_PITCH`]: the factor multiplies the font's natural
+    /// height, not its size.
+    pub fn body_line_factor(&self) -> f64 {
+        BODY_LINE_PITCH / self.body_height
+    }
 }
 
 impl Fonts {
@@ -177,6 +203,7 @@ impl Fonts {
             mono = family;
         }
         Fonts {
+            body_height: natural_height(&body.0),
             body: body.0,
             size: body.1,
             mono,

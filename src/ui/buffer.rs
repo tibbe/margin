@@ -1003,7 +1003,7 @@ fn configure_tag(tag: &gtk::TextTag, style: Style, look: &Look, source_mode: boo
     let px = |v: f64| (v * s).round() as i32;
     let mono = look.fonts.mono.as_str();
     match style {
-        Style::Para => tag.set_line_height(1.3),
+        Style::Para => tag.set_line_height(look.fonts.body_line_factor() as f32),
         Style::Heading(n) => {
             let i = (n.clamp(1, 6) - 1) as usize;
             let scales = [1.8, 1.42, 1.2, 1.07, 1.0, 0.94];
