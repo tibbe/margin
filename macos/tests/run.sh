@@ -17,7 +17,7 @@ for script in "$@"; do
     [ -f "$script" ] || continue
     name=${script%.txt}
     : > "$work/doc.md"
-    MARGIN_DATA_DIR="$work/data" MARGIN_SCRIPT="$PWD/$script" "$app" "$work/doc.md" > "$work/$name.out" 2>&1
+    MARGIN_DATA_DIR="$work/$name.data" MARGIN_SCRIPT="$PWD/$script" "$app" "$work/doc.md" > "$work/$name.out" 2>&1
     if [ "${UPDATE:-}" = 1 ]; then
         cp "$work/$name.out" "$name.out"
         echo "updated $name"

@@ -21,7 +21,10 @@ final class MarginDocumentController: NSDocumentController {
 /// Restores document windows after a relaunch, by path.
 final class DocumentRestoration: NSObject, NSWindowRestoration {
     static func restoreWindow(withIdentifier identifier: NSUserInterfaceItemIdentifier, state: NSCoder, completionHandler: @escaping (NSWindow?, Error?) -> Void) {
-        guard let path = state.decodeObject(of: NSString.self, forKey: DocumentWindow.restorationPathKey) as String?,
+        // Test runs share the app's identity, and with it the windows a
+        // person left open; a test must never open those.
+        guard scriptPath == nil,
+              let path = state.decodeObject(of: NSString.self, forKey: DocumentWindow.restorationPathKey) as String?,
               FileManager.default.fileExists(atPath: path),
               let w = AppDelegate.shared.open(path: path, show: false) else {
             completionHandler(nil, NSError(domain: NSCocoaErrorDomain, code: NSFileNoSuchFileError))
@@ -62,10 +65,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         // otherwise Launch Services delivers files through
         // `application(_:open:)`.
         if scripted {
-            for arg in CommandLine.arguments.dropFirst() where !arg.hasPrefix("-") {
-                open(path: arg)
-            }
-            if let w = windows.first { ScriptDriver.start(window: w) }
+            let opened = CommandLine.arguments.dropFirst().filter { !$0.hasPrefix("-") }.compactMap { open(path: $0) }
+            if let w = opened.first { ScriptDriver.start(window: w) }
         }
         #endif
     }
