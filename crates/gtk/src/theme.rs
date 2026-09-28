@@ -302,7 +302,7 @@ textview.margin-doc > text > selection:backdrop {{ background-color: {selection}
 .comment-card .body {{ font-size: 1em; }}
 .comment-card .reply-sep {{ background-color: {border}; min-height: 1px; margin: 6px 0 6px 0; }}
 .comment-card .status {{ color: {dim}; font-size: 0.85em; }}
-.comment-card button.flat {{ min-height: 24px; min-width: 24px; padding: 2px; }}
+.comment-card button.flat, .comment-card menubutton > button {{ min-height: 24px; min-width: 24px; padding: 2px; }}
 .composer {{
   background-color: {bg};
   border: 1px solid {border};

@@ -276,7 +276,7 @@ impl Card {
             "object-select-symbolic"
         });
         resolve.add_css_class("flat");
-        resolve.set_valign(gtk::Align::Start);
+        resolve.set_valign(gtk::Align::Center);
         resolve.set_tooltip_text(Some(if resolved { "Reopen" } else { "Resolve" }));
         let actions = self.actions.clone();
         resolve.connect_clicked(move |_| (actions.resolve)(id, !resolved));
@@ -284,7 +284,7 @@ impl Card {
 
         let menu = gtk::MenuButton::builder()
             .icon_name("view-more-symbolic")
-            .valign(gtk::Align::Start)
+            .valign(gtk::Align::Center)
             .css_classes(["flat"])
             .tooltip_text("More")
             .build();
