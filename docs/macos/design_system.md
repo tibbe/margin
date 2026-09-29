@@ -23,6 +23,9 @@ conventions of Apple's document apps (TextEdit, Pages, Notes).
 - Clicking the left margin places the cursor. Clicking empty gutter space
   leaves the focused thread and returns the keyboard to the text, with the
   cursor where it was. Over the gutter the pointer is the arrow.
+- Clicking anywhere on a card, its text included, focuses the thread.
+  Dragging across a card's text, or double-clicking it, selects it, so the
+  pointer over the text is the I-beam.
 - Comment cards: the control background, an 8pt corner radius and a 1pt
   separator border. Cards float beside the text, so their corners are
   rounder than those of the blocks in it (6pt). The focused card (or the

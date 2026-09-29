@@ -1,0 +1,19 @@
+# A click on a card's message text focuses the thread, as a click on the
+# card's padding does; a drag across it selects the text instead.
+reset First line.\n
+save
+select First
+key cmd-opt-m
+compose Why is this here?
+key cmd-enter
+wait 200
+key escape
+wait 100
+comments
+click-card-text 1 Why
+comments
+focus
+key escape
+wait 100
+drag-card-text 1 Why
+focus

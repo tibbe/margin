@@ -248,6 +248,20 @@ enum ScriptDriver {
             if p.count == 3, let item = menu.items.first(where: { $0.title == p[2] }), let action = item.action {
                 NSApp.sendAction(action, to: item.target, from: item)
             }
+        case "click-card-text", "drag-card-text":
+            // Clicks (or drags across) the message text TEXT on card ID.
+            let p = arg.split(separator: " ", maxSplits: 1).map(String.init)
+            guard p.count == 2, let it = w.layer.items.first(where: { $0.thread.id == UInt64(p[0]) ?? 0 }),
+                  let text = texts(in: it.card).first(where: { $0.stringValue.contains(p[1]) }) else {
+                print("script: no card text \(arg)"); break
+            }
+            let b = text.bounds
+            if cmd == "click-card-text" {
+                click(text, at: NSPoint(x: b.midX, y: b.midY))
+            } else {
+                drag(text, from: NSPoint(x: b.minX + 2, y: b.midY), to: NSPoint(x: b.maxX - 2, y: b.midY))
+            }
+            return 0.2
         case "hover-card":
             // The pointer moves onto (or off) card ID; prints whether its buttons show.
             let p = arg.split(separator: " ").map(String.init)
@@ -547,6 +561,23 @@ enum ScriptDriver {
 
     /// A real click: the mouse-up is queued first, because controls and
     /// text views track the mouse in their own event loop until it arrives.
+    private static func texts(in v: NSView) -> [CardText] {
+        v.subviews.flatMap { ($0 as? CardText).map { [$0] } ?? texts(in: $0) }
+    }
+
+    /// A press at `a`, a drag to `b` and a release there.
+    private static func drag(_ v: NSView, from a: NSPoint, to b: NSPoint) {
+        guard let win = v.window else { return }
+        let (pa, pb) = (v.convert(a, to: nil), v.convert(b, to: nil))
+        let t = ProcessInfo.processInfo.systemUptime
+        func ev(_ type: NSEvent.EventType, _ p: NSPoint, _ dt: Double) -> NSEvent? {
+            NSEvent.mouseEvent(with: type, location: p, modifierFlags: [], timestamp: t + dt, windowNumber: win.windowNumber,
+                               context: nil, eventNumber: 1, clickCount: 1, pressure: type == .leftMouseUp ? 0 : 1)
+        }
+        for e in [ev(.leftMouseDragged, pb, 0.05), ev(.leftMouseUp, pb, 0.1)].compactMap({ $0 }) { NSApp.postEvent(e, atStart: false) }
+        if let d = ev(.leftMouseDown, pa, 0) { NSApp.sendEvent(d) }
+    }
+
     private static func click(_ v: NSView, at p: NSPoint, mods: NSEvent.ModifierFlags = []) {
         guard let win = v.window else { return }
         let inWindow = v.convert(p, to: nil)

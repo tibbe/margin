@@ -30,8 +30,29 @@ func timeLabel(ms: Int64) -> String {
     return "\(dayFormatter.string(from: date)), \(clockFormatter.string(from: date))"
 }
 
-private func wrappingLabel(_ text: String, font: NSFont, color: NSColor = .labelColor) -> NSTextField {
-    let l = NSTextField(wrappingLabelWithString: text)
+/// A card's text (a message, or a detached thread's quote): selectable, but
+/// a click on it is a click on the card, as on the card's padding.
+/// Dragging and double-clicking select.
+final class CardText: NSTextField {
+    override func mouseDown(with event: NSEvent) {
+        guard event.clickCount == 1, let window,
+              let next = window.nextEvent(matching: [.leftMouseUp, .leftMouseDragged]) else {
+            return super.mouseDown(with: event)
+        }
+        if next.type == .leftMouseUp {
+            var v = superview
+            while let s = v, !(s is GutterCard) { v = s.superview }
+            (v as? GutterCard)?.onClick?()
+        } else {
+            // The selection's tracking reads the drag from the queue.
+            NSApp.postEvent(next, atStart: true)
+            super.mouseDown(with: event)
+        }
+    }
+}
+
+private func cardText(_ text: String, font: NSFont, color: NSColor = .labelColor) -> NSTextField {
+    let l = CardText(wrappingLabelWithString: text)
     l.font = font
     l.textColor = color
     l.isSelectable = true
@@ -447,7 +468,7 @@ final class ThreadCard: GutterCard {
             views.append(row)
 
             if i == 0 && thread.detached {
-                let q = wrappingLabel("“\(thread.quote.trimmingCharacters(in: .whitespacesAndNewlines))”",
+                let q = cardText("“\(thread.quote.trimmingCharacters(in: .whitespacesAndNewlines))”",
                                       font: NSFontManager.shared.convert(small, toHaveTrait: .italicFontMask),
                                       color: .secondaryLabelColor)
                 q.attributedStringValue = NSAttributedString(string: q.stringValue, attributes: [
@@ -463,7 +484,7 @@ final class ThreadCard: GutterCard {
                 e.composer.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
                 views.append(e.composer)
             } else {
-                let body = wrappingLabel(m.body, font: bodyFont)
+                let body = cardText(m.body, font: bodyFont)
                 stack.addArrangedSubview(body)
                 views.append(body)
             }
