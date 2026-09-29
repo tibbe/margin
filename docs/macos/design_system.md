@@ -15,6 +15,11 @@ conventions of Apple's document apps (TextEdit, Pages, Notes).
 - The gutter is the page's margin: one text background behind the text and
   the cards, with no separator. Not a comments sidebar as in Pages: that
   would be a list, not notes beside their lines.
+- The page is centered, as in Google Docs: the text alone while there are
+  no cards, the text and the cards together once there are. The first card
+  moves the text left, and the last one resolved moves it back. Cards are
+  300pt wide, growing to 400pt with half of any spare width; narrower
+  windows narrow the text instead.
 - Clicking the left margin places the cursor. Clicking empty gutter space
   leaves the focused thread and returns the keyboard to the text, with the
   cursor where it was. Over the gutter the pointer is the arrow.

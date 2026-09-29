@@ -552,6 +552,12 @@ final class CommentLayer {
     /// exactly beside its anchor; the others stack above and below it
     /// without overlapping.
     func relayout() {
+        let hasCards = draft != nil || items.contains { visible($0.thread) }
+        if page.hasCards != hasCards {
+            // The text moves over to make room, or back to the middle.
+            page.hasCards = hasCards
+            page.layoutSubtreeIfNeeded()
+        }
         let g = view.geometry
         struct Entry { var y: CGFloat; var order: Int; var h: CGFloat; var card: GutterCard; var focused: Bool }
         var entries: [Entry] = []

@@ -1,0 +1,21 @@
+# The page: the text alone is centered; with cards, the text and the cards
+# are centered together, and the cards take some of the spare width.
+reset Some text to comment on.\n
+save
+size 1300 700
+page
+select comment
+key cmd-opt-m
+compose Why?
+key cmd-enter
+wait 200
+page
+size 1700 700
+page
+size 900 700
+page
+# Resolving the last comment centers the text alone again.
+size 1300 700
+click-resolve 1
+wait 200
+page

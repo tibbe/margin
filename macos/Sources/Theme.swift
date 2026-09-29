@@ -145,25 +145,34 @@ struct PageGeometry {
     var gutterX: CGFloat
     var cardWidth: CGFloat
 
-    static let cardBaseWidth: CGFloat = 300
+    static let cardMinWidth: CGFloat = 300
+    static let cardMaxWidth: CGFloat = 400
     static let gutterGap: CGFloat = 40
     static let sidePad: CGFloat = 28
 
-    /// About 100 characters of body text beside the gutter; narrower
-    /// windows give the text what is left.
-    init(width: CGFloat, scale: CGFloat) {
-        let card = PageGeometry.cardBaseWidth
+    /// About 100 characters of body text, centered. With cards, the text
+    /// and the cards are centered together, as in Google Docs: narrower
+    /// windows give the text what the cards leave, and wider ones share
+    /// the spare width between the cards and the margins.
+    init(width: CGFloat, scale: CGFloat, hasCards: Bool) {
+        let pad = PageGeometry.sidePad
+        let gap = PageGeometry.gutterGap
         let maxDoc = 760 * scale
-        let room = width - card - PageGeometry.gutterGap - 2 * PageGeometry.sidePad
-        let doc = min(max(room, 300), maxDoc, max(width - 2 * PageGeometry.sidePad, 120))
-        var left = ((width - doc) / 2).rounded()
-        let needed = doc + PageGeometry.gutterGap + card + PageGeometry.sidePad
-        if left + needed > width {
-            left = max(width - needed, PageGeometry.sidePad)
+        var card = PageGeometry.cardMinWidth
+        let doc: CGFloat
+        let unit: CGFloat
+        if hasCards {
+            doc = min(max(width - card - gap - 2 * pad, 300), maxDoc, max(width - 2 * pad, 120)).rounded()
+            let spare = max(0, width - 2 * pad - doc - gap - card)
+            card = (card + min(PageGeometry.cardMaxWidth - card, spare / 2)).rounded()
+            unit = doc + gap + card
+        } else {
+            doc = min(maxDoc, max(width - 2 * pad, 120)).rounded()
+            unit = doc
         }
-        self.left = left
-        docWidth = doc.rounded()
-        gutterX = left + docWidth + PageGeometry.gutterGap
+        left = max(pad, ((width - unit) / 2).rounded())
+        docWidth = doc
+        gutterX = left + docWidth + gap
         cardWidth = card
     }
 

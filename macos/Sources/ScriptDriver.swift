@@ -296,6 +296,11 @@ enum ScriptDriver {
             let p = arg.split(separator: " ").compactMap { Double($0) }
             if p.count == 2 { win.setContentSize(NSSize(width: p[0], height: p[1])) }
             return 0.3
+        case "page":
+            // The page's layout: the text column and the cards' width.
+            w.page.layoutSubtreeIfNeeded()
+            let g = view.geometry
+            print("page left \(Int(g.left)) text \(Int(g.docWidth)) cards \(w.page.hasCards ? "\(Int(g.cardWidth))" : "none")")
         case "wait":
             return (Double(arg) ?? 200) / 1000
         case "appearance":

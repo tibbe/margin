@@ -10,6 +10,10 @@ final class PageView: NSView {
     var gutterExtent: CGFloat = 0 {
         didSet { if abs(oldValue - gutterExtent) > 0.5 { needsLayout = true } }
     }
+    /// Whether the gutter shows cards; without, the text is centered alone.
+    var hasCards = false {
+        didSet { if oldValue != hasCards { needsLayout = true } }
+    }
     private var tiling = false
 
     init(textView: DocTextView) {
@@ -59,7 +63,7 @@ final class PageView: NSView {
         tiling = true
         defer { tiling = false }
         let visible = (superview as? NSClipView)?.bounds.size ?? bounds.size
-        let g = PageGeometry(width: visible.width, scale: Theme.scale)
+        let g = PageGeometry(width: visible.width, scale: Theme.scale, hasCards: hasCards)
         let textWidth = g.gutterX - PageGeometry.gutterGap / 2
         textView.minSize = NSSize(width: 0, height: visible.height)
         if textView.frame.width != textWidth {

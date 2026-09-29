@@ -31,7 +31,7 @@ final class DocTextView: NSTextView, NSTextStorageDelegate, NSTextViewDelegate, 
     /// Above zero: edits are ours (already planned by the core), or raw.
     private var raw = 0
     private var revealed: [NSRange] = []
-    private(set) var geometry = PageGeometry(width: 1200, scale: 1)
+    private(set) var geometry = PageGeometry(width: 1200, scale: 1, hasCards: false)
     /// Links and images, for their tooltips.
     private var linkRanges: [NSRange] = []
     private var tableInfos: [TableInfo] = []
