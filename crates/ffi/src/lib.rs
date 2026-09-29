@@ -1065,7 +1065,7 @@ impl CommentStore {
     }
 }
 
-/// Open comments as a numbered list to paste into a coding agent.
+/// Open comments as a list to paste into a coding agent.
 #[uniffi::export]
 pub fn comments_for_agent(document: String, text: String, threads: Vec<CommentThread>) -> String {
     let index = Utf16Index::new(&text);

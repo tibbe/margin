@@ -82,7 +82,7 @@ the bubble that appears in the margin), write, and press
 <kbd>Ctrl</kbd>+<kbd>Enter</kbd>. <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>↓</kbd>
 and <kbd>↑</kbd> step through threads. Resolved threads hide until you turn on
 *Show Resolved* in the menu. <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>C</kbd> copies
-the open comments as a numbered list with `file:line:column` spans, to paste
+the open comments as a list with `file:line:column` spans, to paste
 into a coding agent; *Resolve All* in the menu closes every open thread (with
 Undo). Comments carry no author: one person comments, agents
 reply.

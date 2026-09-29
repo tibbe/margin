@@ -1,4 +1,4 @@
-//! Open comments as a numbered list to paste into a coding agent, the way
+//! Open comments as a list to paste into a coding agent, the way
 //! tuicr's `y` copies a review.
 
 use super::anchor::line_col;
@@ -54,8 +54,21 @@ fn continued(body: &str, pad: &str) -> String {
     out
 }
 
-/// The threads (anchored against `text`, the document now) as a numbered
-/// Markdown list in document order, with where each one is.
+/// A word the shell passes through as is, else single-quoted.
+fn shell_word(s: &str) -> String {
+    let plain = |c: char| c.is_ascii_alphanumeric() || "-_./:@%+=,".contains(c);
+    if !s.is_empty() && s.chars().all(plain) {
+        s.to_string()
+    } else {
+        format!("'{}'", s.replace('\'', "'\\''"))
+    }
+}
+
+/// The threads (anchored against `text`, the document now) as a list in
+/// document order, each under its thread number, with where it is. A
+/// thread's comment and latest message are given in full; the replies
+/// between, which the agent has seen on earlier copies, become a
+/// `margin thread` command that prints them.
 pub fn for_agent(doc: &Path, text: &str, threads: &[Thread]) -> String {
     let name = item_path(doc);
     let mut threads: Vec<&Thread> = threads.iter().collect();
@@ -64,9 +77,9 @@ pub fn for_agent(doc: &Path, text: &str, threads: &[Thread]) -> String {
         "I left comments on `{}`. Please address them.\n\n",
         doc.display()
     );
-    for (i, t) in threads.iter().enumerate() {
-        let n = i + 1;
-        let pad = " ".repeat(n.to_string().len() + 2);
+    let pad = "  ";
+    let reply_pad = "    ";
+    for t in threads {
         let a = &t.anchor;
         let at = if a.detached {
             format!(
@@ -77,12 +90,24 @@ pub fn for_agent(doc: &Path, text: &str, threads: &[Thread]) -> String {
         } else {
             format!("`{name}:{}` \"{}\"", span(text, a.start, a.end), short_quote(&a.quote))
         };
-        let mut messages = t.messages.iter();
-        let body = messages.next().map_or(String::new(), |m| continued(&m.body, &pad));
-        out.push_str(&format!("{n}. {at}: {body}\n"));
-        for m in messages {
-            let reply_pad = format!("{pad}  ");
-            out.push_str(&format!("{pad}- Reply: {}\n", continued(&m.body, &reply_pad)));
+        let body = t.messages.first().map_or(String::new(), |m| continued(&m.body, pad));
+        out.push_str(&format!("#{} {at}: {body}\n", t.id));
+        let replies = t.messages.get(1..).unwrap_or_default();
+        let shown = match replies.split_last() {
+            Some((last, earlier)) if !earlier.is_empty() => {
+                let n = earlier.len();
+                out.push_str(&format!(
+                    "{pad}- ({n} earlier repl{}: `margin thread {} {}`)\n",
+                    if n == 1 { "y" } else { "ies" },
+                    shell_word(&name),
+                    t.id
+                ));
+                std::slice::from_ref(last)
+            }
+            _ => replies,
+        };
+        for m in shown {
+            out.push_str(&format!("{pad}- Reply: {}\n", continued(&m.body, reply_pad)));
         }
     }
     out
@@ -105,9 +130,9 @@ mod tests {
         assert_eq!(
             for_agent(Path::new("/nowhere/plan.md"), text, &c.threads),
             "I left comments on `/nowhere/plan.md`. Please address them.\n\n\
-             1. `/nowhere/plan.md:3:8-3:17` \"bold words\": Italic instead?\n   \
+             #2 `/nowhere/plan.md:3:8-3:17` \"bold words\": Italic instead?\n  \
              - Reply: Done.\n\
-             2. `/nowhere/plan.md:4:18-4:27` \"naïve idea\": Say more.\n\n   What changes?\n"
+             #1 `/nowhere/plan.md:4:18-4:27` \"naïve idea\": Say more.\n\n  What changes?\n"
         );
     }
 
@@ -120,6 +145,33 @@ mod tests {
         c.add(text, 4..7, "Why?");
         c.sync("one\n");
         let out = for_agent(Path::new("/x/a.md"), "one\n", &c.threads);
-        assert!(out.contains("1. `/x/a.md:2:1` (the commented text, \"two\", was deleted): Why?"), "{out}");
+        assert!(out.contains("#1 `/x/a.md:2:1` (the commented text, \"two\", was deleted): Why?"), "{out}");
+    }
+
+    #[test]
+    fn replies_before_the_latest_are_left_to_margin_thread() {
+        let text = "one two\n";
+        let mut c = Comments::new("/x/my plan.md".into());
+        let id = c.add(text, 0..3, "Why?");
+        for r in ["Because.", "Not enough.", "Rewrote it.", "Better,\nbut shorter?"] {
+            c.reply(id, r).unwrap();
+        }
+        let short = c.add(text, 4..7, "Typo?");
+        c.reply(short, "Fixed.").unwrap();
+        assert_eq!(
+            for_agent(Path::new("/x/my plan.md"), text, &c.threads),
+            "I left comments on `/x/my plan.md`. Please address them.\n\n\
+             #1 `/x/my plan.md:1:1-1:3` \"one\": Why?\n  \
+             - (3 earlier replies: `margin thread '/x/my plan.md' 1`)\n  \
+             - Reply: Better,\n    but shorter?\n\
+             #2 `/x/my plan.md:1:5-1:7` \"two\": Typo?\n  \
+             - Reply: Fixed.\n"
+        );
+    }
+
+    #[test]
+    fn shell_words() {
+        assert_eq!(shell_word("docs/plan-2.md"), "docs/plan-2.md");
+        assert_eq!(shell_word("it's here.md"), "'it'\\''s here.md'");
     }
 }

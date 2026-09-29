@@ -77,7 +77,7 @@ agent**.
 32. As a writer, I want a thread whose text was deleted to stay, showing what it was about, so that feedback is never silently lost.
 33. As a writer, I want a thread to follow its text when it is reworded, so that a comment on "blue/green" follows the change to "canary".
 34. As a writer, I want to be told when an agent adds, answers or resolves threads, so that I notice its answers.
-35. As a writer, I want to copy the open comments as a numbered list with locations, so that I can paste a review into an agent's chat.
+35. As a writer, I want to copy the open comments as a list with locations, so that I can paste a review into an agent's chat.
 36. As a coding agent, I want the open threads with `file:line:column` locations against the file as it is now, so that I can find what was asked even after my own edits.
 37. As a coding agent, I want to find documents with open threads under the current directory, so that I don't need to be told the file.
 38. As a coding agent, I want a thread's quote as the file's exact Markdown source, so that I can find and edit the text.
@@ -191,10 +191,16 @@ Every editor produces the same source for the same keys. The choices:
   ```text
   I left comments on `/home/me/proj/plan.md`. Please address them.
 
-  1. `plan.md:3:8-3:17` "bold words": Italic instead?
-     - Reply: Done.
-  2. `plan.md:4:1` (the commented text, "old step", was deleted): Why?
+  #3 `plan.md:3:8-3:17` "bold words": Italic instead?
+    - (2 earlier replies: `margin thread plan.md 3`)
+    - Reply: Keep them bold, but fewer words.
+  #1 `plan.md:4:1` (the commented text, "old step", was deleted): Why?
   ```
+
+  Items go in document order under their thread numbers. Each gives the
+  comment and the latest message; the replies between, which the agent saw
+  on earlier copies, are left to `margin thread`, so copying again after
+  each round doesn't paste the whole conversation again.
 
 ### CLI
 
