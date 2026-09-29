@@ -56,6 +56,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
     func applicationWillFinishLaunching(_ notification: Notification) {
         _ = MarginDocumentController()
+        Notifier.shared.start()
         NSApp.mainMenu = buildMainMenu()
     }
 

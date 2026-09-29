@@ -20,6 +20,8 @@
 //! $MARGIN_CLICK_FIFO`. Scripted steps call handlers directly and so miss
 //! bugs in how GTK routes pointer events; click through the real path when
 //! testing anything a mouse does.
+//! background on|off       act as if the window were in the background, or
+//!                          back in front; notifications print
 //! size W H | wait MS | shot PATH | shot-window N PATH | dump | probe | sh CMD | quit
 //! save-as PATH | print-pdf PATH | clipboard | find-state | scroll-state | scroll-top TEXT | xft-dpi N | windows | window N (steps act on window N) | close
 //! ```
@@ -297,6 +299,13 @@ fn step(win: &DocWindow, line: &str) -> u64 {
             }
         }
         "window" => TARGET.with(|t| t.set(arg.trim().parse().ok())),
+        "background" => {
+            let back = arg.trim() == "on";
+            super::window::set_scripted_looking(!back);
+            if !back {
+                win.clear_activity();
+            }
+        }
         "close" => win.window.close(),
         "shot-popover" => {
             let open = find_widget(win.window.upcast_ref(), &|w| {

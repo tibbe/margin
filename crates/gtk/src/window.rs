@@ -6,6 +6,7 @@ use super::buffer::{DocBuffer, Look};
 use super::comments::CommentLayer;
 use super::find::FindBar;
 use super::view::DocView;
+use margin_core::comments::activity::{self, Change, Kind};
 use margin_core::comments::{canonical_doc_path, data_dir, read_doc, Store};
 use margin_core::md::edit::{self, BlockType};
 use margin_core::md::InlineKind;
@@ -21,6 +22,18 @@ use std::time::Duration;
 
 thread_local! {
     static WINDOWS: RefCell<Vec<Rc<DocWindow>>> = const { RefCell::new(Vec::new()) };
+    /// Test runs say whether the person is looking at the window.
+    static SCRIPTED_LOOKING: Cell<bool> = const { Cell::new(true) };
+}
+
+/// Test runs print notifications rather than post them.
+fn scripted() -> bool {
+    std::env::var_os("MARGIN_SCRIPT").is_some()
+}
+
+/// In test runs: act as if the person were (not) looking at the windows.
+pub fn set_scripted_looking(looking: bool) {
+    SCRIPTED_LOOKING.with(|l| l.set(looking));
 }
 
 pub fn all() -> Vec<Rc<DocWindow>> {
@@ -50,6 +63,8 @@ pub struct DocWindow {
     conflict_pending: Cell<bool>,
     monitors: RefCell<Vec<gio::FileMonitor>>,
     loading: Cell<bool>,
+    /// Agent activity notified since the person last looked.
+    unseen: RefCell<Vec<Change>>,
     this: RefCell<Weak<DocWindow>>,
 }
 
@@ -212,6 +227,7 @@ pub fn open(app: &adw::Application, path: &Path, look: Look) -> Result<Rc<DocWin
         conflict_pending: Cell::new(false),
         monitors: RefCell::new(Vec::new()),
         loading: Cell::new(true),
+        unseen: RefCell::new(Vec::new()),
         this: RefCell::new(Weak::new()),
     });
     win.this.replace(Rc::downgrade(&win));
@@ -223,6 +239,12 @@ pub fn open(app: &adw::Application, path: &Path, look: Look) -> Result<Rc<DocWin
     layer.set_toaster(move |t| {
         if let Some(w) = weak.upgrade() {
             w.toasts.add_toast(t);
+        }
+    });
+    let weak = Rc::downgrade(&win);
+    layer.set_on_activity(move |changes| {
+        if let Some(w) = weak.upgrade() {
+            w.notify_activity(changes);
         }
     });
     let weak = Rc::downgrade(&win);
@@ -314,6 +336,62 @@ impl DocWindow {
         self.count.set_visible(!label.is_empty());
     }
 
+    /// The window is active, so the person sees its banners.
+    fn looking(&self) -> bool {
+        if scripted() {
+            SCRIPTED_LOOKING.with(Cell::get)
+        } else {
+            self.window.is_active()
+        }
+    }
+
+    fn notification_id(&self) -> String {
+        format!("activity:{}", self.path().display())
+    }
+
+    /// Posts agent activity as a system notification unless the window is
+    /// in front: one per document, replaced with the running totals until
+    /// the person comes back. GNOME Shell shows notifications even for the
+    /// focused app, so the window decides.
+    fn notify_activity(&self, changes: &[Change]) {
+        if self.looking() {
+            return;
+        }
+        let mut unseen = self.unseen.borrow_mut();
+        unseen.extend_from_slice(changes);
+        let body = match unseen.as_slice() {
+            [one] => one.line(),
+            all => activity::summary(all),
+        };
+        // A click focuses the thread when there is just one (0: none).
+        let first = unseen[0].id;
+        let thread = if unseen.iter().all(|c| c.id == first && c.kind != Kind::Deleted) { first } else { 0 };
+        let title = self.display_name();
+        if scripted() {
+            println!("notification {title} | {body} | thread {thread}");
+            return;
+        }
+        let n = gio::Notification::new(&title);
+        n.set_body(Some(&body));
+        let target = (self.path().to_string_lossy().into_owned(), thread).to_variant();
+        n.set_default_action_and_target_value("app.show-activity", Some(&target));
+        if let Some(app) = self.window.application() {
+            app.send_notification(Some(&self.notification_id()), &n);
+        }
+    }
+
+    /// The person sees the document again: its notification goes.
+    pub fn clear_activity(&self) {
+        if self.unseen.take().is_empty() {
+            return;
+        }
+        if scripted() {
+            println!("notification withdrawn for {}", self.display_name());
+        } else if let Some(app) = self.window.application() {
+            app.withdraw_notification(&self.notification_id());
+        }
+    }
+
     fn connect_signals(&self) {
         let weak = self.weak();
         self.buffer.connect_changed(move |_| {
@@ -326,10 +404,11 @@ impl DocWindow {
         });
         let weak = self.weak();
         self.window.connect_is_active_notify(move |win| {
-            if !win.is_active()
-                && let Some(w) = weak.upgrade()
-            {
+            let Some(w) = weak.upgrade() else { return };
+            if !win.is_active() {
                 w.save();
+            } else if w.looking() {
+                w.clear_activity();
             }
         });
         let weak = self.weak();

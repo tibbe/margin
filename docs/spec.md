@@ -76,7 +76,7 @@ agent**.
 31. As a writer, I want resolved threads hidden unless I ask for them, so that the margin shows what is still open.
 32. As a writer, I want a thread whose text was deleted to stay, showing what it was about, so that feedback is never silently lost.
 33. As a writer, I want a thread to follow its text when it is reworded, so that a comment on "blue/green" follows the change to "canary".
-34. As a writer, I want to be told when an agent adds, answers or resolves threads, so that I notice its answers.
+34. As a writer, I want to be told when an agent adds, answers, resolves, reopens or deletes threads, even while I am in another app, so that I notice its answers when it replies asynchronously.
 35. As a writer, I want to copy the open comments as a list with locations, so that I can paste a review into an agent's chat.
 36. As a coding agent, I want the open threads with `file:line:column` locations against the file as it is now, so that I can find what was asked even after my own edits.
 37. As a coding agent, I want to find documents with open threads under the current directory, so that I don't need to be told the file.
@@ -176,8 +176,16 @@ Every editor produces the same source for the same keys. The choices:
   below it, as Google Docs and Pages do; Show Less cuts it off again.
   Each message is expanded on its own, and stays so until the window
   closes; focusing a thread doesn't expand it.
-- Agent activity is announced ("1 new reply, 2 comments resolved"); what was
-  there when the document opened is not.
+- Agent activity is announced ("1 new reply, 2 comments resolved"): new
+  threads, replies, resolves, reopens and deletes. What was there when the
+  document opened is not.
+- Unless Margin is active with the document's window in front, activity on
+  an open document also posts a system notification: titled with the file
+  name, saying what happened to which thread (`Resolved "quote"`) and the
+  message, if any. Clicking it brings the document forward, focused on the
+  thread when it is about one. Coming back to the window removes the
+  document's notifications. They have no buttons, and the system's
+  notification settings are the only switch.
 - The writer can edit and delete any message, in resolved threads too;
   agents can't. Deleting the comment deletes its thread. An edit can't leave
   a message empty: deleting is its own command.

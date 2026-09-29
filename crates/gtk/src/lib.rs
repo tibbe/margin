@@ -206,6 +206,24 @@ pub fn run(files: Vec<PathBuf>) -> anyhow::Result<i32> {
             move |_, _| about(&app)
         ));
         app.add_action(&about_action);
+        // A notification's click: the document, focused on its thread (0: none).
+        let show = gio::SimpleAction::new("show-activity", Some(glib::VariantTy::new("(st)").unwrap()));
+        show.connect_activate(glib::clone!(
+            #[weak]
+            app,
+            move |_, target| {
+                let Some((path, thread)) = target.and_then(|t| t.get::<(String, u64)>()) else { return };
+                match window::open(&app, std::path::Path::new(&path), look()) {
+                    Ok(w) => {
+                        if thread != 0 {
+                            w.layer.reveal(thread);
+                        }
+                    }
+                    Err(e) => eprintln!("margin: {e:#}"),
+                }
+            }
+        ));
+        app.add_action(&show);
         watch_theme();
         debug::maybe_watch_toplevels();
     });

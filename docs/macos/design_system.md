@@ -219,8 +219,15 @@ views that dismiss on a timer, so a banner only repeats what the window
 shows anyway: its Undo is the Edit menu's, and new replies are on their
 cards.
 
-Open question: should agent activity also post a system notification when
-Margin is in the background?
+System notifications (see the spec for when) are one per thread change,
+as Mail and Messages post one per message, grouped by document
+(`threadIdentifier`) so they stack with "+N more". The subtitle is
+`"quote"`, `Resolved "quote"`, `Reopened "quote"`, `New comment on "quote"`
+or `Deleted "quote"`, and the body the message. With previews hidden they
+say "New reply", "Comment resolved" and the like. They play the default
+sound; the Dock icon has no badge. Margin asks for permission the first time
+agent activity is announced while it is frontmost, as Apple advises asking
+in context, and posts nothing before then.
 
 ## Files and storage
 

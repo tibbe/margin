@@ -54,7 +54,7 @@ for arch in $archs; do
         "$gen/margin_ffi.swift" "$OLDPWD"/Sources/*.swift \
         -c -o "$build/obj/Margin-$arch.o")
     swiftc -g -target "$arch-apple-macos$min" "$build/obj/Margin-$arch.o" "$lib/libmargin_ffi.a" \
-        -framework AppKit -framework UniformTypeIdentifiers \
+        -framework AppKit -framework UniformTypeIdentifiers -framework UserNotifications \
         -o "$build/obj/Margin-$arch"
     apps="$apps $build/obj/Margin-$arch"
     clis="$clis $lib/margin"

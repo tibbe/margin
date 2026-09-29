@@ -50,6 +50,8 @@ final class CommentLayer {
     var onChange: (() -> Void)?
     /// Says something at the bottom of the window, with an optional Undo.
     var toast: ((String, (() -> Void)?) -> Void)?
+    /// An agent changed threads (after the announcement).
+    var onActivity: (([ThreadActivity]) -> Void)?
     /// Runs before a thread is added (the window saves the document).
     var beforeAdd: (() -> Void)?
     /// Find matches, highlighted above comment highlights.
@@ -178,15 +180,16 @@ final class CommentLayer {
 
     /// Brings the gutter in line with `threads`.
     private func merge(_ threads: [CommentThread], announce: Bool) {
-        var newThreads = 0, newReplies = 0, resolved = 0
+        // Our own changes reach `items` before the store's file watcher
+        // fires, so whatever is new here came from someone else (an agent).
+        let activity = announce ? threadActivity(old: items.map(\.thread), new: threads) : []
         var keep = Set<UInt64>()
+        var added = false
         for t in threads {
             keep.insert(t.id)
             if let it = items.first(where: { $0.thread.id == t.id }) {
                 let changed = it.thread.resolved != t.resolved || it.thread.messages != t.messages || it.thread.detached != t.detached
                 if changed {
-                    newReplies += max(0, t.messages.count - it.thread.messages.count)
-                    if !it.thread.resolved && t.resolved { resolved += 1 }
                     let keepAnchor = !t.detached && !it.thread.detached
                     it.thread = t
                     if !keepAnchor {
@@ -196,8 +199,8 @@ final class CommentLayer {
                     it.card.update(t)
                 }
             } else {
-                newThreads += 1
                 items.append(makeItem(t))
+                added = true
             }
         }
         for it in items where !keep.contains(it.thread.id) {
@@ -210,17 +213,11 @@ final class CommentLayer {
         sync()
         // New cards start at the top of the gutter; place them before the
         // window next draws.
-        if newThreads > 0 { relayout() }
+        if added { relayout() }
         onChange?()
-        var news: [String] = []
-        func plural(_ n: Int, _ one: String, _ many: String) {
-            if n == 1 { news.append("1 \(one)") } else if n > 1 { news.append("\(n) \(many)") }
-        }
-        plural(newThreads, "new comment", "new comments")
-        plural(newReplies, "new reply", "new replies")
-        plural(resolved, "comment resolved", "comments resolved")
-        if announce && !news.isEmpty {
-            toast?(news.joined(separator: ", "), nil)
+        if !activity.isEmpty {
+            toast?(activitySummary(activity: activity), nil)
+            onActivity?(activity)
         }
     }
 
@@ -435,6 +432,11 @@ final class CommentLayer {
         if focusCard && !it.thread.resolved {
             it.card.composer.focus()
         }
+    }
+
+    /// Focuses thread `id` and scrolls to it, if it is shown.
+    func reveal(_ id: UInt64) {
+        if items.contains(where: { $0.thread.id == id && visible($0.thread) }) { activate(id, scroll: true) }
     }
 
     /// The next (or previous) visible thread in text order.

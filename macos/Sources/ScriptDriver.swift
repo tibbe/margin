@@ -41,7 +41,10 @@ import AppKit
 /// appearance light|dark   the app's appearance, whatever the system's
 /// size W H | wait MS | shot PATH | dump | comments | banner | focus
 /// selection | undo-name | sh CMD | quit
-///                           sh runs CMD in the document's folder
+///                           sh runs CMD in the document's folder, with the
+///                           `margin` CLI on the PATH
+/// background on|off         act as if Margin were in the background, or
+///                           back with this window key; notifications print
 /// ```
 ///
 /// Text steps accept `\n` and `\t` escapes.
@@ -448,9 +451,15 @@ enum ScriptDriver {
             p.executableURL = URL(fileURLWithPath: "/bin/sh")
             p.arguments = ["-c", arg]
             p.currentDirectoryURL = URL(fileURLWithPath: (w.path as NSString).deletingLastPathComponent)
+            var env = ProcessInfo.processInfo.environment
+            env["PATH"] = Bundle.main.bundlePath + "/Contents/Helpers:" + (env["PATH"] ?? "/usr/bin:/bin")
+            p.environment = env
             try? p.run()
             p.waitUntilExit()
             return 0.3
+        case "background":
+            Notifier.shared.scriptedLooking = arg != "on"
+            if arg != "on" { Notifier.shared.clear(path: w.path) }
         case "quit":
             NSApp.terminate(nil)
         default:

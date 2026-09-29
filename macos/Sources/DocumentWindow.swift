@@ -135,6 +135,9 @@ final class DocumentWindow: NSWindowController, NSWindowDelegate, NSToolbarDeleg
         }
         layer.onChange = { [weak self] in self?.updateTitle() }
         layer.toast = { [weak self] text, undo in self?.banner.show(text, undo: undo) }
+        layer.onActivity = { [weak self] activity in
+            if let self { Notifier.shared.post(activity, in: self) }
+        }
         layer.beforeAdd = { [weak self] in self?.save() }
         layer.extraHighlights = { [weak self] in self?.findBar.highlights() ?? [] }
         findBar.onChange = { [weak self] in
@@ -676,6 +679,10 @@ final class DocumentWindow: NSWindowController, NSWindowDelegate, NSToolbarDeleg
 
     func window(_ window: NSWindow, willEncodeRestorableState state: NSCoder) {
         state.encode(path as NSString, forKey: DocumentWindow.restorationPathKey)
+    }
+
+    func windowDidBecomeKey(_ notification: Notification) {
+        Notifier.shared.clear(path: path)
     }
 
     func windowDidResignKey(_ notification: Notification) {

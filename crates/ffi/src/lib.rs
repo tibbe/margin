@@ -3,7 +3,7 @@
 //! position crosses [`Utf16Index`].
 
 use margin_core::comments::anchor::floor_char_boundary;
-use margin_core::comments::{self, export, Comments, Message, Status, Store, Thread};
+use margin_core::comments::{self, activity, export, Comments, Message, Status, Store, Thread};
 use margin_core::md::edit::{self, BlockType, Plan};
 use margin_core::md::{self, search, Container, Doc, InlineKind, LineKind, Style};
 use std::ops::Range;
@@ -1063,6 +1063,78 @@ impl CommentStore {
     pub fn remove(&self) -> Result<()> {
         self.store.lock().unwrap().remove().map_err(Into::into)
     }
+}
+
+/// What happened to a thread between two reads of the store.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum ActivityKind {
+    Added,
+    Replied,
+    Resolved,
+    Reopened,
+    Deleted,
+}
+
+/// One thing an agent did to one thread (see `margin_core::comments::activity`).
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct ThreadActivity {
+    pub id: u64,
+    pub kind: ActivityKind,
+    pub quote: String,
+    pub message: Option<String>,
+    /// For a notification's subtitle: `Resolved "quote"`.
+    pub headline: String,
+}
+
+fn activity_to_core(a: &ThreadActivity) -> activity::Change {
+    let kind = match a.kind {
+        ActivityKind::Added => activity::Kind::Added,
+        ActivityKind::Replied => activity::Kind::Replied,
+        ActivityKind::Resolved => activity::Kind::Resolved,
+        ActivityKind::Reopened => activity::Kind::Reopened,
+        ActivityKind::Deleted => activity::Kind::Deleted,
+    };
+    activity::Change { id: a.id, kind, quote: a.quote.clone(), message: a.message.clone() }
+}
+
+/// The changes from `old` to `new`, the threads before and after a reload.
+#[uniffi::export]
+pub fn thread_activity(old: Vec<CommentThread>, new: Vec<CommentThread>) -> Vec<ThreadActivity> {
+    // Only ids, status, quotes and messages matter here, not offsets.
+    let core = |ts: &[CommentThread]| -> Vec<Thread> {
+        ts.iter()
+            .map(|t| Thread {
+                id: t.id,
+                status: if t.resolved { Status::Resolved } else { Status::Open },
+                anchor: comments::Anchor { start: 0, end: 0, quote: t.quote.clone(), detached: t.detached },
+                messages: t.messages.iter().map(|m| Message { at: from_ms(m.at_ms), body: m.body.clone() }).collect(),
+                resolved_at: t.resolved_at_ms.map(from_ms),
+            })
+            .collect()
+    };
+    activity::changes(&core(&old), &core(&new))
+        .into_iter()
+        .map(|c| ThreadActivity {
+            id: c.id,
+            kind: match c.kind {
+                activity::Kind::Added => ActivityKind::Added,
+                activity::Kind::Replied => ActivityKind::Replied,
+                activity::Kind::Resolved => ActivityKind::Resolved,
+                activity::Kind::Reopened => ActivityKind::Reopened,
+                activity::Kind::Deleted => ActivityKind::Deleted,
+            },
+            headline: c.headline(),
+            quote: c.quote,
+            message: c.message,
+        })
+        .collect()
+}
+
+/// The window's announcement of `activity`: "1 new reply, 2 comments
+/// resolved". Empty when there is none.
+#[uniffi::export]
+pub fn activity_summary(activity: Vec<ThreadActivity>) -> String {
+    activity::summary(&activity.iter().map(activity_to_core).collect::<Vec<_>>())
 }
 
 /// Open comments as a list to paste into a coding agent.

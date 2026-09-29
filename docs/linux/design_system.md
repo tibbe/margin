@@ -88,6 +88,13 @@ At a 16px (12pt) body, scaled with the text size:
   replace row (Replace with, Replace, Replace All).
 - **Notifications** are libadwaita toasts at the bottom of the window. Undo
   is a toast button.
+- **System notifications** (see the spec for when) are one `GNotification`
+  per document, as GNOME Shell doesn't group them: replaced with the running
+  totals ("3 new replies, 1 comment resolved") until the window is active
+  again, when it is withdrawn. For a single change the body reads `Resolved
+  "quote": Done.`. Normal priority, no category, no permission to ask.
+  GNOME Shell shows notifications even for the focused app, so the window
+  decides.
 - **Dialogs** are `AdwAlertDialog`s: the conflict dialog (Keep My Version,
   Load Disk Version as destructive), Unsaved Changes (Cancel, Discard as
   destructive, Save… as suggested), and Insert Link or Edit Link (a URL

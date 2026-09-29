@@ -5,7 +5,8 @@
 use super::buffer::DocBuffer;
 use super::card::{Card, CardActions, DraftCard};
 use super::view::DocView;
-use margin_core::comments::{Comments, Status, Store, Thread};
+use margin_core::comments::activity::{self, Change};
+use margin_core::comments::{Comments, Store, Thread};
 use margin_core::md::edit;
 use adw::prelude::*;
 use gtk::glib;
@@ -34,6 +35,7 @@ struct Draft {
 
 type Notify = Box<dyn Fn()>;
 type Toaster = Box<dyn Fn(adw::Toast)>;
+type OnActivity = Box<dyn Fn(&[Change])>;
 
 pub struct CommentLayer {
     view: DocView,
@@ -52,6 +54,8 @@ pub struct CommentLayer {
     toaster: RefCell<Option<Toaster>>,
     /// Runs before a thread is added (the window saves the document).
     before_add: RefCell<Option<Notify>>,
+    /// An agent changed threads (after the announcement).
+    on_activity: RefCell<Option<OnActivity>>,
     this: RefCell<Weak<CommentLayer>>,
 }
 
@@ -100,6 +104,7 @@ impl CommentLayer {
             listeners: RefCell::new(Vec::new()),
             toaster: RefCell::new(None),
             before_add: RefCell::new(None),
+            on_activity: RefCell::new(None),
             this: RefCell::new(Weak::new()),
         });
         layer.this.replace(Rc::downgrade(&layer));
@@ -155,6 +160,10 @@ impl CommentLayer {
 
     pub fn set_before_add(&self, f: impl Fn() + 'static) {
         self.before_add.replace(Some(Box::new(f)));
+    }
+
+    pub fn set_on_activity(&self, f: impl Fn(&[Change]) + 'static) {
+        self.on_activity.replace(Some(Box::new(f)));
     }
 
     fn notify(&self) {
@@ -310,7 +319,12 @@ impl CommentLayer {
         let mut added_cards = Vec::new();
         // Our own changes reach `threads` before the store's file monitor
         // fires, so whatever is new here came from someone else (an agent).
-        let (mut new_threads, mut new_replies, mut resolved) = (0, 0, 0);
+        let changes = if announce {
+            let old: Vec<Thread> = self.threads.borrow().iter().map(|tu| tu.thread.clone()).collect();
+            activity::changes(&old, &c.threads)
+        } else {
+            Vec::new()
+        };
         {
             let mut threads = self.threads.borrow_mut();
             for t in &c.threads {
@@ -319,10 +333,6 @@ impl CommentLayer {
                         || tu.thread.messages != t.messages
                         || tu.thread.anchor.detached != t.anchor.detached;
                     if changed {
-                        new_replies += t.messages.len().saturating_sub(tu.thread.messages.len());
-                        if tu.thread.status != t.status && t.status == Status::Resolved {
-                            resolved += 1;
-                        }
                         let keep_anchor = !t.anchor.detached;
                         let anchor = tu.thread.anchor.clone();
                         tu.thread = t.clone();
@@ -332,7 +342,6 @@ impl CommentLayer {
                         tu.card.update(&tu.thread);
                     }
                 } else {
-                    new_threads += 1;
                     let tu = self.make_thread_ui(t.clone(), &text);
                     added_cards.push(tu.card.root.clone());
                     threads.push(tu);
@@ -361,21 +370,11 @@ impl CommentLayer {
         self.refresh_highlights();
         self.queue_relayout();
         self.notify();
-        let plural = |n: usize, one: &str, many: &str| match n {
-            0 => None,
-            1 => Some(format!("1 {one}")),
-            n => Some(format!("{n} {many}")),
-        };
-        let news: Vec<String> = [
-            plural(new_threads, "new comment", "new comments"),
-            plural(new_replies, "new reply", "new replies"),
-            plural(resolved, "comment resolved", "comments resolved"),
-        ]
-        .into_iter()
-        .flatten()
-        .collect();
-        if announce && !news.is_empty() {
-            self.toast(adw::Toast::new(&news.join(", ")));
+        if !changes.is_empty() {
+            self.toast(adw::Toast::new(&activity::summary(&changes)));
+            if let Some(f) = &*self.on_activity.borrow() {
+                f(&changes);
+            }
         }
     }
 
@@ -708,6 +707,14 @@ impl CommentLayer {
             && let Some(tu) = self.threads.borrow().iter().find(|t| t.thread.id == id)
         {
             self.view.scroll_to_mark(&tu.start, 0.15, false, 0.0, 0.0);
+        }
+    }
+
+    /// Focuses thread `id` and scrolls to it, if it is shown.
+    pub fn reveal(&self, id: u64) {
+        let shown = self.threads.borrow().iter().any(|t| t.thread.id == id && self.visible(&t.thread));
+        if shown {
+            self.activate(Some(id), true);
         }
     }
 
