@@ -77,7 +77,7 @@ enum Theme {
     /// the stronger one it uses where ranges overlap, for the focused
     /// thread); Pages has no dark page, so in dark mode the author color
     /// itself (Notes' first participant color) at low alpha.
-    static func highlight(active: Bool, dark: Bool) -> NSColor {
+    static func commentHighlightColor(active: Bool, dark: Bool) -> NSColor {
         func rgb(_ r: CGFloat, _ g: CGFloat, _ b: CGFloat, _ a: CGFloat = 1) -> NSColor {
             NSColor(srgbRed: r / 255, green: g / 255, blue: b / 255, alpha: a)
         }

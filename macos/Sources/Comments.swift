@@ -526,13 +526,13 @@ final class CommentLayer {
             }
         }
         for it in items where visible(it.thread) && !it.detached && it.thread.id != active {
-            mark(it.start, it.end, Theme.highlight(active: false, dark: dark))
+            mark(it.start, it.end, Theme.commentHighlightColor(active: false, dark: dark))
         }
         if let a = active, let it = items.first(where: { $0.thread.id == a }), !it.detached {
-            mark(it.start, it.end, Theme.highlight(active: true, dark: dark))
+            mark(it.start, it.end, Theme.commentHighlightColor(active: true, dark: dark))
         }
         if let d = draft {
-            mark(d.start, d.end, Theme.highlight(active: true, dark: dark))
+            mark(d.start, d.end, Theme.commentHighlightColor(active: true, dark: dark))
         }
         for (r, c) in extraHighlights?() ?? [] {
             mark(r.location, NSMaxRange(r), c)

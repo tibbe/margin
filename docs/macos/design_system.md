@@ -13,20 +13,22 @@ conventions of Apple's document apps (TextEdit, Pages, Notes).
 - Light and dark follow the system appearance. The system accent color marks
   focus.
 - The gutter is the page's margin: one text background behind the text and
-  the cards, with no separator. Not a comments sidebar as in Pages: that
-  would be a list, not notes beside their lines.
-- The page is centered, as in Google Docs: the text alone while there are
-  no cards, the text and the cards together once there are. The first card
-  moves the text left, and the last one resolved moves it back. Cards are
-  300pt wide, growing to 400pt with half of any spare width; narrower
-  windows narrow the text instead.
+  the cards, with no separator. Each card sits beside the line it comments
+  on.
+- The page is centered: the text alone while there are no cards, the text
+  and the cards together once there are. The first card moves the text
+  left, and the last one resolved moves it back. Cards are 300pt wide,
+  growing to 400pt with half of any spare width; narrower windows narrow
+  the text instead.
 - Clicking the left margin places the cursor. Clicking empty gutter space
   leaves the focused thread and returns the keyboard to the text, with the
   cursor where it was. Over the gutter the pointer is the arrow.
 - Comment cards: the control background, an 8pt corner radius and a 1pt
-  separator border. The focused card (or the draft) is raised on a soft
-  shadow, as the open comments of Pages, Ulysses and Final Draft are; no
-  accent outline. Resolved cards are at 70% opacity.
+  separator border. Cards float beside the text, so their corners are
+  rounder than those of the blocks in it (6pt). The focused card (or the
+  draft) is raised on a soft shadow, as the open comments of Pages, Ulysses
+  and Final Draft are; no accent outline. Resolved cards are at 70%
+  opacity.
 - A comment or reply is typed straight onto the card, with no field border
   or focus ring. Below a hairline, bezel-less text buttons: Cancel in the
   secondary label color, Comment or Reply in the accent color, greyed while
@@ -36,9 +38,8 @@ conventions of Apple's document apps (TextEdit, Pages, Notes).
   (`checkmark.circle`, or `arrow.uturn.backward.circle` to reopen). The
   symbols are at the small system font's size, each in a 20×20pt target
   (the HIG's macOS minimum). All the card's buttons show while the pointer
-  is over the card or the card is focused, as Mail's and Reminders' hover
-  buttons do; hidden, they keep their room and stay reachable with
-  VoiceOver.
+  is over the card or the card is focused; hidden, they keep their room and
+  stay reachable with VoiceOver.
 - Edit turns the message into a box on the card holding its text, with
   Cancel and Save. Undo is named for the step: Undo Edit, Undo Delete
   Reply, Undo Delete Comment.
@@ -58,7 +59,14 @@ Open questions:
 ## Color
 
 System semantic colors, so every appearance, accent and accessibility
-setting (Increase Contrast, Reduce Transparency) works.
+setting (Increase Contrast, Reduce Transparency) works, and one color of
+Margin's own:
+
+- `commentHighlightColor`: Apple's purple author color, so commented text
+  never looks like a find match (yellow). In light mode Pages' comment
+  fills, `#EDD1FE` (`#DCAFFD` for the focused thread); in dark mode, where
+  Pages has none, Notes' first participant color `#A477EC` at 20% (40%
+  focused).
 
 | Role | Color |
 | --- | --- |
@@ -70,17 +78,11 @@ setting (Increase Contrast, Reduce Transparency) works.
 | Accent, focus, checked boxes | `controlAccentColor` |
 | Code background | `quaternarySystemFill` |
 | Card background | `controlBackgroundColor` |
-| Comment highlight | `#EDD1FE` (`#DCAFFD` focused); in dark mode `#A477EC` at 20% (40% focused) |
+| Comment highlight | `commentHighlightColor` |
 | Find matches | `findHighlightColor` at 35% (90% for the current match) |
 | Links | `linkColor` |
 
-The comment highlight is Apple's purple author color: Pages' comment fills
-in light mode, and Notes' first participant color in dark mode, which Pages
-lacks. Not yellow, which is find's.
-
 ## Type
-
-macOS has no desktop-wide document font, so Margin needs its own choice.
 
 - Body: the system font (SF Pro) at 15pt, before zoom.
 - Code: SF Mono.
@@ -90,8 +92,9 @@ macOS has no desktop-wide document font, so Margin needs its own choice.
 Open questions:
 
 - Do the spec's heading sizes need adjusting for SF Pro or New York?
-- Should Margin follow a system text size setting, if macOS offers one to
-  third-party apps?
+- Should the default body font follow the user's document font
+  (`NSFont.userFont`, which TextEdit uses; Helvetica 12 unless the user set
+  another)? macOS has no control for it in System Settings.
 
 ## Menu bar
 
@@ -160,18 +163,18 @@ so there is no version history (Revert To ▸ Browse All Versions) and no
 
 ## Key bindings
 
-Command is the main modifier and Option the second.
+The standard commands (New, Open, Save, Print, Close, Quit, Undo, the
+clipboard, Find and its commands, Bold, Italic, Enter Full Screen, Larger
+and Smaller) have Apple's [standard keyboard
+shortcuts](https://developer.apple.com/design/human-interface-guidelines/keyboards#Standard-keyboard-shortcuts).
+Find and Replace is Cmd+Option+F, and Actual Size Cmd+0.
+Margin's own commands use Command, with Option or Shift as the second
+modifier:
 
 | Command | Keys |
 | --- | --- |
-| New, Open, Save, Save As | Cmd+N, Cmd+O, Cmd+S, Cmd+Shift+S |
-| Print, Close, Quit | Cmd+P, Cmd+W, Cmd+Q |
-| Enter Full Screen | Ctrl+Cmd+F |
-| Find, Find and Replace | Cmd+F, Cmd+Option+F |
-| Find Next, Find Previous, Use Selection for Find | Cmd+G, Cmd+Shift+G, Cmd+E |
-| Larger, Smaller, Actual Size | Cmd++ (or Cmd+=), Cmd+-, Cmd+0 |
 | Show Markdown, Reflow Paragraphs | Cmd+/, Cmd+Option+Z |
-| Bold, Italic, Strikethrough, Inline Code | Cmd+B, Cmd+I, Cmd+Shift+X, Cmd+Shift+E |
+| Strikethrough, Inline Code | Cmd+Shift+X, Cmd+Shift+E |
 | Link | Cmd+K |
 | Normal Text, Heading 1–6 | Cmd+Option+0, Cmd+Option+1…6 |
 | Numbered List, Bulleted List, Checklist | Cmd+Shift+7, 8, 9 |
@@ -193,13 +196,26 @@ Keys macOS gives to something else:
   Option-only.
 - **Cmd+?** opens the Help menu's search, so Keyboard Shortcuts has no key.
 
+Standard shortcuts Margin gives to its own commands, since it has no use
+for theirs:
+
+- **Cmd+[ and Cmd+]** (left- and right-align) are Outdent and Indent.
+- **Cmd+Option+C** (copy style) is Code Block.
+- **Cmd+Shift+C** (the Colors window) is Copy Open Comments.
+- **Cmd+Option+M** (minimize all windows) is Comment on Selection.
+
 Open question: Cmd+Option+Q (Quote) sits next to Cmd+Q; is that too close?
 
 ## Notifications
 
 A small banner at the bottom of the window, on the HUD material, says
 "Updated from disk", "1 new reply" and the like, and fades after 3 seconds,
-or 6 when it has an Undo button. It is also announced to VoiceOver.
+or 6 when it has an Undo button. It is also announced to VoiceOver. Apple
+sets no duration, and its HIG
+[discourages](https://developer.apple.com/design/human-interface-guidelines/accessibility)
+views that dismiss on a timer, so a banner only repeats what the window
+shows anyway: its Undo is the Edit menu's, and new replies are on their
+cards.
 
 Open question: should agent activity also post a system notification when
 Margin is in the background?
