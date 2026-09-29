@@ -24,3 +24,12 @@ click 1100 700
 wait 100
 comments
 focus
+# Cancel in the reply box leaves the thread at once.
+click-card 1
+wait 200
+focus
+click-button 1 Cancel
+wait 200
+comments
+focus
+click-button 1 Cancel

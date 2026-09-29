@@ -8,3 +8,8 @@ active 1
 #1 open [0,5) ["Why?"]
 active none
 focus Optional(Margin.DocTextView)
+focus Optional(Margin.ComposerTextView)
+#1 open [0,5) ["Why?"]
+active none
+focus Optional(Margin.DocTextView)
+script: no button 1 Cancel

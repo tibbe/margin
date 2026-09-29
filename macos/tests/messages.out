@@ -8,10 +8,10 @@ card-context 1 0: Reply, Resolve, —, Edit, Delete
 card-menu 1 0: Edit, Delete
 focus Optional(Margin.ComposerTextView)
 #1 open [0,5) ["Why?", "Because.", "Fixed."]
-active 1
+active none
 card-context 1 0: Reply, Resolve, —, Edit, Delete
 #1 open [0,5) ["Why not?", "Because.", "Fixed."]
-active 1
+active none
 undo Undo Edit
 #1 open [0,5) ["Why?", "Because.", "Fixed."]
 active 1
@@ -19,7 +19,7 @@ active 1
 active 1
 card-menu 1 0: Edit, Delete
 #1 open [0,5) ["Why not?", "Because.", "Fixed."]
-active 1
+active none
 menu Comments > Resolve: enabled
 menu Comments > Edit: enabled
 menu Comments > Delete: enabled

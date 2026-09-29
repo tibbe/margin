@@ -47,6 +47,9 @@ final class ComposerTextView: NSTextView {
     var onResize: (() -> Void)?
     var onFocusChange: (() -> Void)?
     var placeholder = "" { didSet { needsDisplay = true } }
+    /// Whether it has the keyboard, as it last became or resigned first
+    /// responder (the window's `firstResponder` changes only afterwards).
+    private(set) var isFocused = false
 
     /// As tall as its text; the width comes from the layout.
     override var intrinsicContentSize: NSSize {
@@ -99,12 +102,14 @@ final class ComposerTextView: NSTextView {
 
     override func becomeFirstResponder() -> Bool {
         let ok = super.becomeFirstResponder()
+        if ok { isFocused = true }
         onFocusChange?()
         return ok
     }
 
     override func resignFirstResponder() -> Bool {
         let ok = super.resignFirstResponder()
+        if ok { isFocused = false }
         onFocusChange?()
         return ok
     }
@@ -205,7 +210,7 @@ final class Composer: NSView {
         window?.makeFirstResponder(textView)
     }
 
-    var hasFocus: Bool { window?.firstResponder === textView }
+    var hasFocus: Bool { textView.isFocused }
 
     func focusChanged() {
         syncButtons()
@@ -374,7 +379,8 @@ final class ThreadCard: GutterCard {
     var onResize: (() -> Void)?
     /// Editing a message focuses its thread.
     var onFocusThread: (() -> Void)?
-    /// Leaving the reply box: focus goes back to the text.
+    /// Cancelling the reply box, or ending an edit: the thread is left, as
+    /// with Escape.
     var onLeave: (() -> Void)?
     private(set) var resolveButton: NSButton?
 

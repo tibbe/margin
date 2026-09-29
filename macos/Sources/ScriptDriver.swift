@@ -21,6 +21,7 @@ import AppKit
 ///                           put the cursor after (before) TEXT, or select it
 /// click-text TEXT           click in the middle of TEXT (cmd-click-text too)
 /// click-card ID | click-resolve ID | click-add | click-checkbox N
+/// click-button ID TITLE    click the button titled TITLE on card ID
 /// card-menu ID N [ITEM] | card-context ID N [ITEM]
 ///                           message N's "…" menu, or the card's right-click
 ///                           menu on it: print the items, or choose ITEM
@@ -209,6 +210,19 @@ enum ScriptDriver {
         case "click-card":
             if let it = w.layer.items.first(where: { $0.thread.id == UInt64(arg) ?? 0 }) {
                 click(it.card, at: NSPoint(x: it.card.bounds.width - 30, y: it.card.bounds.height - 12))
+            }
+        case "click-button":
+            // Clicks the button titled TITLE on card ID (Cancel, Reply, Save…).
+            let p = arg.split(separator: " ", maxSplits: 1).map(String.init)
+            func find(_ v: NSView, _ title: String) -> NSButton? {
+                if let b = v as? NSButton, b.title == title, !b.isHiddenOrHasHiddenAncestor { return b }
+                for s in v.subviews { if let f = find(s, title) { return f } }
+                return nil
+            }
+            if p.count == 2, let it = w.layer.items.first(where: { $0.thread.id == UInt64(p[0]) ?? 0 }), let b = find(it.card, p[1]) {
+                click(b, at: NSPoint(x: b.bounds.midX, y: b.bounds.midY))
+            } else {
+                print("script: no button \(arg)")
             }
         case "click-resolve":
             if let it = w.layer.items.first(where: { $0.thread.id == UInt64(arg) ?? 0 }), let b = it.card.resolveButton {

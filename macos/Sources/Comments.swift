@@ -227,10 +227,7 @@ final class CommentLayer {
         }
         card.onReply = { [weak self] body in self?.reply(id, body) }
         card.onResize = { [weak self] in self?.queueRelayout() }
-        card.onLeave = { [weak self] in
-            guard let self else { return }
-            self.view.window?.makeFirstResponder(self.view)
-        }
+        card.onLeave = { [weak self] in self?.leave() }
         gutter.addSubview(card)
         return ThreadItem(thread: t, card: card)
     }
@@ -464,9 +461,9 @@ final class CommentLayer {
         return false
     }
 
-    /// A click beside the cards: the focused thread is left and the keyboard
-    /// goes back to the text, with the cursor where it was. A draft keeps
-    /// its card and text, as when the text is clicked.
+    /// Leaves the focused thread (a click beside the cards, Cancel on a
+    /// card): the keyboard goes back to the text, with the cursor where it
+    /// was. A draft keeps its card and text, as when the text is clicked.
     func leave() {
         if active != nil { activate(nil, scroll: false) }
         view.window?.makeFirstResponder(view)

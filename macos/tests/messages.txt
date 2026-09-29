@@ -63,6 +63,8 @@ key escape
 wait 100
 comments
 # The Comments menu acts on the focused thread.
+find First
+wait 100
 menu Comments > Resolve
 menu Comments > Edit
 menu Comments > Delete
