@@ -70,9 +70,13 @@ setting (Increase Contrast, Reduce Transparency) works.
 | Accent, focus, checked boxes | `controlAccentColor` |
 | Code background | `quaternarySystemFill` |
 | Card background | `controlBackgroundColor` |
-| Comment highlight | Apple's purple author color: Pages' fills `#EDD1FE` (`#DCAFFD` focused); `#A477EC` at 20% (40% focused) in dark mode. Not yellow, which is find's |
+| Comment highlight | `#EDD1FE` (`#DCAFFD` focused); in dark mode `#A477EC` at 20% (40% focused) |
 | Find matches | `findHighlightColor` at 35% (90% for the current match) |
 | Links | `linkColor` |
+
+The comment highlight is Apple's purple author color: Pages' comment fills
+in light mode, and Notes' first participant color in dark mode, which Pages
+lacks. Not yellow, which is find's.
 
 ## Type
 
