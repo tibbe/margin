@@ -87,8 +87,8 @@ into a coding agent. When an agent is waiting on the document (`margin wait`),
 the send button in the header, or <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Enter</kbd>,
 hands it the open comments instead, and a spinner shows while it works on
 them. *Resolve All* in the menu closes every open thread (with
-Undo). Comments carry no author: one person comments, agents
-reply.
+Undo). Each message says who wrote it: *You*, from the editor, or *Agent*,
+from the CLI.
 
 Comments are stored outside the document, in
 `~/.local/share/margin/docs/`, one JSON file per document.
