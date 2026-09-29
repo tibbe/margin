@@ -3,6 +3,10 @@
 
 Margin is a Markdown editor for one person working with coding agents, and
 the `margin` CLI those agents use to read and answer the person's comments.
+This spec holds the decisions shared by every platform. Decisions that differ
+by platform (keys, menus, look, fonts, storage paths, lifecycle) live in
+[`linux/design_system.md`](linux/design_system.md) and
+[`macos/design_system.md`](macos/design_system.md).
 
 ## Problem Statement
 
@@ -44,7 +48,7 @@ The actors are the **writer** (the one person who comments) and a **coding
 agent**.
 
 1. As a writer, I want saving to change only the bytes I edited, so that diffs show only real changes.
-2. As a writer, I want HTML, front matter and link reference definitions shown as dimmed source, and tables as grids that edit as text, so that nothing in the file is hidden or misrendered.
+2. As a writer, I want tables, HTML, front matter and link reference definitions shown as dimmed source, so that nothing in the file is hidden or misrendered.
 3. As a writer, I want images shown as their alt text, so that I know an image is there without the editor loading files.
 4. As a writer, I want the syntax of the blank line I'm on, and the fences of the code block I'm in, shown, so that I can edit what is otherwise invisible.
 5. As a writer, I want a marker without its space (`#`, `-`) left as typed, so that a line isn't formatted before I mean it.
@@ -70,22 +74,20 @@ agent**.
 25. As a writer, I want to select text and comment on it, so that feedback is attached to exactly the passage it is about.
 26. As a writer, I want each thread's card beside its text in the margin, so that I read comments alongside the document.
 27. As a writer, I want the cursor entering commented text to focus its thread, so that moving through the text moves through the review.
-28. As a writer, I want to edit or delete any comment or reply, so that I can fix what I wrote or clear what no longer helps.
-29. As a writer, I want resolving, resolving all, editing and deleting to be undoable, so that a slip doesn't lose a thread.
-30. As a writer, I want resolved threads hidden unless I ask for them, so that the margin shows what is still open.
-31. As a writer, I want a thread whose text was deleted to stay, showing what it was about, so that feedback is never silently lost.
-32. As a writer, I want a thread to follow its text when it is reworded, so that a comment on "blue/green" follows the change to "canary".
-33. As a writer, I want to be told when an agent adds, answers or resolves threads, so that I notice its answers.
-34. As a writer, I want to copy the open comments as a numbered list with locations, so that I can paste a review into an agent's chat.
-35. As a coding agent, I want the open threads with `file:line:column` locations against the file as it is now, so that I can find what was asked even after my own edits.
-36. As a coding agent, I want to find documents with open threads under the current directory, so that I don't need to be told the file.
-37. As a coding agent, I want a thread's quote as the file's exact Markdown source, so that I can find and edit the text.
-38. As a coding agent, I want to reply, resolve and reopen, so that I report what I did where the writer will see it.
-39. As a coding agent, I want to start threads on quoted text or whole lines, with ambiguous quotes refused, so that my question lands on the right text.
-40. As a coding agent, I want to open a document for review and return at once, so that my shell isn't blocked.
-41. As a coding agent, I want to block until the writer comments, with a timeout and a distinct exit code, so that I can wait for review without polling.
-42. As a coding agent, I want JSON output, so that I can process threads reliably.
-43. As a coding agent, I want the same commands and output on every platform, so that one skill works everywhere.
+28. As a writer, I want resolving, resolving all and deleting to be undoable, so that a slip doesn't lose a thread.
+29. As a writer, I want resolved threads hidden unless I ask for them, so that the margin shows what is still open.
+30. As a writer, I want a thread whose text was deleted to stay, showing what it was about, so that feedback is never silently lost.
+31. As a writer, I want a thread to follow its text when it is reworded, so that a comment on "blue/green" follows the change to "canary".
+32. As a writer, I want to be told when an agent adds, answers or resolves threads, so that I notice its answers.
+33. As a writer, I want to copy the open comments as a numbered list with locations, so that I can paste a review into an agent's chat.
+34. As a coding agent, I want the open threads with `file:line:column` locations against the file as it is now, so that I can find what was asked even after my own edits.
+35. As a coding agent, I want to find documents with open threads under the current directory, so that I don't need to be told the file.
+36. As a coding agent, I want a thread's quote as the file's exact Markdown source, so that I can find and edit the text.
+37. As a coding agent, I want to reply, resolve and reopen, so that I report what I did where the writer will see it.
+38. As a coding agent, I want to start threads on quoted text or whole lines, with ambiguous quotes refused, so that my question lands on the right text.
+39. As a coding agent, I want to open a document for review and return at once, so that my shell isn't blocked.
+40. As a coding agent, I want JSON output, so that I can process threads reliably.
+41. As a coding agent, I want the same commands and output on every platform, so that one skill works everywhere.
 
 ## Decisions
 
@@ -97,9 +99,6 @@ agent**.
 - CRLF files are written back as CRLF; a missing final newline is added.
 - Documents save shortly after the last change, on focus loss and on close.
   Saves never leave a half-written file and keep the file's permissions.
-- Untitled documents are kept as drafts until saved, and come back after a
-  crash or relaunch. Launched without files, the editor reopens them, or
-  with none asks for a file.
 - Closing asks only for an untitled document with text, or one whose save
   failed. Empty untitled documents are discarded silently.
 - Outside changes: reload if there are no unsaved edits; otherwise a
@@ -113,12 +112,7 @@ agent**.
 
 - CommonMark with GitHub tables, strikethrough and task lists, and YAML front
   matter.
-- Tables show as grids: the `|`s, the cells' padding and the delimiter row
-  are hidden, columns take their widest cell's width and the delimiter row's
-  alignment, and the header row is bold. A row stays on one line. Where a
-  platform does not draw grids yet (see its design system), tables show as
-  source like HTML.
-- HTML, front matter and link reference definitions show as dimmed
+- Tables, HTML, front matter and link reference definitions show as dimmed
   monospace source; images as italic, link-colored alt text; bare URLs and
   autolinks as links with the URL visible. Checked tasks are struck through
   and dimmed; Heading 6 is dimmed.
@@ -152,11 +146,7 @@ Every editor produces the same source for the same keys. The choices:
 - Find ignores case by default and treats line breaks inside paragraphs as
   spaces. Replace edits in place when the match is plain text, otherwise
   deletes and retypes through the editing rules.
-- Replacing a selection (typing or pasting over it, a spelling correction)
-  edits in place when it lies in plain text, keeping the formatting around
-  it; otherwise it deletes and then types through the editing rules.
-- Print renders the document as shown, without comments, with the body at
-  11pt in the light appearance.
+- Print renders the document as shown, without comments.
 
 ### Comments
 
@@ -174,13 +164,6 @@ Every editor produces the same source for the same keys. The choices:
   nothing while focus is in a card.
 - Agent activity is announced ("1 new reply, 2 comments resolved"); what was
   there when the document opened is not.
-- The writer can edit and delete any message, in resolved threads too;
-  agents can't. Deleting the comment deletes its thread. An edit can't leave
-  a message empty: deleting is its own command.
-- Nothing asks for confirmation: resolving, reopening, editing, deleting
-  and Resolve All are undoable, and undo shows the thread it brings back.
-  All but editing can also be undone from the notification that reports
-  them.
 - Copy Open Comments format, with paths relative to the git repository when
   there is one:
 
@@ -194,37 +177,67 @@ Every editor produces the same source for the same keys. The choices:
 
 ### CLI
 
-- Locations are 1-based `file:line:column`, columns in characters, against
-  the file as it is now; every read re-anchors first.
-- Without files, `comments`, `files` and `wait` look at documents under the
-  current directory (`--all` for anywhere, where offered).
-- `margin FILE…` opens in the running editor and returns at once, after
-  reporting problems with the files; `--foreground` waits until the editor
-  quits.
-- `add --quote` refuses an ambiguous quote, listing the lines, until
-  `--occurrence N` picks one; `--line` anchors from the first non-blank
-  character.
-- `wait` has a timeout and a distinct exit code when it expires.
+The CLI's help and the agent skill follow this section.
+
+- Locations are `file:line:column`, columns in characters, against the file
+  as it is now; every command re-anchors first. Paths print relative to the
+  current directory when they are under it.
+- Without files, `comments` looks at the documents with open threads under
+  the current directory; `--all`, anywhere.
+- `comments` takes `--json`.
 - The editor and the CLI can change a document's comments at the same time
   without losing either's changes.
+
+A thread in text, as listings print it, under a header per document
+(`plan.md: 2 open threads, 1 resolved (--resolved to show)`):
+
+```text
+#3 plan.md:12:10 (open)
+  on "blue/green deploy"
+  comment · 14:02
+    Why not canary?
+  reply · 14:10
+    Switched to canary in §2.
+```
+
+The status is `open`, `open, detached: the commented text was deleted`, or
+`resolved`. Quotes print on one line, cut at 160 characters. In JSON:
+
+```json
+{
+  "doc": "/abs/path/plan.md",
+  "id": 3,
+  "status": "open",
+  "detached": false,
+  "start": { "line": 12, "column": 10 },
+  "end": { "line": 12, "column": 27 },
+  "quote": "blue/green deploy",
+  "messages": [
+    { "at": "2026-09-29T12:02:00Z", "body": "Why not canary?" },
+    { "at": "2026-09-29T12:10:00Z", "body": "Switched to canary in §2." }
+  ]
+}
+```
+
+A resolved thread also has `resolved_at`.
+
+The commands:
+
+- `margin FILE…` (or `margin open FILE…`) opens documents in the editor and
+  returns at once, after reporting files it can't open. `--foreground` stays
+  attached until the editor quits.
+- `margin comments [FILE…]` lists open threads; `--resolved` adds resolved
+  ones.
+- `margin reply FILE ID MESSAGE [--resolve]`, `margin resolve FILE ID
+  [MESSAGE]`, `margin reopen FILE ID`, `margin delete FILE ID`.
+- `margin add FILE (--quote TEXT | --line N [--end-line M]) MESSAGE` starts a
+  thread. A quote that occurs more than once is refused, listing its lines,
+  until `--occurrence N` picks one. `--line` anchors from the first non-blank
+  character.
 
 ### Platforms
 
 Every editor shares the core: Markdown analysis, editing rules, find, the
 comment store and anchoring, and the CLI. Each platform provides the UI and
-system integration, and routes every edit through the core.
-
-- Each editor uses its platform's own pieces wherever one exists: menus,
-  window chrome, dialogs, file pickers, the print dialog, system colors and
-  fonts. It draws custom UI only for what the platform has no equivalent of
-  (the comment gutter, the drawn Markdown blocks).
-- Where platform conventions differ, each editor follows its own, even when
-  that makes the editors differ; the behavior in this spec stays the same.
-- A command's keys are, in order: the platform's own binding for it, if
-  the platform has one; else Google Docs' binding on that platform; else
-  Margin's own. A key the platform gives to something else (a system
-  shortcut, a standard command, a character it types) stays with that, and
-  the command takes a nearby combination. Margin's own commands keep the
-  same letter on every platform, under that platform's modifiers.
-- List shortcuts (numbered, bulleted, checklist) go by the number row's
-  physical keys, as in Google Docs, so they work on any keyboard layout.
+system integration, routes every edit through the core, and records its
+choices in its design system.

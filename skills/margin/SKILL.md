@@ -17,9 +17,9 @@ Threads are numbered per document (`#3`). Locations are `file:line:column`,
 
 1. **Find the document.** Use the file the user named. Otherwise run
    `margin comments` (documents under the current directory with open threads).
-2. **Read the threads in context:** `margin context FILE` prints the document
-   with each open thread under the line it anchors to. `margin comments FILE
-   --json` gives the same threads as data.
+2. **Read the threads:** `margin comments FILE` prints each open thread with
+   its location and the text it is on; read the document around them.
+   `--json` gives the same threads as data.
 3. **Work every open thread.** Change the document with your normal editing
    tools, or answer in the thread, whichever the comment asks for. Then reply
    on the thread saying what you did:
@@ -43,11 +43,8 @@ attached to their text as it moves. Read positions from a fresh
 When you have written a document the user should review (a plan, a spec):
 
 1. `margin open FILE`. It returns at once; the document appears in the editor.
-2. Tell the user it is open. To wait for their comments, run
-   `margin wait FILE --timeout 540`. It prints the threads once the user adds,
-   answers or resolves one, and exits 124 if nothing happened. Rerun it to keep
-   waiting, or stop when the user says they are done.
-3. Address the comments as above.
+2. Tell the user it is open, and address the comments as above when they
+   say they have left them.
 
 ## Reference
 
