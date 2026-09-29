@@ -71,21 +71,22 @@ agent**.
 26. As a writer, I want each thread's card beside its text in the margin, so that I read comments alongside the document.
 27. As a writer, I want the cursor entering commented text to focus its thread, so that moving through the text moves through the review.
 28. As a writer, I want to edit or delete any comment or reply, so that I can fix what I wrote or clear what no longer helps.
-29. As a writer, I want resolving, resolving all, editing and deleting to be undoable, so that a slip doesn't lose a thread.
-30. As a writer, I want resolved threads hidden unless I ask for them, so that the margin shows what is still open.
-31. As a writer, I want a thread whose text was deleted to stay, showing what it was about, so that feedback is never silently lost.
-32. As a writer, I want a thread to follow its text when it is reworded, so that a comment on "blue/green" follows the change to "canary".
-33. As a writer, I want to be told when an agent adds, answers or resolves threads, so that I notice its answers.
-34. As a writer, I want to copy the open comments as a numbered list with locations, so that I can paste a review into an agent's chat.
-35. As a coding agent, I want the open threads with `file:line:column` locations against the file as it is now, so that I can find what was asked even after my own edits.
-36. As a coding agent, I want to find documents with open threads under the current directory, so that I don't need to be told the file.
-37. As a coding agent, I want a thread's quote as the file's exact Markdown source, so that I can find and edit the text.
-38. As a coding agent, I want to reply, resolve and reopen, so that I report what I did where the writer will see it.
-39. As a coding agent, I want to start threads on quoted text or whole lines, with ambiguous quotes refused, so that my question lands on the right text.
-40. As a coding agent, I want to open a document for review and return at once, so that my shell isn't blocked.
-41. As a coding agent, I want to block until the writer comments, with a timeout and a distinct exit code, so that I can wait for review without polling.
-42. As a coding agent, I want JSON output, so that I can process threads reliably.
-43. As a coding agent, I want the same commands and output on every platform, so that one skill works everywhere.
+29. As a writer, I want long comments and replies cut short until I ask for the rest, so that one long message doesn't push the other threads out of view.
+30. As a writer, I want resolving, resolving all, editing and deleting to be undoable, so that a slip doesn't lose a thread.
+31. As a writer, I want resolved threads hidden unless I ask for them, so that the margin shows what is still open.
+32. As a writer, I want a thread whose text was deleted to stay, showing what it was about, so that feedback is never silently lost.
+33. As a writer, I want a thread to follow its text when it is reworded, so that a comment on "blue/green" follows the change to "canary".
+34. As a writer, I want to be told when an agent adds, answers or resolves threads, so that I notice its answers.
+35. As a writer, I want to copy the open comments as a numbered list with locations, so that I can paste a review into an agent's chat.
+36. As a coding agent, I want the open threads with `file:line:column` locations against the file as it is now, so that I can find what was asked even after my own edits.
+37. As a coding agent, I want to find documents with open threads under the current directory, so that I don't need to be told the file.
+38. As a coding agent, I want a thread's quote as the file's exact Markdown source, so that I can find and edit the text.
+39. As a coding agent, I want to reply, resolve and reopen, so that I report what I did where the writer will see it.
+40. As a coding agent, I want to start threads on quoted text or whole lines, with ambiguous quotes refused, so that my question lands on the right text.
+41. As a coding agent, I want to open a document for review and return at once, so that my shell isn't blocked.
+42. As a coding agent, I want to block until the writer comments, with a timeout and a distinct exit code, so that I can wait for review without polling.
+43. As a coding agent, I want JSON output, so that I can process threads reliably.
+44. As a coding agent, I want the same commands and output on every platform, so that one skill works everywhere.
 
 ## Decisions
 
@@ -172,6 +173,10 @@ Every editor produces the same source for the same keys. The choices:
   stack around it. When threads overlap, the cursor focuses the innermost.
 - Clicks in the gutter never move the text cursor, and document commands do
   nothing while focus is in a card.
+- A message longer than seven lines is cut off at three, with Show More
+  below it, as Google Docs and Pages do; Show Less cuts it off again.
+  Each message is expanded on its own, and stays so until the window
+  closes; focusing a thread doesn't expand it.
 - Agent activity is announced ("1 new reply, 2 comments resolved"); what was
   there when the document opened is not.
 - The writer can edit and delete any message, in resolved threads too;

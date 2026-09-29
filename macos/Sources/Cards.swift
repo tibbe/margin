@@ -342,6 +342,9 @@ class GutterCard: NSView {
         return ceil(stack.fittingSize.height + GutterCard.pad.top + GutterCard.pad.bottom)
     }
 
+    /// The width of the card's contents.
+    var innerWidth: CGFloat { widthConstraint.constant }
+
     func setLabelWidths(_ w: CGFloat) {
         for v in stack.arrangedSubviews {
             if let l = v as? NSTextField { l.preferredMaxLayoutWidth = w }
@@ -374,6 +377,71 @@ private func rowButton(_ symbol: String, _ label: String, _ target: AnyObject, _
     return b
 }
 
+/// A message's text on its card, cut off at `collapsedLines` lines, with a
+/// Show More (Show Less) button below, when it is longer than `fullLines`,
+/// as Google Docs and Pages cut off long comments.
+private final class MessageText {
+    static let collapsedLines = 3
+    static let fullLines = 7
+    let body: NSTextField
+    let toggle: NSButton
+    /// The toggle, moved left so that its title lines up with the text.
+    let toggleRow = NSView()
+    /// Whether the message is long enough to cut off, at the last width.
+    private(set) var long = false
+    var expanded = false { didSet { sync() } }
+
+    init(_ text: String, font: NSFont, target: AnyObject, action: Selector) {
+        body = cardText(text, font: font)
+        body.cell?.truncatesLastVisibleLine = true
+        toggle = NSButton(title: "Show More", target: target, action: action)
+        toggle.isBordered = false
+        toggle.font = NSFont.systemFont(ofSize: NSFont.smallSystemFontSize)
+        toggle.contentTintColor = .controlAccentColor
+        toggle.translatesAutoresizingMaskIntoConstraints = false
+        toggleRow.addSubview(toggle)
+        let inset = (toggle.intrinsicContentSize.width - toggle.attributedTitle.size().width) / 2
+        NSLayoutConstraint.activate([
+            toggle.leadingAnchor.constraint(equalTo: toggleRow.leadingAnchor, constant: -inset),
+            toggle.topAnchor.constraint(equalTo: toggleRow.topAnchor),
+            toggle.bottomAnchor.constraint(equalTo: toggleRow.bottomAnchor),
+            toggleRow.trailingAnchor.constraint(greaterThanOrEqualTo: toggle.trailingAnchor),
+        ])
+        toggleRow.isHidden = true
+    }
+
+    /// Measures the text at `width` and cuts it off if it is long.
+    func fit(width: CGFloat) {
+        guard width > 0 else { return }
+        long = lineCount(width: width) > MessageText.fullLines
+        sync()
+    }
+
+    /// How many lines the whole text takes at `width`.
+    private func lineCount(width: CGFloat) -> Int {
+        // The plain text: the field's own carries its truncation.
+        let storage = NSTextStorage(string: body.stringValue, attributes: [.font: body.font ?? NSFont.systemFont(ofSize: NSFont.systemFontSize)])
+        let layout = NSLayoutManager()
+        let container = NSTextContainer(size: NSSize(width: width, height: .greatestFiniteMagnitude))
+        container.lineFragmentPadding = 0
+        layout.addTextContainer(container)
+        storage.addLayoutManager(layout)
+        layout.ensureLayout(for: container)
+        var lines = 0
+        layout.enumerateLineFragments(forGlyphRange: NSRange(location: 0, length: layout.numberOfGlyphs)) { _, _, _, _, _ in lines += 1 }
+        return lines
+    }
+
+    private func sync() {
+        body.maximumNumberOfLines = long && !expanded ? MessageText.collapsedLines : 0
+        toggleRow.isHidden = !long
+        toggle.title = expanded ? "Show Less" : "Show More"
+    }
+
+    /// "short", "collapsed" or "expanded", for tests.
+    var state: String { long ? (expanded ? "expanded" : "collapsed") : "short" }
+}
+
 /// A comment thread's card: the comment, its replies, and a reply box.
 /// Each message has a row with its time and a "…" menu (Edit, Delete); the
 /// comment's row also has Resolve. The rows' buttons show while the
@@ -393,6 +461,10 @@ final class ThreadCard: GutterCard {
     private var messageViews: [[NSView]] = []
     /// The message the last menu was opened for.
     private var menuIndex = 0
+    /// Each message's text (nil while it is edited).
+    private var texts: [MessageText?] = []
+    /// The messages shown in full, by time, kept across rebuilds.
+    private var expanded: Set<Int64> = []
     var onResolve: ((Bool) -> Void)?
     var onDeleteMessage: ((Int) -> Void)?
     var onEdit: ((Int, String) -> Void)?
@@ -434,6 +506,7 @@ final class ThreadCard: GutterCard {
         }
         rowButtons = []
         messageViews = []
+        texts = []
         let small = NSFont.systemFont(ofSize: NSFont.smallSystemFontSize)
         let bodyFont = NSFont.systemFont(ofSize: NSFont.systemFontSize)
         for (i, m) in thread.messages.enumerated() {
@@ -483,10 +556,15 @@ final class ThreadCard: GutterCard {
                 stack.addArrangedSubview(e.composer)
                 e.composer.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
                 views.append(e.composer)
+                texts.append(nil)
             } else {
-                let body = cardText(m.body, font: bodyFont)
-                stack.addArrangedSubview(body)
-                views.append(body)
+                let t = MessageText(m.body, font: bodyFont, target: self, action: #selector(toggleClicked(_:)))
+                t.toggle.tag = i
+                t.expanded = expanded.contains(m.atMs)
+                stack.addArrangedSubview(t.body)
+                stack.addArrangedSubview(t.toggleRow)
+                views.append(contentsOf: [t.body, t.toggleRow])
+                texts.append(t)
             }
             messageViews.append(views)
         }
@@ -503,8 +581,28 @@ final class ThreadCard: GutterCard {
         stack.addArrangedSubview(composer)
         composer.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
         alphaValue = thread.resolved ? 0.7 : 1
+        setLabelWidths(innerWidth)
         syncComposer()
         syncButtons()
+        onResize?()
+    }
+
+    override func setLabelWidths(_ w: CGFloat) {
+        super.setLabelWidths(w)
+        for t in texts { t?.fit(width: w) }
+    }
+
+    /// Each message's text: "short", "collapsed", "expanded" or "editing".
+    var messageStates: [String] { texts.map { $0?.state ?? "editing" } }
+
+    /// Show More (Show Less) on a message; like any click on the card, it
+    /// focuses the thread.
+    @objc private func toggleClicked(_ sender: NSButton) {
+        guard sender.tag < texts.count, let t = texts[sender.tag] else { return }
+        t.expanded.toggle()
+        let at = thread.messages[sender.tag].atMs
+        if t.expanded { expanded.insert(at) } else { expanded.remove(at) }
+        onClick?()
         onResize?()
     }
 
@@ -574,7 +672,7 @@ final class ThreadCard: GutterCard {
     /// messages (the reply box), the last.
     private func messageIndex(at p: NSPoint) -> Int {
         for (i, views) in messageViews.enumerated() {
-            let frames = views.map { stack.convert($0.frame, to: self) }
+            let frames = views.filter { !$0.isHidden }.map { stack.convert($0.frame, to: self) }
             let bottom = frames.map(\.maxY).max() ?? 0
             if p.y <= bottom + stack.spacing / 2 { return i }
         }
@@ -584,7 +682,7 @@ final class ThreadCard: GutterCard {
     /// Where message `index` is, in the card's coordinates.
     func messageRect(_ index: Int) -> NSRect? {
         guard index < messageViews.count else { return nil }
-        return messageViews[index].map { stack.convert($0.frame, to: self) }.reduce(NSRect.null) { $0.union($1) }
+        return messageViews[index].filter { !$0.isHidden }.map { stack.convert($0.frame, to: self) }.reduce(NSRect.null) { $0.union($1) }
     }
 
     /// A message's commands: Edit, and Delete (the thread, for the comment).

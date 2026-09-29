@@ -1,0 +1,26 @@
+# A message longer than seven lines is cut off at three, with Show More;
+# Show Less cuts it off again. Seven lines are shown in full.
+reset First line.\n
+save
+select First
+key cmd-opt-m
+compose 1\n2\n3\n4\n5\n6\n7\n8
+key cmd-enter
+wait 200
+key escape
+wait 100
+card-texts 1
+# Show More focuses the thread, as any click on the card does.
+click-button 1 Show More
+wait 200
+card-texts 1
+comments
+# Rebuilding the card (here, for a reply) keeps the message shown in full.
+compose 1\n2\n3\n4\n5\n6\n7
+key cmd-enter
+wait 200
+comments
+card-texts 1
+click-button 1 Show Less
+wait 200
+card-texts 1

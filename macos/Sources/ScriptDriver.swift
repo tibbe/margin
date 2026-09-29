@@ -262,6 +262,11 @@ enum ScriptDriver {
                 drag(text, from: NSPoint(x: b.minX + 2, y: b.midY), to: NSPoint(x: b.maxX - 2, y: b.midY))
             }
             return 0.2
+        case "card-texts":
+            // Prints whether each message on card ID is short, collapsed or expanded.
+            if let it = w.layer.items.first(where: { $0.thread.id == UInt64(arg) ?? 0 }) {
+                print("texts \(arg): \(it.card.messageStates.joined(separator: ", "))")
+            }
         case "hover-card":
             // The pointer moves onto (or off) card ID; prints whether its buttons show.
             let p = arg.split(separator: " ").map(String.init)

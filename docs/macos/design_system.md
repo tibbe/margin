@@ -43,6 +43,12 @@ conventions of Apple's document apps (TextEdit, Pages, Notes).
   (the HIG's macOS minimum). All the card's buttons show while the pointer
   is over the card or the card is focused; hidden, they keep their room and
   stay reachable with VoiceOver.
+- A message longer than seven lines ends in "…" at its third line, with a
+  bezel-less Show More text button in the accent color below it, at the
+  small system font's size, as in Pages' comments; expanded, the button
+  reads Show Less. It shows whether or not the pointer is over the card,
+  since it tells that text is hidden. Clicking it focuses the thread, as
+  any click on the card does.
 - Edit turns the message into a box on the card holding its text, with
   Cancel and Save. Undo is named for the step: Undo Edit, Undo Delete
   Reply, Undo Delete Comment.
