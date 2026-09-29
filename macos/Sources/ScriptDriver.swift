@@ -19,6 +19,8 @@ import AppKit
 ///                           like cmd-b, cmd-shift-8, cmd-opt-m, cmd-enter
 /// find TEXT | find-before TEXT | select TEXT
 ///                           put the cursor after (before) TEXT, or select it
+/// key-cards KEYS            press KEYS, then print where each card is, before
+///                           the window draws
 /// click-text TEXT           click in the middle of TEXT (cmd-click-text too)
 /// click-card ID | click-resolve ID | click-add | click-checkbox N
 /// click-button ID TITLE    click the button titled TITLE on card ID
@@ -180,9 +182,13 @@ enum ScriptDriver {
         case "marked":
             let r = view.markedRange()
             print(view.hasMarkedText() ? "marked \(r.location) \(r.length)" : "marked none")
-        case "key":
+        case "key", "key-cards":
             let keys = arg.split(separator: " ")
             for k in keys { key(String(k), win) }
+            if cmd == "key-cards" {
+                // Before the window can draw: where cards first appear.
+                for c in w.layer.cardOffsets() { print("card #\(c.id) \(c.offset == 0 ? "beside its text" : "off by \(c.offset)")") }
+            }
             return 0.05 + 0.004 * Double(keys.count)
         case "find", "find-before", "select":
             let s = view.string as NSString

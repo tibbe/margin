@@ -208,6 +208,9 @@ final class CommentLayer {
             active = nil
         }
         sync()
+        // New cards start at the top of the gutter; place them before the
+        // window next draws.
+        if newThreads > 0 { relayout() }
         onChange?()
         var news: [String] = []
         func plural(_ n: Int, _ one: String, _ many: String) {
@@ -285,8 +288,8 @@ final class CommentLayer {
     private func postDraft(_ body: String) {
         beforeAdd?()
         guard let d = draft else { return }
-        let state = update(.add(start: UInt32(d.start), end: UInt32(max(d.start, d.end)), body: body))
         removeDraft()
+        let state = update(.add(start: UInt32(d.start), end: UInt32(max(d.start, d.end)), body: body))
         if let id = state?.added {
             activate(id, scroll: false)
         } else {
@@ -548,6 +551,17 @@ final class CommentLayer {
         }
     }
 
+    /// Where a character's line is, in the gutter's coordinates.
+    private func lineTop(_ ci: Int) -> CGFloat {
+        let len = (view.string as NSString).length
+        return view.convert(NSPoint(x: 0, y: view.location(of: min(ci, len)).minY), to: gutter).y
+    }
+
+    /// How far each shown card is from beside its text, for tests.
+    func cardOffsets() -> [(id: UInt64, offset: CGFloat)] {
+        items.filter { visible($0.thread) }.map { ($0.thread.id, $0.card.frame.minY - lineTop($0.start)) }
+    }
+
     /// Places cards beside their text. The focused card (or the draft) sits
     /// exactly beside its anchor; the others stack above and below it
     /// without overlapping.
@@ -562,11 +576,7 @@ final class CommentLayer {
         struct Entry { var y: CGFloat; var order: Int; var h: CGFloat; var card: GutterCard; var focused: Bool }
         var entries: [Entry] = []
         let width = g.cardWidth
-        let len = (view.string as NSString).length
-        // Where a character's line is, in the gutter's coordinates.
-        func top(_ ci: Int) -> CGFloat {
-            view.convert(NSPoint(x: 0, y: view.location(of: min(ci, len)).minY), to: gutter).y
-        }
+        func top(_ ci: Int) -> CGFloat { lineTop(ci) }
         for it in items where visible(it.thread) {
             entries.append(Entry(y: top(it.start), order: it.start, h: it.card.height(forWidth: width), card: it.card, focused: it.thread.id == active))
         }
