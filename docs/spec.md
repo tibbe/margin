@@ -34,7 +34,9 @@ answer through a CLI.
   text as anyone edits it. One person and their agents comment and reply,
   and each message says which of them wrote it.
 - **Agents are first-class** through the `margin` CLI, like `tuicr` and
-  `hunk`. Their edits and replies appear in the open editor as they happen.
+  `hunk`. Their edits and replies appear in the open editor as they happen,
+  and the writer sends each round of comments to an agent that waits for
+  them.
 - **Quiet and native.** Documents save themselves; rarely used commands live
   in menus; each platform's editor behaves like that platform's apps.
 
@@ -79,14 +81,17 @@ agent**.
 34. As a writer, I want a thread to follow its text when it is reworded, so that a comment on "blue/green" follows the change to "canary".
 35. As a writer, I want to be told when an agent adds, answers, resolves, reopens or deletes threads, even while I am in another app, so that I notice its answers when it replies asynchronously.
 36. As a writer, I want to copy the open comments as a list with locations, so that I can paste a review into an agent's chat.
-37. As a coding agent, I want the open threads with `file:line:column` locations against the file as it is now, so that I can find what was asked even after my own edits.
-38. As a coding agent, I want to find documents with open threads under the current directory, so that I don't need to be told the file.
-39. As a coding agent, I want a thread's quote as the file's exact Markdown source, so that I can find and edit the text.
-40. As a coding agent, I want to reply, resolve and reopen, so that I report what I did where the writer will see it.
-41. As a coding agent, I want to start threads on quoted text, with ambiguous quotes refused, so that my question lands on the right text.
-42. As a coding agent, I want to open a document for review and return at once, so that my shell isn't blocked.
-43. As a coding agent, I want JSON output, so that I can process threads reliably.
-44. As a coding agent, I want the same commands and output on every platform, so that one skill works everywhere.
+37. As a writer, I want to send the open comments to the agent waiting on a document in one step, so that I don't paste every round of review into its chat.
+38. As a writer, I want to see whether an agent is waiting on a document or working on what I sent, so that I know whether answers are coming.
+39. As a coding agent, I want the open threads with `file:line:column` locations against the file as it is now, so that I can find what was asked even after my own edits.
+40. As a coding agent, I want to find documents with open threads under the current directory, so that I don't need to be told the file.
+41. As a coding agent, I want a thread's quote as the file's exact Markdown source, so that I can find and edit the text.
+42. As a coding agent, I want to reply, resolve and reopen, so that I report what I did where the writer will see it.
+43. As a coding agent, I want to start threads on quoted text, with ambiguous quotes refused, so that my question lands on the right text.
+44. As a coding agent, I want to open a document for review and return at once, so that my shell isn't blocked.
+45. As a coding agent, I want to wait until the writer sends a document's comments, so that I pick up each round of review without being told in chat.
+46. As a coding agent, I want JSON output, so that I can process threads reliably.
+47. As a coding agent, I want the same commands and output on every platform, so that one skill works everywhere.
 
 ## Decisions
 
@@ -219,6 +224,15 @@ Every editor produces the same source for the same keys. The choices:
   comment and the latest message, each after its author, `User` or `Agent`; the replies between, which the agent saw
   on earlier copies, are left to `margin thread`, so copying again after
   each round doesn't paste the whole conversation again.
+- Send to Agent gives the open comments, in the Copy Open Comments format,
+  to every agent waiting on the document with `margin wait`. Margin doesn't
+  start agents or look for them: it reaches only one that waits, which any
+  agent that can run a command can do. Nothing is queued, so the command is
+  unavailable, saying why, while no agent is waiting or no thread is open.
+- Beside the comment count the window shows the agent: waiting (Send to
+  Agent is available), working (from a send until an agent waits on the
+  document again) or neither. Working gives up after 30 minutes without
+  agent activity on the document.
 
 ### CLI
 
@@ -229,7 +243,7 @@ The CLI's help and the agent skill follow this section.
   current directory when they are under it.
 - Without files, `comments` looks at the documents with open threads under
   the current directory; `--all`, anywhere.
-- `comments` and `thread` take `--json`.
+- `comments`, `thread` and `wait` take `--json`.
 - The editor and the CLI can change a document's comments at the same time
   without losing either's changes.
 
@@ -276,6 +290,12 @@ The commands:
   ones.
 - `margin thread FILE ID` shows one thread, open or resolved, in full. The
   JSON is the one thread's object.
+- `margin wait FILE…` waits until the writer sends the comments on one of
+  the documents, prints them as Copy Open Comments does, followed by the
+  command to wait for the next round, and exits. `--json` prints the sent
+  documents' open threads as `comments --json` does. An agent that runs
+  commands in the background works on while it waits, and hears when the
+  command exits.
 - `margin reply FILE ID MESSAGE [--resolve]`, `margin resolve FILE ID
   [MESSAGE]`, `margin reopen FILE ID`, `margin delete FILE ID`.
 - `margin add FILE --quote TEXT MESSAGE` starts a thread on TEXT, which must

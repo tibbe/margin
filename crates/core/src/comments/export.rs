@@ -55,7 +55,7 @@ fn continued(body: &str, pad: &str) -> String {
 }
 
 /// A word the shell passes through as is, else single-quoted.
-fn shell_word(s: &str) -> String {
+pub fn shell_word(s: &str) -> String {
     let plain = |c: char| c.is_ascii_alphanumeric() || "-_./:@%+=,".contains(c);
     if !s.is_empty() && s.chars().all(plain) {
         s.to_string()

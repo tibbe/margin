@@ -2,6 +2,8 @@
 //! commands coding agents use to read and answer comments.
 
 use margin_core::comments::anchor::line_col;
+use margin_core::comments::export::{for_agent, shell_word};
+use margin_core::comments::handoff::Waiter;
 use margin_core::comments::{all_stores, read_doc, Author, Comments, Status, Store, Thread};
 use anyhow::{bail, Result};
 use chrono::{DateTime, Local, Utc};
@@ -16,6 +18,7 @@ Agent workflow:
   margin thread plan.md 3          read one thread, with all its replies
   margin reply plan.md 3 \"Done.\" --resolve
   margin add plan.md --quote \"retry budget\" \"Is 3 enough?\"
+  margin wait plan.md              wait until the writer sends the next round
 
 Threads are numbered per document. Locations are file:line:column, 1-based.
 Each message's author is \"user\" (from the editor) or \"agent\" (from margin).";
@@ -100,6 +103,15 @@ pub enum Command {
     /// Delete a thread.
     Delete { file: PathBuf, id: u64 },
 
+    /// Wait until the writer sends the comments on one of the documents
+    /// (Send to Agent in the editor), then print them and exit. Run it in
+    /// the background if you can, to keep working while you wait.
+    Wait {
+        #[arg(required = true)]
+        files: Vec<PathBuf>,
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 /// Loads a document's threads, re-anchored against the file as it is now.
@@ -408,6 +420,42 @@ pub fn run(cmd: Command) -> Result<i32> {
             let (l, c) = line_col(&text, range.start);
             let id = store.update(|cm| Ok(cm.add(&text, range.clone(), &message, Author::Agent)))?;
             print(&format!("Added #{id} at {}:{l}:{c}.", display_path(&store.doc)));
+        }
+        Command::Wait { files, json } => {
+            let waiters = files
+                .iter()
+                .map(|f| {
+                    let w = Waiter::start(f)?;
+                    if !w.doc().exists() {
+                        bail!("{} does not exist", w.doc().display());
+                    }
+                    Ok(w)
+                })
+                .collect::<Result<Vec<_>>>()?;
+            let sent = loop {
+                let sent: Vec<&Waiter> = waiters.iter().filter(|w| w.sent()).collect();
+                if !sent.is_empty() {
+                    break sent;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(250));
+            };
+            let docs = load_many(&sent.iter().map(|w| w.doc().to_path_buf()).collect::<Vec<_>>())?;
+            if json {
+                print(&threads_json(&docs, false)?);
+            } else {
+                let mut out = String::new();
+                for (doc, c, text) in &docs {
+                    let open: Vec<Thread> = c.threads.iter().filter(|t| t.is_open()).cloned().collect();
+                    out.push_str(&for_agent(doc, text, &open));
+                    out.push('\n');
+                }
+                let args: Vec<String> = files.iter().map(|f| shell_word(&f.display().to_string())).collect();
+                out.push_str(&format!(
+                    "Once you have answered them, run `margin wait {}` again for the next round.",
+                    args.join(" ")
+                ));
+                print(&out);
+            }
         }
         Command::Delete { file, id } => {
             let (store, _, _) = load(&file)?;

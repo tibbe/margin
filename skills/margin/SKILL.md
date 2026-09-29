@@ -1,6 +1,6 @@
 ---
 name: margin
-description: Read and answer the user's comments on Markdown documents with the `margin` CLI, and open documents in the Margin editor for review. Use when the user left comments on a doc, asks to address or resolve them, wants a doc opened for review, or refers to what they have open or selected in Margin.
+description: Read and answer the user's comments on Markdown documents with the `margin` CLI, and open documents in the Margin editor for review. Use when the user left comments on a doc, asks to address or resolve them, wants a doc opened for review or asks you to wait for their comments, or refers to what they have open or selected in Margin.
 ---
 
 # Margin
@@ -43,8 +43,22 @@ attached to their text as it moves. Read positions from a fresh
 When you have written a document the user should review (a plan, a spec):
 
 1. `margin open FILE`. It returns at once; the document appears in the editor.
-2. Tell the user it is open, and address the comments as above when they
-   say they have left them.
+2. Wait for the review, below, and tell the user the document is open and
+   you are waiting for them to send their comments.
+
+## Wait for the review
+
+`margin wait FILE` returns when the user clicks Send to Agent in the editor,
+and prints that round's open comments with their locations. Run it in the
+background when your shell tool can, so you are woken when it exits and
+stay free meanwhile; otherwise run it in the foreground. Each time it exits:
+
+1. Address the comments it printed, as above.
+2. Run `margin wait FILE` again for the next round.
+
+The review is over when the user says so. Until then, a round is done when
+every thread it printed ends with your reply and `margin wait` is running
+again: that is what tells the editor you are ready.
 
 ## Reference
 

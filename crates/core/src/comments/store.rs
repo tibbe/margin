@@ -471,6 +471,7 @@ mod tests {
 
     #[test]
     fn store_roundtrip_with_lock() {
+        let _env = crate::comments::DATA_DIR_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let dir = std::env::temp_dir().join(format!("margin-test-{}", std::process::id()));
         fs::create_dir_all(&dir).unwrap();
         unsafe { std::env::set_var("MARGIN_DATA_DIR", dir.join("data")) };

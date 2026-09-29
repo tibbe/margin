@@ -3,7 +3,7 @@
 //! position crosses [`Utf16Index`].
 
 use margin_core::comments::anchor::floor_char_boundary;
-use margin_core::comments::{self, activity, export, Author, Comments, Message, Status, Store, Thread};
+use margin_core::comments::{self, activity, export, handoff, Author, Comments, Message, Status, Store, Thread};
 use margin_core::md::edit::{self, BlockType, Plan};
 use margin_core::md::{self, search, Container, Doc, InlineKind, LineKind, Style};
 use std::ops::Range;
@@ -1181,6 +1181,48 @@ pub fn comments_for_agent(document: String, text: String, threads: Vec<CommentTh
         })
         .collect();
     export::for_agent(&PathBuf::from(document), &text, &threads)
+}
+
+// --- Agents -----------------------------------------------------------------
+
+#[derive(uniffi::Enum)]
+pub enum AgentState {
+    None,
+    Waiting,
+    Working,
+}
+
+/// The agents waiting on, or working on, one open document.
+#[derive(uniffi::Object)]
+pub struct DocAgents {
+    inner: Mutex<handoff::DocAgents>,
+}
+
+#[uniffi::export]
+impl DocAgents {
+    #[uniffi::constructor]
+    pub fn new(document: String) -> Arc<Self> {
+        Arc::new(DocAgents { inner: Mutex::new(handoff::DocAgents::new(Path::new(&document))) })
+    }
+
+    /// The state now; `now_ms` is any clock that only goes forward.
+    pub fn poll(&self, now_ms: i64) -> AgentState {
+        match self.inner.lock().unwrap().poll(now_ms) {
+            handoff::AgentState::None => AgentState::None,
+            handoff::AgentState::Waiting => AgentState::Waiting,
+            handoff::AgentState::Working => AgentState::Working,
+        }
+    }
+
+    /// Sends the open comments to the waiting agents; returns how many.
+    pub fn send(&self, now_ms: i64) -> Result<u32> {
+        Ok(self.inner.lock().unwrap().send(now_ms)? as u32)
+    }
+
+    /// An agent changed the document's threads.
+    pub fn activity(&self, now_ms: i64) {
+        self.inner.lock().unwrap().activity(now_ms);
+    }
 }
 
 #[cfg(test)]

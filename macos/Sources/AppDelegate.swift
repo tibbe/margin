@@ -394,6 +394,7 @@ func buildMainMenu() -> NSMenu {
         item("Delete", #selector(DocumentWindow.marginDeleteComment(_:))),
         .separator(),
         item("Copy Open Comments", #selector(DocumentWindow.marginCopyOpenComments(_:)), "c", [.command, .shift]),
+        item("Send to Agent", #selector(DocumentWindow.marginSendToAgent(_:)), ret, [.command, .shift]),
         item("Resolve All", #selector(DocumentWindow.marginResolveAll(_:))),
         item("Show Resolved", #selector(DocumentWindow.marginToggleShowResolved(_:))),
     ]))

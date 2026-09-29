@@ -7,6 +7,7 @@ use super::comments::CommentLayer;
 use super::find::FindBar;
 use super::view::DocView;
 use margin_core::comments::activity::{self, Change, Kind};
+use margin_core::comments::handoff::{AgentState, DocAgents};
 use margin_core::comments::{canonical_doc_path, data_dir, read_doc, Store};
 use margin_core::md::edit::{self, BlockType};
 use margin_core::md::InlineKind;
@@ -54,6 +55,12 @@ pub struct DocWindow {
     toasts: adw::ToastOverlay,
     title: adw::WindowTitle,
     count: gtk::Label,
+    send: gtk::Button,
+    working: adw::Spinner,
+    /// Agents waiting on the document, or working on what was sent.
+    agents: RefCell<Option<DocAgents>>,
+    agent_state: Cell<AgentState>,
+    agent_timer: RefCell<Option<glib::SourceId>>,
     /// The file's contents as we last read or wrote them (newlines as `\n`).
     last_saved: RefCell<String>,
     crlf: Cell<bool>,
@@ -191,6 +198,14 @@ pub fn open(app: &adw::Application, path: &Path, look: Look) -> Result<Rc<DocWin
     add.set_action_name(Some("win.add-comment"));
     add.set_tooltip_text(Some("Comment on selection (Ctrl+Alt+M)"));
     header.pack_end(&add);
+    let send = gtk::Button::from_icon_name("mail-send-symbolic");
+    send.set_action_name(Some("win.send-to-agent"));
+    header.pack_end(&send);
+    let working = adw::Spinner::new();
+    working.set_tooltip_text(Some("The agent is working on the comments you sent"));
+    working.update_property(&[gtk::accessible::Property::Label("Agent working")]);
+    working.set_visible(false);
+    header.pack_end(&working);
     let count = gtk::Label::new(None);
     count.add_css_class("comment-count");
     header.pack_end(&count);
@@ -219,6 +234,11 @@ pub fn open(app: &adw::Application, path: &Path, look: Look) -> Result<Rc<DocWin
         toasts,
         title,
         count,
+        send,
+        working,
+        agents: RefCell::new(None),
+        agent_state: Cell::new(AgentState::None),
+        agent_timer: RefCell::new(None),
         last_saved: RefCell::new(text.clone()),
         crlf: Cell::new(crlf),
         save_timer: RefCell::new(None),
@@ -244,6 +264,9 @@ pub fn open(app: &adw::Application, path: &Path, look: Look) -> Result<Rc<DocWin
     let weak = Rc::downgrade(&win);
     layer.set_on_activity(move |changes| {
         if let Some(w) = weak.upgrade() {
+            if let Some(a) = w.agents.borrow_mut().as_mut() {
+                a.activity(now_ms());
+            }
             w.notify_activity(changes);
         }
     });
@@ -267,6 +290,7 @@ pub fn open(app: &adw::Application, path: &Path, look: Look) -> Result<Rc<DocWin
     win.connect_signals();
     win.install_actions();
     win.watch();
+    win.follow_agents();
     win.update_title();
     WINDOWS.with(|w| w.borrow_mut().push(win.clone()));
     win.window.present();
@@ -334,6 +358,83 @@ impl DocWindow {
         };
         self.count.set_label(&label);
         self.count.set_visible(!label.is_empty());
+        self.show_agent();
+    }
+
+    /// Follows the agents on the document, which drafts have none of.
+    fn follow_agents(&self) {
+        self.agents
+            .replace((!self.draft.get()).then(|| DocAgents::new(&self.path())));
+        if self.agent_timer.borrow().is_none() {
+            let weak = self.weak();
+            let id = glib::timeout_add_local(Duration::from_secs(1), move || match weak.upgrade() {
+                Some(w) => {
+                    w.update_agent();
+                    glib::ControlFlow::Continue
+                }
+                None => glib::ControlFlow::Break,
+            });
+            self.agent_timer.replace(Some(id));
+        }
+        self.update_agent();
+    }
+
+    /// Looks at the document's agents again, and shows what they are doing.
+    pub fn update_agent(&self) {
+        let state = match self.agents.borrow_mut().as_mut() {
+            Some(a) => a.poll(now_ms()),
+            None => AgentState::None,
+        };
+        self.agent_state.set(state);
+        self.show_agent();
+    }
+
+    pub fn send_enabled(&self) -> bool {
+        self.window.lookup_action("send-to-agent").is_some_and(|a| a.is_enabled())
+    }
+
+    pub fn agent_state(&self) -> AgentState {
+        self.agent_state.get()
+    }
+
+    fn can_send(&self) -> bool {
+        self.agent_state.get() == AgentState::Waiting && self.layer.open_count() > 0
+    }
+
+    fn show_agent(&self) {
+        let state = self.agent_state.get();
+        self.working.set_visible(state == AgentState::Working);
+        if let Some(a) = self.window.lookup_action("send-to-agent").and_downcast::<gio::SimpleAction>() {
+            a.set_enabled(self.can_send());
+        }
+        self.send.set_tooltip_text(Some(match state {
+            AgentState::Waiting if self.layer.open_count() > 0 => "Send open comments to the agent (Ctrl+Shift+Enter)",
+            AgentState::Waiting => "An agent is waiting, but there are no open comments to send",
+            AgentState::Working => "The agent is working on the comments you sent",
+            AgentState::None => "No agent is waiting on this document. Ask your agent to run “margin wait” on it",
+        }));
+    }
+
+    /// Sends the open comments to the agents waiting on the document.
+    fn send_to_agent(&self) {
+        self.update_agent();
+        if !self.can_send() {
+            self.toast(if self.layer.open_count() == 0 { "No open comments" } else { "No agent is waiting" });
+            return;
+        }
+        self.save();
+        let sent = self.agents.borrow_mut().as_mut().map(|a| a.send(now_ms()));
+        match sent {
+            Some(Ok(0)) | None => self.toast("No agent is waiting"),
+            Some(Ok(n)) => {
+                let open = self.layer.open_count();
+                let what = if open == 1 { "1 open comment".to_string() } else { format!("{open} open comments") };
+                let to = if n == 1 { "the agent".to_string() } else { format!("{n} agents") };
+                self.toast(&format!("Sent {what} to {to}"));
+            }
+            Some(Err(e)) => self.toast(&format!("Could not send: {e:#}")),
+        }
+        self.update_agent();
     }
 
     /// The window is active, so the person sees its banners.
@@ -434,6 +535,9 @@ impl DocWindow {
                 }
                 for m in w.monitors.borrow().iter() {
                     m.cancel();
+                }
+                if let Some(id) = w.agent_timer.take() {
+                    id.remove();
                 }
                 WINDOWS.with(|ws| ws.borrow_mut().retain(|x| !Rc::ptr_eq(x, &w)));
             }
@@ -770,6 +874,7 @@ impl DocWindow {
             }
         });
         add("copy-comments", |w| w.copy_comments());
+        add("send-to-agent", |w| w.send_to_agent());
         add("resolve-all", |w| w.layer.resolve_all());
         add("next-comment", |w| w.layer.step(true));
         add("prev-comment", |w| w.layer.step(false));
@@ -1051,6 +1156,7 @@ impl DocWindow {
         self.last_saved.replace(text);
         self.layer.attach(new_store);
         self.watch();
+        self.follow_agents();
         self.update_title();
         Ok(())
     }
@@ -1212,6 +1318,7 @@ fn main_menu() -> gio::Menu {
 
     let comments = gio::Menu::new();
     comments.append(Some("Copy Open"), Some("win.copy-comments"));
+    comments.append(Some("Send to Agent"), Some("win.send-to-agent"));
     comments.append(Some("Resolve All"), Some("win.resolve-all"));
     comments.append(Some("Show Resolved"), Some("win.show-resolved"));
     menu.append_section(None, &comments);
@@ -1255,6 +1362,7 @@ pub const ACCELS: &[(&str, &[&str])] = &[
     ("win.open-link", &["<Alt>Return"]),
     ("win.add-comment", &["<Control><Alt>m"]),
     ("win.copy-comments", &["<Control><Shift>c"]),
+    ("win.send-to-agent", &["<Control><Shift>Return"]),
     ("win.next-comment", &["<Control><Alt>Down"]),
     ("win.prev-comment", &["<Control><Alt>Up"]),
     ("win.reply", &["<Control><Alt>r"]),
@@ -1359,6 +1467,7 @@ fn shortcuts_dialog() -> adw::ShortcutsDialog {
         &[
             ("Comment on selection", "<Control><Alt>m"),
             ("Copy open comments for an agent", "<Control><Shift>c"),
+            ("Send open comments to the waiting agent", "<Control><Shift>Return"),
             ("Next comment", "<Control><Alt>Down"),
             ("Previous comment", "<Control><Alt>Up"),
             ("Reply to focused comment", "<Control><Alt>r"),
@@ -1367,4 +1476,9 @@ fn shortcuts_dialog() -> adw::ShortcutsDialog {
         ],
     );
     dialog
+}
+
+/// Milliseconds on a clock that only goes forward.
+fn now_ms() -> i64 {
+    glib::monotonic_time() / 1000
 }

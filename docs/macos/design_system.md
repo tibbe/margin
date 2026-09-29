@@ -60,8 +60,19 @@ conventions of Apple's document apps (TextEdit, Pages, Notes).
   code block, with separator-colored lines between rows and columns. Cells
   have 10pt of padding at the sides and 6pt above and below. Text is at 94%
   of body size. A table wider than the page is cut off at its right edge.
-- Toolbar: the open-comment count and a comment button. Everything else is
-  in the menu bar.
+- Toolbar: the open-comment count, Send to Agent (`paperplane`) and a
+  comment button. Everything else is in the menu bar.
+- Send to Agent is enabled only while an agent is waiting and a thread is
+  open; its tooltip says which is missing ("No agent is waiting on this
+  document. Ask your agent to run “margin wait” on it."). While the agent
+  works on a send, the button is disabled and the count reads "2 open
+  comments · Agent working". A send says "Sent 2 open comments to the
+  agent" in a banner.
+- The toolbar holds only standard items and plain text. On the macOS 26
+  toolbar, a custom view such as a spinner is drawn inside the buttons'
+  glass or in a pill of its own, and a badge is always the system's
+  notification red, which reads as needing attention. So the agent's state
+  is words in the count, not a spinner or a badge.
 
 Open questions:
 
@@ -116,7 +127,7 @@ The standard menus, with Margin's commands where Mac users look for them:
   Link…; Indent, Outdent, Toggle Task, Open Link.
 - **Comments**: Comment on Selection, Reply, Next Comment, Previous Comment;
   Resolve (Reopen), Edit, Delete, for the focused thread (Edit edits its
-  comment); Copy Open Comments, Resolve All, Show Resolved.
+  comment); Copy Open Comments, Send to Agent, Resolve All, Show Resolved.
 - **View**: Show Markdown, Reflow Paragraphs; Larger Text, Smaller Text,
   Actual Size; Enter Full Screen.
 - **Window**: Minimize, Zoom, Bring All to Front.
@@ -189,6 +200,7 @@ modifier:
 | Open Link | Cmd+click under the pointer; Cmd+Option+Return at the cursor |
 | Comment on Selection | Cmd+Option+M |
 | Copy Open Comments | Cmd+Shift+C |
+| Send to Agent | Cmd+Shift+Return |
 | Next Comment, Previous Comment | Cmd+Option+Down, Cmd+Option+Up |
 | Reply, Post | Cmd+Option+R, Cmd+Return |
 | Leave Comment, close Find | Escape |

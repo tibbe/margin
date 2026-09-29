@@ -29,6 +29,11 @@ final class DocumentWindow: NSWindowController, NSWindowDelegate, NSToolbarDeleg
     private(set) var findBar: FindBar!
     let banner = Banner()
     private let countLabel = NSTextField(labelWithString: "")
+    /// Agents waiting on the document, or working on what was sent.
+    private var agents: DocAgents?
+    private(set) var agentState = AgentState.none
+    private var agentTimer: Timer?
+    private var sendItem: NSToolbarItem?
     /// The file's contents as last read or written (newlines as `\n`).
     private var lastSaved = ""
     private var crlf = false
@@ -136,7 +141,9 @@ final class DocumentWindow: NSWindowController, NSWindowDelegate, NSToolbarDeleg
         layer.onChange = { [weak self] in self?.updateTitle() }
         layer.toast = { [weak self] text, undo in self?.banner.show(text, undo: undo) }
         layer.onActivity = { [weak self] activity in
-            if let self { Notifier.shared.post(activity, in: self) }
+            guard let self else { return }
+            self.agents?.activity(nowMs: DocumentWindow.nowMs())
+            Notifier.shared.post(activity, in: self)
         }
         layer.beforeAdd = { [weak self] in self?.save() }
         layer.extraHighlights = { [weak self] in self?.findBar.highlights() ?? [] }
@@ -149,15 +156,17 @@ final class DocumentWindow: NSWindowController, NSWindowDelegate, NSToolbarDeleg
             }
             self.layer.refreshHighlights()
         }
+        followAgents()
     }
 
     // MARK: - Toolbar
 
     private static let countItem = NSToolbarItem.Identifier("count")
     private static let commentItem = NSToolbarItem.Identifier("comment")
+    private static let sendItem = NSToolbarItem.Identifier("send")
 
     func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        [.flexibleSpace, DocumentWindow.countItem, DocumentWindow.commentItem]
+        [.flexibleSpace, DocumentWindow.countItem, DocumentWindow.sendItem, DocumentWindow.commentItem]
     }
 
     func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
@@ -180,6 +189,17 @@ final class DocumentWindow: NSWindowController, NSWindowDelegate, NSToolbarDeleg
             item.isBordered = true
             item.target = self
             item.action = #selector(marginCommentOnSelection(_:))
+            return item
+        case DocumentWindow.sendItem:
+            let item = NSToolbarItem(itemIdentifier: id)
+            item.image = NSImage(systemSymbolName: "paperplane", accessibilityDescription: "Send to Agent")
+            item.label = "Send to Agent"
+            item.isBordered = true
+            item.autovalidates = false
+            item.target = self
+            item.action = #selector(marginSendToAgent(_:))
+            sendItem = item
+            showAgent()
             return item
         default:
             return nil
@@ -209,9 +229,58 @@ final class DocumentWindow: NSWindowController, NSWindowDelegate, NSToolbarDeleg
         // Documents save themselves: they are only "edited" when that
         // failed, or while untitled.
         window.isDocumentEdited = isDraft ? !textView.string.isEmpty : saveFailed
+        showAgent()
+    }
+
+    // MARK: - Agents
+
+    /// Milliseconds on a clock that only goes forward.
+    static func nowMs() -> Int64 { Int64(ProcessInfo.processInfo.systemUptime * 1000) }
+
+    /// Follows the agents on the document, which drafts have none of.
+    private func followAgents() {
+        agents = isDraft ? nil : DocAgents(document: path)
+        if agentTimer == nil {
+            agentTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
+                self?.updateAgent()
+            }
+        }
+        updateAgent()
+    }
+
+    /// The toolbar's Send to Agent button is enabled.
+    var sendButtonEnabled: Bool { sendItem?.isEnabled ?? false }
+    var countText: String { countLabel.stringValue }
+
+    private var canSend: Bool { agentState == .waiting && layer.openCount > 0 }
+
+    #if SCRIPTING
+    func updateAgentNow() { updateAgent() }
+    #endif
+
+    /// Looks at the document's agents again, and shows what they are doing.
+    private func updateAgent() {
+        agentState = agents?.poll(nowMs: DocumentWindow.nowMs()) ?? .none
+        showAgent()
+    }
+
+    /// The comment count, and what the agent is doing, in the toolbar.
+    private func showAgent() {
         let open = layer.openCount, resolved = layer.resolvedCount
-        countLabel.stringValue = open == 0 ? (resolved == 0 ? "" : "\(resolved) resolved") : (open == 1 ? "1 open comment" : "\(open) open comments")
+        var parts = [open == 0 ? (resolved == 0 ? "" : "\(resolved) resolved") : (open == 1 ? "1 open comment" : "\(open) open comments")]
+        if agentState == .working { parts.append("Agent working") }
+        countLabel.stringValue = parts.filter { !$0.isEmpty }.joined(separator: " · ")
         countLabel.sizeToFit()
+        guard let item = sendItem else { return }
+        item.isEnabled = canSend
+        switch agentState {
+        case .waiting:
+            item.toolTip = layer.openCount > 0 ? "Send Open Comments to the Agent (⇧⌘↩)" : "An agent is waiting, but there are no open comments to send."
+        case .working:
+            item.toolTip = "The agent is working on the comments you sent."
+        case .none:
+            item.toolTip = "No agent is waiting on this document. Ask your agent to run “margin wait” on it."
+        }
     }
 
     // MARK: - Saving
@@ -602,6 +671,7 @@ final class DocumentWindow: NSWindowController, NSWindowDelegate, NSToolbarDeleg
         saveFailed = false
         layer.attach(try? CommentStore(document: canonical))
         watch()
+        followAgents()
         updateTitle()
         window?.invalidateRestorableState()
         NSDocumentController.shared.noteNewRecentDocumentURL(URL(fileURLWithPath: canonical))
@@ -694,6 +764,7 @@ final class DocumentWindow: NSWindowController, NSWindowDelegate, NSToolbarDeleg
         fileWatcher?.cancel()
         storeWatcher?.cancel()
         saveTimer?.invalidate()
+        agentTimer?.invalidate()
         holdTermination(false)
         onClose?(self)
     }
@@ -730,6 +801,24 @@ final class DocumentWindow: NSWindowController, NSWindowDelegate, NSToolbarDeleg
         pb.clearContents()
         pb.setString(text, forType: .string)
         banner.show(threads.count == 1 ? "Copied 1 open comment" : "Copied \(threads.count) open comments", undo: nil)
+    }
+
+    @objc func marginSendToAgent(_ sender: Any?) {
+        updateAgent()
+        guard canSend, let agents else {
+            banner.show(layer.openCount == 0 ? "No open comments" : "No agent is waiting", undo: nil)
+            return
+        }
+        save()
+        do {
+            let n = try agents.send(nowMs: DocumentWindow.nowMs())
+            let open = layer.openCount
+            let what = open == 1 ? "1 open comment" : "\(open) open comments"
+            banner.show(n == 0 ? "No agent is waiting" : "Sent \(what) to \(n == 1 ? "the agent" : "\(n) agents")", undo: nil)
+        } catch {
+            banner.show("Could not send: \(error.localizedDescription)", undo: nil)
+        }
+        updateAgent()
     }
 
     @objc func marginToggleShowMarkdown(_ sender: Any?) {
@@ -774,6 +863,9 @@ final class DocumentWindow: NSWindowController, NSWindowDelegate, NSToolbarDeleg
             return layer.active != nil
         case #selector(marginEditComment(_:)), #selector(marginDeleteComment(_:)):
             return layer.active != nil
+        case #selector(marginSendToAgent(_:)):
+            updateAgent()
+            return canSend
         case #selector(marginRevertToLastOpened(_:)):
             return textView.string != openedText
         case #selector(marginRename(_:)), #selector(marginMoveTo(_:)):

@@ -20,6 +20,7 @@
 //! $MARGIN_CLICK_FIFO`. Scripted steps call handlers directly and so miss
 //! bugs in how GTK routes pointer events; click through the real path when
 //! testing anything a mouse does.
+//! agent                    print the agent state and what the header shows
 //! background on|off       act as if the window were in the background, or
 //!                          back in front; notifications print
 //! size W H | wait MS | shot PATH | shot-window N PATH | dump | probe | sh CMD | quit
@@ -305,6 +306,10 @@ fn step(win: &DocWindow, line: &str) -> u64 {
             if !back {
                 win.clear_activity();
             }
+        }
+        "agent" => {
+            win.update_agent();
+            println!("agent {:?} | send {}", win.agent_state(), if win.send_enabled() { "enabled" } else { "disabled" });
         }
         "close" => win.window.close(),
         "shot-popover" => {

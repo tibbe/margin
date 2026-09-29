@@ -80,7 +80,12 @@ At a 16px (12pt) body, scaled with the text size:
 - **Header bar** (`AdwHeaderBar`): the file name as title (prefixed with `•`
   while unsaved) and its folder as subtitle (`~/…`, or "Not saved yet" for
   untitled documents). On the right: the open-comment count ("3 open
-  comments", "2 resolved"), a comment button, and the menu button.
+  comments", "2 resolved"), Send to Agent (`mail-send-symbolic`), a comment
+  button, and the menu button.
+- Send to Agent is insensitive unless an agent is waiting and a thread is
+  open; its tooltip says which is missing. While the agent works on a send,
+  an `AdwSpinner` sits before it. A send says "Sent 2 open comments to the
+  agent" in a toast.
 - The window manager's title is "name – Margin", for task switchers and the
   bar.
 - **Find** is a bar under the header: search field, match count, previous
@@ -129,7 +134,7 @@ used commands live here rather than in the header.
 - Format ▸ Normal Text, Heading 1–3; Bulleted List, Numbered List,
   Checklist, Quote, Code Block; Bold, Italic, Strikethrough, Inline Code,
   Link…
-- Copy Open, Resolve All, Show Resolved
+- Copy Open, Send to Agent, Resolve All, Show Resolved
 - Reflow Paragraphs, Show Markdown, Text Size ▸ Larger, Smaller, Reset;
   Fullscreen
 - Keyboard Shortcuts, About Margin
@@ -161,6 +166,7 @@ are GNOME's.
 | Open Link | Alt+Enter; Ctrl+click under the pointer |
 | Comment on Selection | Ctrl+Alt+M |
 | Copy Open Comments | Ctrl+Shift+C |
+| Send to Agent | Ctrl+Shift+Enter |
 | Next Comment, Previous Comment | Ctrl+Alt+Down, Ctrl+Alt+Up |
 | Reply, Post | Ctrl+Alt+R, Ctrl+Enter |
 | Leave Comment, close Find | Escape |

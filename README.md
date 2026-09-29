@@ -83,7 +83,10 @@ the bubble that appears in the margin), write, and press
 and <kbd>↑</kbd> step through threads. Resolved threads hide until you turn on
 *Show Resolved* in the menu. <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>C</kbd> copies
 the open comments as a list with `file:line:column` spans, to paste
-into a coding agent; *Resolve All* in the menu closes every open thread (with
+into a coding agent. When an agent is waiting on the document (`margin wait`),
+the send button in the header, or <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Enter</kbd>,
+hands it the open comments instead, and a spinner shows while it works on
+them. *Resolve All* in the menu closes every open thread (with
 Undo). Comments carry no author: one person comments, agents
 reply.
 
@@ -98,6 +101,7 @@ margin reply FILE ID "…" [--resolve]
 margin resolve FILE ID ["closing note"]
 margin add FILE --quote "text" "question"
 margin open FILE             show a document to the user (returns at once)
+margin wait FILE             wait until the user sends their comments, then print them
 ```
 
 `comments` takes `--json`. `margin --help` has the rest. The

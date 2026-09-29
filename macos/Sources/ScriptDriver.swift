@@ -43,6 +43,7 @@ import AppKit
 /// selection | undo-name | sh CMD | quit
 ///                           sh runs CMD in the document's folder, with the
 ///                           `margin` CLI on the PATH
+/// agent                     print the agent state and the toolbar's show of it
 /// background on|off         act as if Margin were in the background, or
 ///                           back with this window key; notifications print
 /// ```
@@ -462,6 +463,9 @@ enum ScriptDriver {
             } else {
                 print("menu \(arg): not found")
             }
+        case "agent":
+            w.updateAgentNow()
+            print("agent \(w.agentState) | send \(w.sendButtonEnabled ? "enabled" : "disabled") | count \(w.countText.isEmpty ? "-" : w.countText)")
         case "banner":
             print("banner \(w.banner.message ?? "none")")
         case "focus":
