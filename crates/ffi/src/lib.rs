@@ -804,6 +804,12 @@ pub enum CommentChange {
     Delete { id: u64 },
     /// Puts back a deleted thread (Undo).
     Restore { thread: CommentThread },
+    /// Replaces message `index`'s body (0 is the comment).
+    Edit { id: u64, index: u32, body: String },
+    /// Deletes message `index`; 0 deletes the thread.
+    DeleteMessage { id: u64, index: u32 },
+    /// Puts back a deleted reply at `index` (Undo).
+    InsertMessage { id: u64, index: u32, message: ThreadMessage },
 }
 
 #[derive(Debug, Clone, uniffi::Record)]
@@ -904,6 +910,12 @@ impl CommentStore {
                     }
                 }
                 CommentChange::Delete { id } => c.delete(*id)?,
+                CommentChange::Edit { id, index, body } => c.edit(*id, *index as usize, body)?,
+                CommentChange::DeleteMessage { id, index } => c.delete_message(*id, *index as usize)?,
+                CommentChange::InsertMessage { id, index, message } => {
+                    let m = Message { at: from_ms(message.at_ms), body: message.body.clone() };
+                    c.insert_message(*id, *index as usize, m)?
+                }
                 CommentChange::Restore { thread } => {
                     if c.thread(thread.id).is_none() {
                         let (s, e) = (bytes(thread.start), bytes(thread.end));

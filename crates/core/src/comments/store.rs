@@ -195,6 +195,40 @@ impl Comments {
         Ok(())
     }
 
+    /// Replaces the body of message `index` (0 is the comment).
+    pub fn edit(&mut self, id: u64, index: usize, body: &str) -> Result<()> {
+        if body.trim().is_empty() {
+            bail!("a comment can't be empty; delete it instead");
+        }
+        let t = self.thread_mut(id)?;
+        let Some(m) = t.messages.get_mut(index) else {
+            bail!("comment #{id} has no message {index}");
+        };
+        m.body = body.to_string();
+        Ok(())
+    }
+
+    /// Deletes message `index`; deleting the comment (0) deletes the thread.
+    pub fn delete_message(&mut self, id: u64, index: usize) -> Result<()> {
+        if index == 0 {
+            return self.delete(id);
+        }
+        let t = self.thread_mut(id)?;
+        if index >= t.messages.len() {
+            bail!("comment #{id} has no message {index}");
+        }
+        t.messages.remove(index);
+        Ok(())
+    }
+
+    /// Puts a deleted reply back at `index` (Undo).
+    pub fn insert_message(&mut self, id: u64, index: usize, message: Message) -> Result<()> {
+        let t = self.thread_mut(id)?;
+        let i = index.clamp(1, t.messages.len());
+        t.messages.insert(i, message);
+        Ok(())
+    }
+
     pub fn open_count(&self) -> usize {
         self.threads.iter().filter(|t| t.is_open()).count()
     }
@@ -389,6 +423,27 @@ mod tests {
         let gone = "Intro.\n";
         c.sync(gone);
         assert!(c.thread(1).unwrap().anchor.detached);
+    }
+
+    #[test]
+    fn edit_and_delete_messages() {
+        let mut c = Comments::new("/tmp/x.md".into());
+        let text = "hello world\n";
+        let id = c.add(text, 6..11, "Why?");
+        c.reply(id, "Because.").unwrap();
+        c.reply(id, "Fixed.").unwrap();
+        c.edit(id, 0, "Why not?").unwrap();
+        assert_eq!(c.thread(id).unwrap().messages[0].body, "Why not?");
+        assert!(c.edit(id, 0, "  ").is_err());
+        assert!(c.edit(id, 3, "x").is_err());
+        let reply = c.thread(id).unwrap().messages[1].clone();
+        c.delete_message(id, 1).unwrap();
+        let bodies = |c: &Comments| c.thread(id).unwrap().messages.iter().map(|m| m.body.clone()).collect::<Vec<_>>();
+        assert_eq!(bodies(&c), ["Why not?", "Fixed."]);
+        c.insert_message(id, 1, reply).unwrap();
+        assert_eq!(bodies(&c), ["Why not?", "Because.", "Fixed."]);
+        c.delete_message(id, 0).unwrap();
+        assert!(c.thread(id).is_none());
     }
 
     #[test]
