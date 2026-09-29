@@ -704,6 +704,9 @@ final class DocumentWindow: NSWindowController, NSWindowDelegate, NSToolbarDeleg
     }
 
     @objc func marginReply(_ sender: Any?) { layer.focusReply() }
+    @objc func marginResolveComment(_ sender: Any?) { layer.toggleResolvedFocused() }
+    @objc func marginEditComment(_ sender: Any?) { layer.editFocused() }
+    @objc func marginDeleteComment(_ sender: Any?) { if let a = layer.active { layer.delete(a) } }
     @objc func marginNextComment(_ sender: Any?) { layer.step(forward: true) }
     @objc func marginPreviousComment(_ sender: Any?) { layer.step(forward: false) }
     @objc func marginResolveAll(_ sender: Any?) { layer.resolveAll() }
@@ -758,6 +761,11 @@ final class DocumentWindow: NSWindowController, NSWindowDelegate, NSToolbarDeleg
         case #selector(marginCommentOnSelection(_:)):
             return layer.store != nil && !layer.hasFocus
         case #selector(marginReply(_:)):
+            return layer.active != nil
+        case #selector(marginResolveComment(_:)):
+            item.title = layer.focusedThread?.resolved == true ? "Reopen" : "Resolve"
+            return layer.active != nil
+        case #selector(marginEditComment(_:)), #selector(marginDeleteComment(_:)):
             return layer.active != nil
         case #selector(marginRevertToLastOpened(_:)):
             return textView.string != openedText

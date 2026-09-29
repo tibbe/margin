@@ -1,0 +1,38 @@
+#1 open [0,5) ["Why?", "Because.", "Fixed."]
+active 1
+buttons 1 shown
+buttons 1 hidden
+buttons 1 shown
+card-menu 1 0: Edit, Delete
+card-context 1 0: Reply, Resolve, —, Edit, Delete
+card-menu 1 0: Edit, Delete
+focus Optional(Margin.ComposerTextView)
+#1 open [0,5) ["Why?", "Because.", "Fixed."]
+active 1
+card-context 1 0: Reply, Resolve, —, Edit, Delete
+#1 open [0,5) ["Why not?", "Because.", "Fixed."]
+active 1
+undo Undo Edit
+#1 open [0,5) ["Why?", "Because.", "Fixed."]
+active 1
+#1 open [0,5) ["Why not?", "Because.", "Fixed."]
+active 1
+card-menu 1 0: Edit, Delete
+#1 open [0,5) ["Why not?", "Because.", "Fixed."]
+active 1
+menu Comments > Resolve: enabled
+menu Comments > Edit: enabled
+menu Comments > Delete: enabled
+card-context 1 1: Reply, Resolve, —, Edit, Delete
+#1 open [0,5) ["Why not?", "Fixed."]
+active 1
+banner Reply deleted
+undo Undo Delete Reply
+#1 open [0,5) ["Why not?", "Because.", "Fixed."]
+active 1
+card-menu 1 0: Edit, Delete
+active none
+banner Comment deleted
+undo Undo Delete Comment
+#1 open [0,5) ["Why not?", "Because.", "Fixed."]
+active 1

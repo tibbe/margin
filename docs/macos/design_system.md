@@ -26,6 +26,17 @@ conventions of Apple's document apps (TextEdit, Pages, Notes).
   or focus ring. Below a hairline, bezel-less text buttons: Cancel in the
   secondary label color, Comment or Reply in the accent color, greyed while
   empty.
+- Each message has a row with its time and a "…" button (`ellipsis.circle`)
+  whose menu has Edit and Delete; the comment's row also has Resolve
+  (`checkmark.circle`, or `arrow.uturn.backward.circle` to reopen). The
+  symbols are at the small system font's size, each in a 20×20pt target
+  (the HIG's macOS minimum). All the card's buttons show while the pointer
+  is over the card or the card is focused, as Mail's and Reminders' hover
+  buttons do; hidden, they keep their room and stay reachable with
+  VoiceOver.
+- Edit turns the message into a box on the card holding its text, with
+  Cancel and Save. Undo is named for the step: Undo Edit, Undo Delete
+  Reply, Undo Delete Comment.
 - Code blocks sit in a tinted box with a 6pt radius; quote bars are rounded.
 - Toolbar: the open-comment count and a comment button. Everything else is
   in the menu bar.
@@ -83,7 +94,8 @@ The standard menus, with Margin's commands where Mac users look for them:
   Checklist, Quote, Code Block; Bold, Italic, Strikethrough, Inline Code,
   Link…; Indent, Outdent, Toggle Task, Open Link.
 - **Comments**: Comment on Selection, Reply, Next Comment, Previous Comment;
-  Copy Open Comments, Resolve All, Show Resolved.
+  Resolve (Reopen), Edit, Delete, for the focused thread (Edit edits its
+  comment); Copy Open Comments, Resolve All, Show Resolved.
 - **View**: Show Markdown, Reflow Paragraphs; Larger Text, Smaller Text,
   Actual Size; Enter Full Screen.
 - **Window**: Minimize, Zoom, Bring All to Front.
@@ -91,7 +103,9 @@ The standard menus, with Margin's commands where Mac users look for them:
   the menus.
 
 The text's right-click menu starts with Comment on Selection, above the
-system's own items, as in Pages and Preview.
+system's own items, as in Pages and Preview. A card's right-click menu has
+Reply and Resolve (Reopen) for the thread, then Edit and Delete for the
+message clicked.
 
 ## Documents
 

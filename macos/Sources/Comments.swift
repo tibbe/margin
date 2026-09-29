@@ -220,7 +220,11 @@ final class CommentLayer {
         let id = t.id
         card.onClick = { [weak self] in self?.activate(id, scroll: false, focusCard: true) }
         card.onResolve = { [weak self] r in self?.setResolved(id, r) }
-        card.onDelete = { [weak self] in self?.delete(id) }
+        card.onDeleteMessage = { [weak self] i in self?.deleteMessage(id, i) }
+        card.onEdit = { [weak self] i, body in self?.edit(id, i, body) }
+        card.onFocusThread = { [weak self] in
+            if self?.active != id { self?.activate(id, scroll: false) }
+        }
         card.onReply = { [weak self] body in self?.reply(id, body) }
         card.onResize = { [weak self] in self?.queueRelayout() }
         card.onLeave = { [weak self] in
@@ -355,6 +359,56 @@ final class CommentLayer {
         update(.restore(thread: thread))
         view.undoManager?.registerUndo(withTarget: self) { $0.delete(thread.id) }
         view.undoManager?.setActionName("Delete Comment")
+        showUndone(thread.id)
+    }
+
+    /// Deletes message `index` of a thread; the comment (0) takes the thread.
+    func deleteMessage(_ id: UInt64, _ index: Int) {
+        if index == 0 { return delete(id) }
+        guard let it = items.first(where: { $0.thread.id == id }), index < it.thread.messages.count else { return }
+        let old = it.thread.messages[index]
+        guard update(.deleteMessage(id: id, index: UInt32(index))) != nil else { return }
+        undoable("Delete Reply", banner: "Reply deleted") { $0.restoreMessage(id, index, old) }
+    }
+
+    private func restoreMessage(_ id: UInt64, _ index: Int, _ message: ThreadMessage) {
+        update(.insertMessage(id: id, index: UInt32(index), message: message))
+        view.undoManager?.registerUndo(withTarget: self) { $0.deleteMessage(id, index) }
+        view.undoManager?.setActionName("Delete Reply")
+        showUndone(id)
+    }
+
+    /// Replaces message `index`'s text; undo puts the old text back.
+    func edit(_ id: UInt64, _ index: Int, _ body: String) {
+        guard let it = items.first(where: { $0.thread.id == id }), index < it.thread.messages.count else { return }
+        let old = it.thread.messages[index].body
+        guard update(.edit(id: id, index: UInt32(index), body: body)) != nil else { return }
+        let undoing = view.undoManager?.isUndoing ?? false
+        view.undoManager?.registerUndo(withTarget: self) { $0.edit(id, index, old) }
+        view.undoManager?.setActionName("Edit")
+        if undoing || view.undoManager?.isRedoing == true { showUndone(id) }
+    }
+
+    /// After an undo or redo: the thread it changed, focused and in view.
+    private func showUndone(_ id: UInt64) {
+        guard items.contains(where: { $0.thread.id == id && visible($0.thread) }) else { return }
+        activate(id, scroll: true)
+    }
+
+    /// The focused thread.
+    var focusedThread: CommentThread? {
+        active.flatMap { a in items.first { $0.thread.id == a }?.thread }
+    }
+
+    /// Resolves the focused thread, or reopens it (the Comments menu).
+    func toggleResolvedFocused() {
+        if let t = focusedThread { setResolved(t.id, !t.resolved) }
+    }
+
+    /// Starts editing the focused thread's comment (the Comments menu).
+    func editFocused() {
+        guard let a = active, let it = items.first(where: { $0.thread.id == a }) else { return }
+        it.card.beginEdit(0)
     }
 
     /// Focuses a thread: its card moves beside its text and its highlight

@@ -21,6 +21,10 @@ import AppKit
 ///                           put the cursor after (before) TEXT, or select it
 /// click-text TEXT           click in the middle of TEXT (cmd-click-text too)
 /// click-card ID | click-resolve ID | click-add | click-checkbox N
+/// card-menu ID N [ITEM] | card-context ID N [ITEM]
+///                           message N's "…" menu, or the card's right-click
+///                           menu on it: print the items, or choose ITEM
+/// hover-card ID [off]       the pointer onto (off) a card; print its buttons
 /// click X Y                 click at view coordinates of the document view
 /// action SELECTOR           send an action up the responder chain
 /// compose TEXT              type into the focused comment box
@@ -30,10 +34,10 @@ import AppKit
 /// reset TEXT              replace the document (not undoable), cursor at end
 /// save | external TEXT | rename NAME   save; change the file as an agent; rename
 /// path | title | stored | windows      print file, title, stored threads, windows
-/// menu TITLE               validate a menu item; print enabled and checked
+/// menu TITLE | menu A > B   validate a menu item; print enabled and checked
 /// appearance light|dark   the app's appearance, whatever the system's
 /// size W H | wait MS | shot PATH | dump | comments | banner | focus
-/// selection | sh CMD | quit
+/// selection | undo-name | sh CMD | quit
 ///                           sh runs CMD in the document's folder
 /// ```
 ///
@@ -210,6 +214,35 @@ enum ScriptDriver {
             if let it = w.layer.items.first(where: { $0.thread.id == UInt64(arg) ?? 0 }), let b = it.card.resolveButton {
                 click(b, at: NSPoint(x: b.bounds.midX, y: b.bounds.midY))
             }
+        case "card-menu", "card-context":
+            // Message N's "…" menu, or the card's right-click menu on message N:
+            // prints its items, and with ITEM chooses it as AppKit would.
+            let p = arg.split(separator: " ", maxSplits: 2).map(String.init)
+            guard p.count >= 2, let it = w.layer.items.first(where: { $0.thread.id == UInt64(p[0]) ?? 0 }),
+                  let n = Int(p[1]), let r = it.card.messageRect(n) else { print("script: no message \(arg)"); break }
+            let menu: NSMenu?
+            if cmd == "card-menu" {
+                menu = it.card.messageMenu(n)
+            } else {
+                let at = it.card.convert(NSPoint(x: r.midX, y: r.midY), to: nil)
+                menu = NSEvent.mouseEvent(with: .rightMouseDown, location: at, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+                                          windowNumber: win.windowNumber, context: nil, eventNumber: 1, clickCount: 1, pressure: 1)
+                    .flatMap { it.card.menu(for: $0) }
+            }
+            guard let menu else { break }
+            print("\(cmd) \(p[0]) \(n): \(menu.items.map { $0.isSeparatorItem ? "—" : $0.title }.joined(separator: ", "))")
+            if p.count == 3, let item = menu.items.first(where: { $0.title == p[2] }), let action = item.action {
+                NSApp.sendAction(action, to: item.target, from: item)
+            }
+        case "hover-card":
+            // The pointer moves onto (or off) card ID; prints whether its buttons show.
+            let p = arg.split(separator: " ").map(String.init)
+            if let it = w.layer.items.first(where: { $0.thread.id == UInt64(p.first ?? "") ?? 0 }) {
+                let e = NSEvent.enterExitEvent(with: p.last == "off" ? .mouseExited : .mouseEntered, location: .zero, modifierFlags: [],
+                                               timestamp: 0, windowNumber: win.windowNumber, context: nil, eventNumber: 0, trackingNumber: 0, userData: nil)!
+                if p.last == "off" { it.card.mouseExited(with: e) } else { it.card.mouseEntered(with: e) }
+                print("buttons \(p[0]) \(it.card.showsButtons ? "shown" : "hidden")")
+            }
         case "context-menu":
             // The text's right-click menu at the selection: prints its first two
             // items, and with an argument chooses that item as AppKit would.
@@ -325,6 +358,8 @@ enum ScriptDriver {
                 let body = view.visibleText(NSRange(location: Int(line.contentStart), length: Int(line.end - line.contentStart)))
                 print("marker \(body.debugDescription): \(abs(off) < 0.5 ? "on its text" : "off by \(off)")")
             }
+        case "undo-name":
+            print("undo \(view.undoManager?.undoMenuItemTitle ?? "none")")
         case "selection":
             let r = view.selectedRange()
             print("selection \(r.location) \(r.length)")
@@ -337,14 +372,18 @@ enum ScriptDriver {
             print("active \(w.layer.active.map(String.init) ?? "none")")
         case "menu":
             // Validates a menu item as AppKit does before showing the menu.
-            func find(_ m: NSMenu) -> NSMenuItem? {
+            // TITLE, or a path like `Comments > Edit`.
+            let path = arg.components(separatedBy: " > ")
+            func find(_ m: NSMenu, _ title: String) -> NSMenuItem? {
                 for i in m.items {
-                    if i.title == arg { return i }
-                    if let sub = i.submenu, let f = find(sub) { return f }
+                    if i.title == title { return i }
+                    if let sub = i.submenu, let f = find(sub, title) { return f }
                 }
                 return nil
             }
-            if let item = find(NSApp.mainMenu!) {
+            var menu: NSMenu? = NSApp.mainMenu
+            for t in path.dropLast() { menu = menu.flatMap { find($0, t) }?.submenu }
+            if let item = menu.flatMap({ find($0, path.last!) }) {
                 let enabled: Bool
                 if NSApp.isActive {
                     item.menu?.update()

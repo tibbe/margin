@@ -1,0 +1,86 @@
+# Messages: each one's menu edits or deletes it, deleting the comment
+# deletes the thread, and undo puts things back.
+reset First line.\nSecond line.\n
+save
+select First
+key cmd-opt-m
+compose Why?
+key cmd-enter
+wait 100
+action marginReply:
+wait 100
+compose Because.
+key cmd-enter
+wait 100
+action marginReply:
+wait 100
+compose Fixed.
+key cmd-enter
+wait 100
+comments
+# The buttons show on hover, or while the card is focused.
+find Second
+wait 100
+hover-card 1
+hover-card 1 off
+click-card 1
+wait 100
+hover-card 1 off
+# The "…" menu and the right-click menu on each message.
+card-menu 1 0
+card-context 1 0
+# Edit the comment on the card; Escape cancels, Save keeps.
+card-menu 1 0 Edit
+wait 100
+focus
+key cmd-a
+compose Why not?
+key escape
+wait 100
+comments
+card-context 1 0 Edit
+wait 100
+key cmd-a
+compose Why not?
+key cmd-enter
+wait 100
+comments
+undo-name
+key cmd-z
+wait 100
+comments
+key cmd-shift-z
+wait 100
+comments
+# An empty edit can't be saved.
+card-menu 1 0 Edit
+wait 100
+key cmd-a
+key backspace
+key cmd-enter
+wait 100
+key escape
+wait 100
+comments
+# The Comments menu acts on the focused thread.
+menu Comments > Resolve
+menu Comments > Edit
+menu Comments > Delete
+# Deleting a reply, then the comment (the thread); undo brings each back.
+card-context 1 1 Delete
+wait 100
+comments
+banner
+undo-name
+key cmd-z
+wait 100
+comments
+card-menu 1 0 Delete
+wait 100
+comments
+banner
+undo-name
+key cmd-z
+wait 100
+comments
+quit

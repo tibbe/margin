@@ -286,6 +286,25 @@ class GutterCard: NSView {
         updateShadow()
     }
 
+    /// Whether the pointer is over the card.
+    private(set) var hovered = false {
+        didSet { if oldValue != hovered { hoverChanged() } }
+    }
+
+    func hoverChanged() {}
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        for t in trackingAreas { removeTrackingArea(t) }
+        addTrackingArea(NSTrackingArea(rect: .zero, options: [.mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect], owner: self))
+        if let w = window {
+            hovered = bounds.contains(convert(w.mouseLocationOutsideOfEventStream, from: nil))
+        }
+    }
+
+    override func mouseEntered(with event: NSEvent) { hovered = true }
+    override func mouseExited(with event: NSEvent) { hovered = false }
+
     /// The height the card needs at `width`.
     func height(forWidth width: CGFloat) -> CGFloat {
         let inner = width - GutterCard.pad.left - GutterCard.pad.right
@@ -311,23 +330,57 @@ class GutterCard: NSView {
     }
 }
 
+/// An icon button for a card's rows: the symbol at the size of the small
+/// text beside it, in a click target of the minimum control size.
+private func rowButton(_ symbol: String, _ label: String, _ target: AnyObject, _ action: Selector) -> NSButton {
+    let config = NSImage.SymbolConfiguration(pointSize: NSFont.smallSystemFontSize, weight: .regular, scale: .medium)
+    let image = NSImage(systemSymbolName: symbol, accessibilityDescription: label)!.withSymbolConfiguration(config)!
+    let b = NSButton(image: image, target: target, action: action)
+    b.isBordered = false
+    b.imagePosition = .imageOnly
+    b.toolTip = label
+    b.contentTintColor = .secondaryLabelColor
+    b.translatesAutoresizingMaskIntoConstraints = false
+    NSLayoutConstraint.activate([
+        b.widthAnchor.constraint(equalToConstant: 20),
+        b.heightAnchor.constraint(equalToConstant: 20),
+    ])
+    return b
+}
+
 /// A comment thread's card: the comment, its replies, and a reply box.
+/// Each message has a row with its time and a "…" menu (Edit, Delete); the
+/// comment's row also has Resolve. The rows' buttons show while the
+/// pointer is over the card or the card is focused.
 final class ThreadCard: GutterCard {
     let id: UInt64
     let composer = Composer(placeholder: "Reply", submitLabel: "Reply", alwaysShowButtons: false)
     /// The hairline between the thread and the reply box.
     private let composerRule = NSBox()
     private var resolved = false
+    private var thread: CommentThread
+    /// The message being edited, and its text box.
+    private var editing: (index: Int, composer: Composer)?
+    /// Every row's buttons, shown on hover or focus.
+    private var rowButtons: [NSButton] = []
+    /// Each message's views, top to bottom, to find the message a click is on.
+    private var messageViews: [[NSView]] = []
+    /// The message the last menu was opened for.
+    private var menuIndex = 0
     var onResolve: ((Bool) -> Void)?
-    var onDelete: (() -> Void)?
+    var onDeleteMessage: ((Int) -> Void)?
+    var onEdit: ((Int, String) -> Void)?
     var onReply: ((String) -> Void)?
     var onResize: (() -> Void)?
+    /// Editing a message focuses its thread.
+    var onFocusThread: (() -> Void)?
     /// Leaving the reply box: focus goes back to the text.
     var onLeave: (() -> Void)?
     private(set) var resolveButton: NSButton?
 
     init(thread: CommentThread) {
         id = thread.id
+        self.thread = thread
         super.init(frame: .zero)
         composer.onSubmit = { [weak self] body in
             self?.onReply?(body)
@@ -343,63 +396,72 @@ final class ThreadCard: GutterCard {
 
     required init?(coder: NSCoder) { fatalError() }
 
-    /// Rebuilds the card's contents, keeping any reply being written.
+    /// Rebuilds the card's contents, keeping any reply or edit being written.
     func update(_ thread: CommentThread) {
+        self.thread = thread
         resolved = thread.resolved
+        if let e = editing, e.index >= thread.messages.count { editing = nil }
         for v in stack.arrangedSubviews {
             stack.removeArrangedSubview(v)
             v.removeFromSuperview()
         }
+        rowButtons = []
+        messageViews = []
         let small = NSFont.systemFont(ofSize: NSFont.smallSystemFontSize)
-        let header = NSStackView()
-        header.orientation = .horizontal
-        header.spacing = 2
-        let time = NSTextField(labelWithString: thread.messages.first.map { timeLabel(ms: $0.atMs) } ?? "")
-        time.font = small
-        time.textColor = .secondaryLabelColor
-        header.addArrangedSubview(time)
-        header.addArrangedSubview(NSView())
-        let resolve = NSButton(image: NSImage(systemSymbolName: thread.resolved ? "arrow.uturn.backward.circle" : "checkmark.circle",
-                                              accessibilityDescription: thread.resolved ? "Reopen" : "Resolve")!,
-                               target: self, action: #selector(resolveClicked))
-        resolve.isBordered = false
-        resolve.toolTip = thread.resolved ? "Reopen" : "Resolve"
-        resolve.contentTintColor = .secondaryLabelColor
-        resolveButton = resolve
-        let more = NSButton(image: NSImage(systemSymbolName: "ellipsis.circle", accessibilityDescription: "More")!,
-                            target: self, action: #selector(moreClicked(_:)))
-        more.isBordered = false
-        more.toolTip = "More"
-        more.contentTintColor = .secondaryLabelColor
-        header.addArrangedSubview(resolve)
-        header.addArrangedSubview(more)
-        stack.addArrangedSubview(header)
-        header.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
-
-        if thread.detached {
-            let q = wrappingLabel("“\(thread.quote.trimmingCharacters(in: .whitespacesAndNewlines))”",
-                                  font: NSFontManager.shared.convert(NSFont.systemFont(ofSize: NSFont.smallSystemFontSize), toHaveTrait: .italicFontMask),
-                                  color: .secondaryLabelColor)
-            q.attributedStringValue = NSAttributedString(string: q.stringValue, attributes: [
-                .font: q.font!, .foregroundColor: NSColor.secondaryLabelColor,
-                .strikethroughStyle: NSUnderlineStyle.single.rawValue,
-            ])
-            q.toolTip = "The commented text was deleted"
-            stack.addArrangedSubview(q)
-        }
         let bodyFont = NSFont.systemFont(ofSize: NSFont.systemFontSize)
         for (i, m) in thread.messages.enumerated() {
+            var views: [NSView] = []
             if i > 0 {
                 let sep = NSBox()
                 sep.boxType = .separator
                 stack.addArrangedSubview(sep)
                 sep.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
-                let t = NSTextField(labelWithString: timeLabel(ms: m.atMs))
-                t.font = small
-                t.textColor = .secondaryLabelColor
-                stack.addArrangedSubview(t)
             }
-            stack.addArrangedSubview(wrappingLabel(m.body, font: bodyFont))
+            let row = NSStackView()
+            row.orientation = .horizontal
+            row.spacing = 2
+            let time = NSTextField(labelWithString: timeLabel(ms: m.atMs))
+            time.font = small
+            time.textColor = .secondaryLabelColor
+            row.addArrangedSubview(time)
+            row.addArrangedSubview(NSView())
+            if i == 0 {
+                let resolve = rowButton(thread.resolved ? "arrow.uturn.backward.circle" : "checkmark.circle",
+                                        thread.resolved ? "Reopen" : "Resolve", self, #selector(resolveClicked))
+                resolveButton = resolve
+                row.addArrangedSubview(resolve)
+                rowButtons.append(resolve)
+            }
+            let more = rowButton("ellipsis.circle", "More", self, #selector(moreClicked(_:)))
+            more.tag = i
+            row.addArrangedSubview(more)
+            rowButtons.append(more)
+            stack.addArrangedSubview(row)
+            row.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
+            views.append(row)
+
+            if i == 0 && thread.detached {
+                let q = wrappingLabel("“\(thread.quote.trimmingCharacters(in: .whitespacesAndNewlines))”",
+                                      font: NSFontManager.shared.convert(small, toHaveTrait: .italicFontMask),
+                                      color: .secondaryLabelColor)
+                q.attributedStringValue = NSAttributedString(string: q.stringValue, attributes: [
+                    .font: q.font!, .foregroundColor: NSColor.secondaryLabelColor,
+                    .strikethroughStyle: NSUnderlineStyle.single.rawValue,
+                ])
+                q.toolTip = "The commented text was deleted"
+                stack.addArrangedSubview(q)
+                views.append(q)
+            }
+            if let e = editing, e.index == i {
+                stack.addArrangedSubview(e.composer)
+                e.composer.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
+                views.append(e.composer)
+            } else {
+                let body = wrappingLabel(m.body, font: bodyFont)
+                stack.addArrangedSubview(body)
+                views.append(body)
+            }
+            messageViews.append(views)
         }
         if thread.resolved {
             let when = thread.resolvedAtMs.map { timeLabel(ms: $0) } ?? ""
@@ -415,16 +477,31 @@ final class ThreadCard: GutterCard {
         composer.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
         alphaValue = thread.resolved ? 0.7 : 1
         syncComposer()
+        syncButtons()
         onResize?()
     }
 
     override func activeChanged() {
         super.activeChanged()
         syncComposer()
+        syncButtons()
+    }
+
+    override func hoverChanged() {
+        syncButtons()
+    }
+
+    /// Whether the rows' buttons show. Hidden ones keep their room, so the
+    /// card doesn't move, and stay reachable with VoiceOver.
+    var showsButtons: Bool { hovered || active }
+
+    private func syncButtons() {
+        let alpha: CGFloat = showsButtons ? 1 : 0
+        for b in rowButtons { b.alphaValue = alpha }
     }
 
     private func syncComposer() {
-        let show = (active && !resolved) || !composer.textView.string.isEmpty
+        let show = editing == nil && ((active && !resolved) || !composer.textView.string.isEmpty)
         composer.isHidden = !show
         composerRule.isHidden = !show
     }
@@ -434,11 +511,67 @@ final class ThreadCard: GutterCard {
         return r.isDescendant(of: self)
     }
 
+    /// Edits message `index` on the card: its text in a box, with Save.
+    func beginEdit(_ index: Int) {
+        guard index < thread.messages.count else { return }
+        onFocusThread?()
+        if editing?.index != index {
+            let c = Composer(placeholder: index == 0 ? "Comment" : "Reply", submitLabel: "Save", alwaysShowButtons: true)
+            c.text = thread.messages[index].body
+            c.onSubmit = { [weak self] body in
+                guard let self else { return }
+                let old = self.thread.messages[index].body
+                self.endEdit()
+                if body != old { self.onEdit?(index, body) }
+            }
+            c.onCancel = { [weak self] in self?.endEdit() }
+            c.onResize = { [weak self] in self?.onResize?() }
+            editing = (index, c)
+            update(thread)
+        }
+        editing?.composer.focus()
+    }
+
+    private func endEdit() {
+        guard editing != nil else { return }
+        editing = nil
+        update(thread)
+        onLeave?()
+    }
+
     @objc private func resolveClicked() {
         onResolve?(!resolved)
     }
 
-    /// Right-click (or Control-click): the card's commands.
+    /// The message whose views hold `p`, in the card's coordinates; below the
+    /// messages (the reply box), the last.
+    private func messageIndex(at p: NSPoint) -> Int {
+        for (i, views) in messageViews.enumerated() {
+            let frames = views.map { stack.convert($0.frame, to: self) }
+            let bottom = frames.map(\.maxY).max() ?? 0
+            if p.y <= bottom + stack.spacing / 2 { return i }
+        }
+        return max(0, messageViews.count - 1)
+    }
+
+    /// Where message `index` is, in the card's coordinates.
+    func messageRect(_ index: Int) -> NSRect? {
+        guard index < messageViews.count else { return nil }
+        return messageViews[index].map { stack.convert($0.frame, to: self) }.reduce(NSRect.null) { $0.union($1) }
+    }
+
+    /// A message's commands: Edit, and Delete (the thread, for the comment).
+    private func addMessageItems(to menu: NSMenu, index: Int) {
+        menuIndex = index
+        for (title, action) in [("Edit", #selector(editClicked)), ("Delete", #selector(deleteClicked))] {
+            let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
+            item.target = self
+            menu.addItem(item)
+        }
+    }
+
+    /// Right-click (or Control-click): the thread's commands, then those of
+    /// the message clicked.
     override func menu(for event: NSEvent) -> NSMenu? {
         onClick?()
         let menu = NSMenu()
@@ -451,9 +584,14 @@ final class ThreadCard: GutterCard {
         resolve.target = self
         menu.addItem(resolve)
         menu.addItem(.separator())
-        let delete = NSMenuItem(title: "Delete Thread", action: #selector(deleteClicked), keyEquivalent: "")
-        delete.target = self
-        menu.addItem(delete)
+        addMessageItems(to: menu, index: messageIndex(at: convert(event.locationInWindow, from: nil)))
+        return menu
+    }
+
+    /// The "…" menu of message `index`.
+    func messageMenu(_ index: Int) -> NSMenu {
+        let menu = NSMenu()
+        addMessageItems(to: menu, index: index)
         return menu
     }
 
@@ -464,15 +602,15 @@ final class ThreadCard: GutterCard {
     }
 
     @objc private func moreClicked(_ sender: NSButton) {
-        let menu = NSMenu()
-        let item = NSMenuItem(title: "Delete Thread", action: #selector(deleteClicked), keyEquivalent: "")
-        item.target = self
-        menu.addItem(item)
-        menu.popUp(positioning: nil, at: NSPoint(x: 0, y: sender.bounds.height + 4), in: sender)
+        messageMenu(sender.tag).popUp(positioning: nil, at: NSPoint(x: 0, y: sender.bounds.height + 4), in: sender)
+    }
+
+    @objc private func editClicked() {
+        beginEdit(menuIndex)
     }
 
     @objc private func deleteClicked() {
-        onDelete?()
+        onDeleteMessage?(menuIndex)
     }
 }
 
