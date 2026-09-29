@@ -7,7 +7,7 @@ description: Read and answer the user's comments on Markdown documents with the 
 
 Margin is the user's Markdown editor. They leave comments on a document the
 way they would in Google Docs: each **thread** is anchored to a span of the
-document's text. The `margin` CLI is how you read threads, reply, and resolve
+document's text. The `margin` CLI is how you read threads and reply to
 them. `margin --help` lists every command and flag.
 
 Threads are numbered per document (`#3`). Locations are `file:line:column`,
@@ -25,11 +25,11 @@ Threads are numbered per document (`#3`). Locations are `file:line:column`,
    on the thread saying what you did:
 
    ```bash
-   margin reply FILE 3 "Switched the rollout to canary in §2." --resolve
+   margin reply FILE 3 "Switched the rollout to canary in §2."
    ```
 
-   Resolve a thread when your change or answer settles it. Leave it open and
-   reply with your question when the user has to decide something.
+   Leave threads open: the user resolves them once they are satisfied.
+   Resolve (`margin resolve FILE ID`) only when the user asks you to.
 4. **Check before reporting back:** rerun `margin comments FILE`. The step is
    done when every open thread ends with a reply you wrote. The user may keep
    commenting while you work, so this can surface new threads and follow-ups.
@@ -55,8 +55,9 @@ When you have written a document the user should review (a plan, a spec):
   thread still needs an answer; its quote shows what it was about.
 - **Your own threads.** `margin add FILE --quote "text" "question"` starts a
   thread, for when the user asks you to review a document or you need to ask
-  about specific text. When the quote occurs more than once, pick it with
-  `--occurrence N`; `--line N` anchors to a whole line instead.
+  about specific text. The quote must occur once in the file; if it occurs
+  more often, the error lists its lines, and you quote more of the text
+  around it.
 - **Messages are unsigned.** A thread is its first message (`comment`, the
   user's unless you started the thread) and then `reply` messages, yours and
   the user's follow-ups alike. Tell them apart by what you wrote.

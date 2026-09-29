@@ -82,7 +82,7 @@ agent**.
 37. As a coding agent, I want to find documents with open threads under the current directory, so that I don't need to be told the file.
 38. As a coding agent, I want a thread's quote as the file's exact Markdown source, so that I can find and edit the text.
 39. As a coding agent, I want to reply, resolve and reopen, so that I report what I did where the writer will see it.
-40. As a coding agent, I want to start threads on quoted text or whole lines, with ambiguous quotes refused, so that my question lands on the right text.
+40. As a coding agent, I want to start threads on quoted text, with ambiguous quotes refused, so that my question lands on the right text.
 41. As a coding agent, I want to open a document for review and return at once, so that my shell isn't blocked.
 42. As a coding agent, I want JSON output, so that I can process threads reliably.
 43. As a coding agent, I want the same commands and output on every platform, so that one skill works everywhere.
@@ -251,10 +251,11 @@ The commands:
   ones.
 - `margin reply FILE ID MESSAGE [--resolve]`, `margin resolve FILE ID
   [MESSAGE]`, `margin reopen FILE ID`, `margin delete FILE ID`.
-- `margin add FILE (--quote TEXT | --line N [--end-line M]) MESSAGE` starts a
-  thread. A quote that occurs more than once is refused, listing its lines,
-  until `--occurrence N` picks one. `--line` anchors from the first non-blank
-  character.
+- `margin add FILE --quote TEXT MESSAGE` starts a thread on TEXT, which must
+  occur exactly once in the file; otherwise it is refused, listing the lines
+  it occurs on, so the agent quotes more. Agents point at text by quoting it,
+  as their edit tools do, rather than by line and column, which they count
+  badly.
 
 ### Platforms
 

@@ -1,9 +1,9 @@
 //! The command-line interface: opening documents in the app, and the
 //! commands coding agents use to read and answer comments.
 
-use margin_core::comments::anchor::{line_col, line_start};
+use margin_core::comments::anchor::line_col;
 use margin_core::comments::{all_stores, read_doc, Comments, Status, Store, Thread};
-use anyhow::{bail, Context, Result};
+use anyhow::{bail, Result};
 use chrono::{DateTime, Local, Utc};
 use clap::{Parser, Subcommand};
 use serde::Serialize;
@@ -80,18 +80,10 @@ pub enum Command {
     /// Start a thread on some text of the document.
     Add {
         file: PathBuf,
-        /// Exact text to comment on (Markdown source, as in the file).
-        #[arg(long, conflicts_with = "line")]
-        quote: Option<String>,
-        /// Which occurrence of --quote, if it appears more than once (1-based).
+        /// Exact text to comment on (Markdown source, as in the file),
+        /// occurring once in it.
         #[arg(long)]
-        occurrence: Option<usize>,
-        /// Comment on a whole line instead (1-based).
-        #[arg(long)]
-        line: Option<usize>,
-        /// Last line of a multi-line range.
-        #[arg(long, requires = "line")]
-        end_line: Option<usize>,
+        quote: String,
         message: String,
     },
 
@@ -381,17 +373,10 @@ pub fn run(cmd: Command) -> Result<i32> {
         Command::Add {
             file,
             quote,
-            occurrence,
-            line,
-            end_line,
             message,
         } => {
             let (store, _, text) = load(&file)?;
-            let range = match (quote, line) {
-                (Some(q), _) => find_occurrence(&text, &q, occurrence)?,
-                (None, Some(l)) => line_range(&text, l, end_line.unwrap_or(l))?,
-                (None, None) => bail!("say what to comment on with --quote TEXT or --line N"),
-            };
+            let range = find_quote(&text, &quote)?;
             let (l, c) = line_col(&text, range.start);
             let id = store.update(|cm| Ok(cm.add(&text, range.clone(), &message)))?;
             print(&format!("Added #{id} at {}:{l}:{c}.", display_path(&store.doc)));
@@ -405,47 +390,27 @@ pub fn run(cmd: Command) -> Result<i32> {
     Ok(0)
 }
 
-fn find_occurrence(text: &str, quote: &str, occurrence: Option<usize>) -> Result<std::ops::Range<usize>> {
+fn find_quote(text: &str, quote: &str) -> Result<std::ops::Range<usize>> {
     if quote.is_empty() {
         bail!("--quote must not be empty");
     }
     let hits: Vec<usize> = text.match_indices(quote).map(|(i, _)| i).collect();
-    match (hits.len(), occurrence) {
-        (0, _) => bail!(
+    match hits.len() {
+        0 => bail!(
             "the document does not contain {:?} (quote the Markdown source exactly, including ** and ` characters)",
             quote
         ),
-        (_, Some(n)) if n >= 1 && n <= hits.len() => Ok(hits[n - 1]..hits[n - 1] + quote.len()),
-        (_, Some(n)) => bail!("--occurrence {n} is out of range: found {} occurrences", hits.len()),
-        (1, None) => Ok(hits[0]..hits[0] + quote.len()),
-        (_, None) => {
+        1 => Ok(hits[0]..hits[0] + quote.len()),
+        n => {
             let lines: Vec<String> = hits
                 .iter()
                 .map(|&h| line_col(text, h).0.to_string())
                 .collect();
             bail!(
-                "{:?} occurs {} times (lines {}); pick one with --occurrence N",
+                "{:?} occurs {n} times (lines {}); quote more of the text around it so it occurs once",
                 quote,
-                hits.len(),
                 lines.join(", ")
             )
         }
     }
-}
-
-fn line_range(text: &str, first: usize, last: usize) -> Result<std::ops::Range<usize>> {
-    if last < first {
-        bail!("--end-line is before --line");
-    }
-    let start = line_start(text, first).with_context(|| format!("line {first} is past the end"))?;
-    let end_line_start = line_start(text, last).with_context(|| format!("line {last} is past the end"))?;
-    let end = text[end_line_start..]
-        .find('\n')
-        .map_or(text.len(), |i| end_line_start + i);
-    // Skip leading indentation so the anchor starts at the text.
-    let lead = text[start..end].len() - text[start..end].trim_start().len();
-    if start + lead >= end {
-        bail!("line {first} is empty");
-    }
-    Ok(start + lead..end)
 }
