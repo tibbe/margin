@@ -169,10 +169,9 @@ Open question: Cmd+Option+Q (Quote) sits next to Cmd+Q; is that too close?
 
 ## Notifications
 
-The Mac has no toast, so a small banner at the bottom of the window (a HUD
-material with a 10pt radius) says "Updated from disk", "1 new reply" and the
-like, and fades after 3 seconds, or 6 when it has an Undo button. It is also
-announced to VoiceOver.
+A small banner at the bottom of the window, on the HUD material, says
+"Updated from disk", "1 new reply" and the like, and fades after 3 seconds,
+or 6 when it has an Undo button. It is also announced to VoiceOver.
 
 Open question: should agent activity also post a system notification when
 Margin is in the background?
