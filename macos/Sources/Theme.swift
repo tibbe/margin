@@ -50,6 +50,16 @@ enum Theme {
     static let itemStep: CGFloat = 28
 
     static var text: NSColor { .textColor }
+    /// The text color, faded; it follows the appearance, as the text
+    /// color does (`withAlphaComponent` alone fixes the appearance it was
+    /// made in, so stored in the text it goes stale when that changes).
+    static func text(alpha: CGFloat) -> NSColor {
+        NSColor(name: nil) { appearance in
+            var c = NSColor.textColor
+            appearance.performAsCurrentDrawingAppearance { c = NSColor.textColor.usingColorSpace(.sRGB) ?? c }
+            return c.withAlphaComponent(alpha)
+        }
+    }
     static var heading: NSColor { .labelColor }
     static var dim: NSColor { .secondaryLabelColor }
     static var border: NSColor { .separatorColor }

@@ -269,14 +269,14 @@ final class Styler {
                 case .fence, .htmlBlock, .frontMatter, .raw, .inlineHtml:
                     color = Theme.dim
                 case .quote:
-                    color = Theme.text.withAlphaComponent(0.78)
+                    color = Theme.text(alpha: 0.78)
                 case .strong, .tableHeader:
                     weight = .bold
                 case .emphasis:
                     italic = true
                 case .strike:
                     strike = true
-                    color = Theme.text.withAlphaComponent(0.65)
+                    color = Theme.text(alpha: 0.65)
                 case .code:
                     mono = true; size = 0.9
                     background = Theme.codeBackground
@@ -286,7 +286,7 @@ final class Styler {
                     color = Theme.link; italic = true
                 case .taskDone:
                     strike = true
-                    color = Theme.text.withAlphaComponent(0.5)
+                    color = Theme.text(alpha: 0.5)
                 case .hidden:
                     let shown = revealed.contains { $0.location <= a && b <= NSMaxRange($0) }
                     if sourceMode || shown { color = Theme.dim } else { hidden = true }

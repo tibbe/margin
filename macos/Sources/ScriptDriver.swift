@@ -31,6 +31,7 @@ import AppKit
 /// save | external TEXT | rename NAME   save; change the file as an agent; rename
 /// path | title | stored | windows      print file, title, stored threads, windows
 /// menu TITLE               validate a menu item; print enabled and checked
+/// appearance light|dark   the app's appearance, whatever the system's
 /// size W H | wait MS | shot PATH | dump | comments | banner | focus
 /// selection | sh CMD | quit
 ///                           sh runs CMD in the document's folder
@@ -250,6 +251,9 @@ enum ScriptDriver {
             return 0.3
         case "wait":
             return (Double(arg) ?? 200) / 1000
+        case "appearance":
+            NSApp.appearance = NSAppearance(named: arg == "dark" ? .darkAqua : .aqua)
+            return 0.3
         case "shot":
             shot(win, path: arg)
         case "replace-all":
