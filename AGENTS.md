@@ -14,8 +14,8 @@ it does.
   editor.
 
 Anything that differs by platform belongs in that platform's design system,
-not in the spec. Keep the specs, `margin --help` and `skill/SKILL.md` in
-step with behavior changes.
+not in the spec. Keep the specs, `margin --help` and
+`skills/margin/SKILL.md` in step with behavior changes.
 
 ## Layout
 
