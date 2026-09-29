@@ -76,7 +76,7 @@ final class DocumentWindow: NSWindowController, NSWindowDelegate, NSToolbarDeleg
         openedText = text.text
         crlf = text.crlf
         buildContent()
-        textView.reflow = Prefs.reflow
+        textView.reflowsParagraphs = Prefs.reflowsParagraphs
         textView.setContents(text.text)
         layer.attach(try? CommentStore(document: path))
         watch()
@@ -217,7 +217,7 @@ final class DocumentWindow: NSWindowController, NSWindowDelegate, NSToolbarDeleg
         dirty = true
         updateTitle()
         scheduleSave()
-        if findBar.isOpen { findBar.refresh(jump: false) }
+        if findBar.isOpen { findBar.refresh(goingToMatchAtOrAfterCursor: false) }
     }
 
     private func holdTermination(_ hold: Bool) {
@@ -693,8 +693,8 @@ final class DocumentWindow: NSWindowController, NSWindowDelegate, NSToolbarDeleg
 
     // MARK: - Commands
 
-    @objc func marginFind(_ sender: Any?) { findBar.open(replace: false) }
-    @objc func marginFindAndReplace(_ sender: Any?) { findBar.open(replace: true) }
+    @objc func marginFind(_ sender: Any?) { findBar.open(showingReplaceField: false) }
+    @objc func marginFindAndReplace(_ sender: Any?) { findBar.open(showingReplaceField: true) }
     @objc func marginFindNext(_ sender: Any?) { findBar.step(forward: true) }
     @objc func marginFindPrevious(_ sender: Any?) { findBar.step(forward: false) }
     @objc func marginUseSelectionForFind(_ sender: Any?) { findBar.useSelection() }
@@ -710,7 +710,7 @@ final class DocumentWindow: NSWindowController, NSWindowDelegate, NSToolbarDeleg
     @objc func marginNextComment(_ sender: Any?) { layer.step(forward: true) }
     @objc func marginPreviousComment(_ sender: Any?) { layer.step(forward: false) }
     @objc func marginResolveAll(_ sender: Any?) { layer.resolveAll() }
-    @objc func marginToggleShowResolved(_ sender: Any?) { layer.showResolved.toggle() }
+    @objc func marginToggleShowResolved(_ sender: Any?) { layer.showsResolved.toggle() }
 
     @objc func marginCopyOpenComments(_ sender: Any?) {
         let threads = layer.openThreads()
@@ -753,7 +753,7 @@ final class DocumentWindow: NSWindowController, NSWindowDelegate, NSToolbarDeleg
     func validateMenuItem(_ item: NSMenuItem) -> Bool {
         switch item.action {
         case #selector(marginToggleShowResolved(_:)):
-            item.state = layer.showResolved ? .on : .off
+            item.state = layer.showsResolved ? .on : .off
         case #selector(marginToggleShowMarkdown(_:)):
             item.state = textView.sourceMode ? .on : .off
         case #selector(marginFindNext(_:)), #selector(marginFindPrevious(_:)):

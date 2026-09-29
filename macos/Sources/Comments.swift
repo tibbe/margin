@@ -38,9 +38,9 @@ final class CommentLayer {
     /// The range the draft comments on, if one is open.
     var draftRange: NSRange? { draft.map { NSRange(location: $0.start, length: $0.end - $0.start) } }
     private(set) var active: UInt64?
-    var showResolved = false {
+    var showsResolved = false {
         didSet {
-            if !showResolved, let a = active, items.contains(where: { $0.thread.id == a && $0.thread.resolved }) {
+            if !showsResolved, let a = active, items.contains(where: { $0.thread.id == a && $0.thread.resolved }) {
                 active = nil
             }
             sync()
@@ -64,11 +64,17 @@ final class CommentLayer {
         page.gutter.onEmptyClick = { [weak self] in self?.leave() }
     }
 
+    /// The number of open threads.
+    ///
+    /// - Complexity: O(n), where n is the number of threads.
     var openCount: Int { items.filter { !$0.thread.resolved }.count }
+    /// The number of resolved threads.
+    ///
+    /// - Complexity: O(n), where n is the number of threads.
     var resolvedCount: Int { items.filter { $0.thread.resolved }.count }
 
     private func visible(_ t: CommentThread) -> Bool {
-        !t.resolved || showResolved
+        !t.resolved || showsResolved
     }
 
     // MARK: - Anchors
@@ -219,13 +225,13 @@ final class CommentLayer {
         let card = ThreadCard(thread: t)
         let id = t.id
         card.onClick = { [weak self] in self?.activate(id, scroll: false, focusCard: true) }
-        card.onResolve = { [weak self] r in self?.setResolved(id, r) }
-        card.onDeleteMessage = { [weak self] i in self?.deleteMessage(id, i) }
-        card.onEdit = { [weak self] i, body in self?.edit(id, i, body) }
+        card.onResolve = { [weak self] r in self?.setResolved(forThread: id, to: r) }
+        card.onDeleteMessage = { [weak self] i in self?.deleteMessage(at: i, inThread: id) }
+        card.onEdit = { [weak self] i, body in self?.editMessage(at: i, inThread: id, to: body) }
         card.onFocusThread = { [weak self] in
             if self?.active != id { self?.activate(id, scroll: false) }
         }
-        card.onReply = { [weak self] body in self?.reply(id, body) }
+        card.onReply = { [weak self] body in self?.addReply(toThread: id, body: body) }
         card.onResize = { [weak self] in self?.queueRelayout() }
         card.onLeave = { [weak self] in self?.leave() }
         gutter.addSubview(card)
@@ -289,7 +295,7 @@ final class CommentLayer {
         view.window?.makeFirstResponder(view)
     }
 
-    func reply(_ id: UInt64, _ body: String) {
+    func addReply(toThread id: UInt64, body: String) {
         update(.reply(id: id, body: body))
     }
 
@@ -305,14 +311,14 @@ final class CommentLayer {
         }
     }
 
-    func setResolved(_ id: UInt64, _ resolved: Bool) {
+    func setResolved(forThread id: UInt64, to resolved: Bool) {
         guard update(.setResolved(ids: [id], resolved: resolved)) != nil else { return }
-        if resolved && active == id && !showResolved { activate(nil, scroll: false) }
+        if resolved && active == id && !showsResolved { activate(nil, scroll: false) }
         if resolved {
-            undoable("Resolve Comment", banner: "Comment resolved") { $0.setResolved(id, false) }
+            undoable("Resolve Comment", banner: "Comment resolved") { $0.setResolved(forThread: id, to: false) }
         } else {
             // Reopening (or undoing a resolve): redo resolves again.
-            view.undoManager?.registerUndo(withTarget: self) { $0.setResolved(id, true) }
+            view.undoManager?.registerUndo(withTarget: self) { $0.setResolved(forThread: id, to: true) }
             view.undoManager?.setActionName("Reopen Comment")
         }
     }
@@ -330,7 +336,7 @@ final class CommentLayer {
     private func resolve(_ ids: [UInt64], _ resolved: Bool) {
         guard update(.setResolved(ids: ids, resolved: resolved)) != nil else { return }
         if resolved {
-            if !showResolved { activate(nil, scroll: false) }
+            if !showsResolved { activate(nil, scroll: false) }
             let banner = ids.count == 1 ? "Resolved 1 comment" : "Resolved \(ids.count) comments"
             undoable("Resolve All", banner: banner) { $0.resolve(ids, false) }
         } else {
@@ -360,7 +366,7 @@ final class CommentLayer {
     }
 
     /// Deletes message `index` of a thread; the comment (0) takes the thread.
-    func deleteMessage(_ id: UInt64, _ index: Int) {
+    func deleteMessage(at index: Int, inThread id: UInt64) {
         if index == 0 { return delete(id) }
         guard let it = items.first(where: { $0.thread.id == id }), index < it.thread.messages.count else { return }
         let old = it.thread.messages[index]
@@ -370,18 +376,18 @@ final class CommentLayer {
 
     private func restoreMessage(_ id: UInt64, _ index: Int, _ message: ThreadMessage) {
         update(.insertMessage(id: id, index: UInt32(index), message: message))
-        view.undoManager?.registerUndo(withTarget: self) { $0.deleteMessage(id, index) }
+        view.undoManager?.registerUndo(withTarget: self) { $0.deleteMessage(at: index, inThread: id) }
         view.undoManager?.setActionName("Delete Reply")
         showUndone(id)
     }
 
     /// Replaces message `index`'s text; undo puts the old text back.
-    func edit(_ id: UInt64, _ index: Int, _ body: String) {
+    func editMessage(at index: Int, inThread id: UInt64, to body: String) {
         guard let it = items.first(where: { $0.thread.id == id }), index < it.thread.messages.count else { return }
         let old = it.thread.messages[index].body
         guard update(.edit(id: id, index: UInt32(index), body: body)) != nil else { return }
         let undoing = view.undoManager?.isUndoing ?? false
-        view.undoManager?.registerUndo(withTarget: self) { $0.edit(id, index, old) }
+        view.undoManager?.registerUndo(withTarget: self) { $0.editMessage(at: index, inThread: id, to: old) }
         view.undoManager?.setActionName("Edit")
         if undoing || view.undoManager?.isRedoing == true { showUndone(id) }
     }
@@ -393,13 +399,15 @@ final class CommentLayer {
     }
 
     /// The focused thread.
+    ///
+    /// - Complexity: O(n), where n is the number of threads.
     var focusedThread: CommentThread? {
         active.flatMap { a in items.first { $0.thread.id == a }?.thread }
     }
 
     /// Resolves the focused thread, or reopens it (the Comments menu).
     func toggleResolvedFocused() {
-        if let t = focusedThread { setResolved(t.id, !t.resolved) }
+        if let t = focusedThread { setResolved(forThread: t.id, to: !t.resolved) }
     }
 
     /// Starts editing the focused thread's comment (the Comments menu).

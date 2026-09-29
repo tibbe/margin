@@ -15,7 +15,7 @@ func printMarkdown(text: String, title: String, window: NSWindow) {
     info.scalingFactor = scale
     let width = (info.paperSize.width - info.leftMargin - info.rightMargin) / scale
     let view = DocTextView.make()
-    view.fullWidth = true
+    view.usesFullWidth = true
     view.isVerticallyResizable = true
     view.isContinuousSpellCheckingEnabled = false
     view.frame = NSRect(x: 0, y: 0, width: width, height: 100)

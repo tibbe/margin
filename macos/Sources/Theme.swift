@@ -19,7 +19,7 @@ enum Prefs {
     }
 
     /// Reflow Paragraphs: show line breaks inside paragraphs as spaces.
-    static var reflow: Bool {
+    static var reflowsParagraphs: Bool {
         get { defaults.bool(forKey: "reflowParagraphs") }
         set { defaults.set(newValue, forKey: "reflowParagraphs") }
     }

@@ -305,10 +305,10 @@ enum ScriptDriver {
             shot(win, path: arg)
         case "replace-all":
             let parts = unescape(arg).components(separatedBy: "|")
-            w.findBar.open(replace: true)
+            w.findBar.open(showingReplaceField: true)
             w.findBar.search.stringValue = parts[0]
             w.findBar.replaceField.stringValue = parts.count > 1 ? parts[1] : ""
-            w.findBar.refresh(jump: true)
+            w.findBar.refresh(goingToMatchAtOrAfterCursor: true)
             w.findBar.replaceAll()
         case "save":
             w.save()

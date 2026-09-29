@@ -98,7 +98,7 @@ final class FindBar: NSView, NSSearchFieldDelegate, NSTextFieldDelegate {
 
     /// Shows the bar, starting from the selected text if there is some,
     /// else from what was last searched for (in any app).
-    func open(replace: Bool) {
+    func open(showingReplaceField: Bool) {
         if let sel = view.selection {
             let s = view.visibleText(sel)
             if !s.contains("\n") { search.stringValue = s }
@@ -106,9 +106,9 @@ final class FindBar: NSView, NSSearchFieldDelegate, NSTextFieldDelegate {
             search.stringValue = s
         }
         isHidden = false
-        replaceRow.isHidden = !replace
-        refresh(jump: true)
-        window?.makeFirstResponder(replace && !search.stringValue.isEmpty ? replaceField : search)
+        replaceRow.isHidden = !showingReplaceField
+        refresh(goingToMatchAtOrAfterCursor: true)
+        window?.makeFirstResponder(showingReplaceField && !search.stringValue.isEmpty ? replaceField : search)
         onChange?()
     }
 
@@ -116,7 +116,7 @@ final class FindBar: NSView, NSSearchFieldDelegate, NSTextFieldDelegate {
         if let sel = view.selection {
             search.stringValue = view.visibleText(sel)
             publishSearch()
-            if isOpen { refresh(jump: false) }
+            if isOpen { refresh(goingToMatchAtOrAfterCursor: false) }
         }
     }
 
@@ -132,23 +132,25 @@ final class FindBar: NSView, NSSearchFieldDelegate, NSTextFieldDelegate {
         onClose?()
     }
 
-    /// Recomputes matches after the text or the query changed. With
-    /// `jump`, moves to the first match at or after the cursor.
-    func refresh(jump: Bool) {
+    /// Recomputes matches after the text or query changes. When
+    /// `goingToMatchAtOrAfterCursor` is true, makes the first match at or
+    /// after the cursor the current one and scrolls to it (the selection
+    /// stays).
+    func refresh(goingToMatchAtOrAfterCursor: Bool) {
         guard isOpen else { return }
         view.ensureFresh()
         let needle = search.stringValue
         matches = needle.isEmpty ? [] : view.analysis.findAll(needle: needle, matchCase: matchCase.state == .on).map { NSRange($0) }
         if matches.isEmpty {
             current = nil
-        } else if jump || current == nil {
+        } else if goingToMatchAtOrAfterCursor || current == nil {
             let c = view.selectedRange().location
             current = matches.firstIndex { $0.location >= c } ?? 0
         } else {
             current = min(current!, matches.count - 1)
         }
         updateCount()
-        if jump { reveal() }
+        if goingToMatchAtOrAfterCursor { reveal() }
         onChange?()
     }
 
@@ -175,7 +177,7 @@ final class FindBar: NSView, NSSearchFieldDelegate, NSTextFieldDelegate {
     func step(forward: Bool) {
         if !isOpen {
             if let s = findPasteboard.string(forType: .string), !s.isEmpty, view.selection == nil { search.stringValue = s }
-            open(replace: false)
+            open(showingReplaceField: false)
         }
         guard !matches.isEmpty else { return }
         let i = current ?? 0
@@ -203,7 +205,7 @@ final class FindBar: NSView, NSSearchFieldDelegate, NSTextFieldDelegate {
         view.undoManager?.beginUndoGrouping()
         replace(matches[i], with: replaceField.stringValue)
         view.undoManager?.endUndoGrouping()
-        refresh(jump: false)
+        refresh(goingToMatchAtOrAfterCursor: false)
         reveal()
     }
 
@@ -212,12 +214,12 @@ final class FindBar: NSView, NSSearchFieldDelegate, NSTextFieldDelegate {
         if let plan = view.analysis.replaceAll(needle: search.stringValue, matchCase: matchCase.state == .on, with: replaceField.stringValue) {
             view.apply(plan)
         }
-        refresh(jump: false)
+        refresh(goingToMatchAtOrAfterCursor: false)
     }
 
     @objc private func searchChanged() {
         publishSearch()
-        refresh(jump: true)
+        refresh(goingToMatchAtOrAfterCursor: true)
     }
     @objc private func stepClicked() { step(forward: steps.selectedSegment == 1) }
     @objc private func doneClicked() { close() }
@@ -227,7 +229,7 @@ final class FindBar: NSView, NSSearchFieldDelegate, NSTextFieldDelegate {
     func controlTextDidChange(_ obj: Notification) {
         if (obj.object as? NSSearchField) === search {
             publishSearch()
-            refresh(jump: true)
+            refresh(goingToMatchAtOrAfterCursor: true)
         }
     }
 

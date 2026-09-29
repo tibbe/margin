@@ -246,9 +246,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     }
 
     @objc func marginToggleReflow(_ sender: Any?) {
-        Prefs.reflow.toggle()
+        Prefs.reflowsParagraphs.toggle()
         for w in windows {
-            w.keepingCursorLineStill { w.textView.reflow = Prefs.reflow }
+            w.keepingCursorLineStill { w.textView.reflowsParagraphs = Prefs.reflowsParagraphs }
         }
     }
 
@@ -262,7 +262,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     func validateMenuItem(_ item: NSMenuItem) -> Bool {
         switch item.action {
         case #selector(marginToggleReflow(_:)):
-            item.state = Prefs.reflow ? .on : .off
+            item.state = Prefs.reflowsParagraphs ? .on : .off
         case #selector(marginLarger(_:)):
             return Prefs.zoom < Prefs.zoomSteps.last! - 0.01
         case #selector(marginSmaller(_:)):

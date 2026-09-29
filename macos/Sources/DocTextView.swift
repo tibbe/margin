@@ -31,9 +31,9 @@ final class DocTextView: NSTextView, NSTextStorageDelegate, NSTextViewDelegate, 
     var sourceMode = false {
         didSet { if oldValue != sourceMode { forceRestyle() } }
     }
-    var reflow = false {
+    var reflowsParagraphs = false {
         didSet {
-            if oldValue != reflow, let lm = layoutManager {
+            if oldValue != reflowsParagraphs, let lm = layoutManager {
                 lm.invalidateLayout(forCharacterRange: NSRange(location: 0, length: (string as NSString).length), actualCharacterRange: nil)
                 needsDisplay = true
             }
@@ -52,7 +52,7 @@ final class DocTextView: NSTextView, NSTextStorageDelegate, NSTextViewDelegate, 
     /// Escape: leave a comment, close Find.
     var onEscape: (() -> Void)?
     /// Printing lays the text out across the whole page.
-    var fullWidth = false
+    var usesFullWidth = false
     /// Highlights drawn over the text (comments, find), recomputed on change.
     var onHighlight: (() -> Void)?
 
@@ -183,7 +183,7 @@ final class DocTextView: NSTextView, NSTextStorageDelegate, NSTextViewDelegate, 
         stale = false
         revealed = revealRanges()
         restyle()
-        if reflow, let lm = layoutManager {
+        if reflowsParagraphs, let lm = layoutManager {
             let len = (storage.string as NSString).length
             for p in changedSoft where p < len {
                 lm.invalidateLayout(forCharacterRange: NSRange(location: p, length: 1), actualCharacterRange: nil)
@@ -282,7 +282,7 @@ final class DocTextView: NSTextView, NSTextStorageDelegate, NSTextViewDelegate, 
     var onRetile: (() -> Void)?
 
     func updateGeometry(force: Bool) {
-        if fullWidth {
+        if usesFullWidth {
             setPage(PageGeometry(fullWidth: bounds.width), force: force)
         } else {
             onRetile?()
@@ -1171,7 +1171,7 @@ final class HidingLayoutDelegate: NSObject, NSLayoutManagerDelegate {
     }
 
     func layoutManager(_ layoutManager: NSLayoutManager, shouldUse action: NSLayoutManager.ControlCharacterAction, forControlCharacterAt charIndex: Int) -> NSLayoutManager.ControlCharacterAction {
-        if let v = view, v.reflow, !v.sourceMode, v.softBreaks.contains(charIndex) {
+        if let v = view, v.reflowsParagraphs, !v.sourceMode, v.softBreaks.contains(charIndex) {
             return .whitespace
         }
         return action
