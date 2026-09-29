@@ -314,7 +314,7 @@ class GutterCard: NSView {
 /// A comment thread's card: the comment, its replies, and a reply box.
 final class ThreadCard: GutterCard {
     let id: UInt64
-    let composer = Composer(placeholder: "Reply…", submitLabel: "Reply", alwaysShowButtons: false)
+    let composer = Composer(placeholder: "Reply", submitLabel: "Reply", alwaysShowButtons: false)
     /// The hairline between the thread and the reply box.
     private let composerRule = NSBox()
     private var resolved = false
@@ -478,7 +478,7 @@ final class ThreadCard: GutterCard {
 
 /// The card for a comment being written.
 final class DraftCard: GutterCard {
-    let composer = Composer(placeholder: "Comment for the agent…", submitLabel: "Comment", alwaysShowButtons: true)
+    let composer = Composer(placeholder: "Comment", submitLabel: "Comment", alwaysShowButtons: true)
 
     override init(frame: NSRect) {
         super.init(frame: frame)

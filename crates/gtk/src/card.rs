@@ -208,7 +208,7 @@ impl Card {
         root.add_css_class("comment-card");
         let content = gtk::Box::new(gtk::Orientation::Vertical, 6);
         root.append(&content);
-        let composer = Composer::new("Reply…", "Reply", false);
+        let composer = Composer::new("Reply", "Reply", false);
         composer.root.set_visible(false);
         root.append(&composer.root);
 
@@ -379,7 +379,7 @@ impl DraftCard {
         let root = gtk::Box::new(gtk::Orientation::Vertical, 8);
         root.add_css_class("comment-card");
         root.add_css_class("active");
-        let composer = Composer::new("Comment for the agent…", "Comment", true);
+        let composer = Composer::new("Comment", "Comment", true);
         root.append(&composer.root);
         DraftCard { root, composer }
     }
