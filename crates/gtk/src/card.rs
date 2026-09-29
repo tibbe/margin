@@ -1,7 +1,7 @@
 //! Comment cards shown in the gutter, and the text box used to write
 //! comments and replies.
 
-use margin_core::comments::{Status, Thread};
+use margin_core::comments::{Author, Message, Status, Thread};
 use chrono::{DateTime, Local, Utc};
 use gtk::{gdk, glib, pango, prelude::*};
 use std::cell::RefCell;
@@ -163,24 +163,26 @@ fn wrap_label(text: &str, classes: &[&str]) -> gtk::Label {
 }
 
 /// A card's first row: when it was written, then the buttons.
-fn header_row(at: Option<&DateTime<Utc>>) -> gtk::Box {
+/// A message's header row: its author and time, then room for buttons.
+fn header_row(m: Option<&Message>) -> gtk::Box {
     let row = gtk::Box::new(gtk::Orientation::Horizontal, 4);
-    let time = gtk::Label::builder()
-        .label(at.map(when).unwrap_or_default())
-        .xalign(0.0)
-        .hexpand(true)
-        .css_classes(["time"])
-        .build();
-    row.append(&time);
+    let byline = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+    byline.set_hexpand(true);
+    if let Some(m) = m {
+        let who = match m.author {
+            Author::User => "You",
+            Author::Agent => "Agent",
+        };
+        byline.append(&gtk::Label::builder().label(who).css_classes(["author"]).build());
+        byline.append(
+            &gtk::Label::builder()
+                .label(format!(" · {}", when(&m.at)))
+                .css_classes(["time"])
+                .build(),
+        );
+    }
+    row.append(&byline);
     row
-}
-
-fn reply_time(at: &DateTime<Utc>) -> gtk::Label {
-    gtk::Label::builder()
-        .label(when(at))
-        .xalign(0.0)
-        .css_classes(["time"])
-        .build()
 }
 
 /// What a card's buttons do.
@@ -268,7 +270,7 @@ impl Card {
         }
 
         let first = thread.messages.first();
-        let header = header_row(first.map(|m| &m.at));
+        let header = header_row(first);
         let id = thread.id;
         let resolve = gtk::Button::from_icon_name(if resolved {
             "edit-undo-symbolic"
@@ -320,7 +322,7 @@ impl Card {
             let sep = gtk::Box::new(gtk::Orientation::Horizontal, 0);
             sep.add_css_class("reply-sep");
             self.content.append(&sep);
-            self.content.append(&reply_time(&m.at));
+            self.content.append(&header_row(Some(m)));
             self.content.append(&wrap_label(&m.body, &["body"]));
         }
         if resolved {

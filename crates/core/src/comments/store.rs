@@ -22,8 +22,18 @@ pub enum Status {
     Resolved,
 }
 
+/// Who wrote a message: the one person who comments, from the editor, or
+/// an agent, through the CLI. Agents aren't told apart.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum Author {
+    User,
+    Agent,
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 pub struct Message {
+    pub author: Author,
     pub at: DateTime<Utc>,
     pub body: String,
 }
@@ -45,8 +55,7 @@ pub struct Thread {
     pub id: u64,
     pub status: Status,
     pub anchor: Anchor,
-    /// The comment, then its replies. Authors are not recorded: one person
-    /// comments, and agents answer.
+    /// The comment, then its replies.
     pub messages: Vec<Message>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub resolved_at: Option<DateTime<Utc>>,
@@ -143,7 +152,7 @@ impl Comments {
     }
 
     /// Adds a thread anchored to `range` of `text` (the current document).
-    pub fn add(&mut self, text: &str, range: Range<usize>, body: &str) -> u64 {
+    pub fn add(&mut self, text: &str, range: Range<usize>, body: &str, author: Author) -> u64 {
         self.sync(text);
         let id = self.next_id;
         self.next_id += 1;
@@ -157,6 +166,7 @@ impl Comments {
                 detached: false,
             },
             messages: vec![Message {
+                author,
                 at: Utc::now(),
                 body: body.to_string(),
             }],
@@ -165,9 +175,10 @@ impl Comments {
         id
     }
 
-    pub fn reply(&mut self, id: u64, body: &str) -> Result<()> {
+    pub fn reply(&mut self, id: u64, body: &str, author: Author) -> Result<()> {
         let t = self.thread_mut(id)?;
         t.messages.push(Message {
+            author,
             at: Utc::now(),
             body: body.to_string(),
         });
@@ -413,7 +424,7 @@ mod tests {
         let mut c = Comments::new("/tmp/x.md".into());
         let text = "Deploy with blue/green everywhere.\n";
         let s = text.find("blue/green").unwrap();
-        let id = c.add(text, s..s + 10, "Canary instead?");
+        let id = c.add(text, s..s + 10, "Canary instead?", Author::User);
         assert_eq!(id, 1);
         let new = "Intro.\n\nDeploy with canary everywhere.\n";
         assert!(c.sync(new));
@@ -429,9 +440,9 @@ mod tests {
     fn edit_and_delete_messages() {
         let mut c = Comments::new("/tmp/x.md".into());
         let text = "hello world\n";
-        let id = c.add(text, 6..11, "Why?");
-        c.reply(id, "Because.").unwrap();
-        c.reply(id, "Fixed.").unwrap();
+        let id = c.add(text, 6..11, "Why?", Author::User);
+        c.reply(id, "Because.", Author::Agent).unwrap();
+        c.reply(id, "Fixed.", Author::Agent).unwrap();
         c.edit(id, 0, "Why not?").unwrap();
         assert_eq!(c.thread(id).unwrap().messages[0].body, "Why not?");
         assert!(c.edit(id, 0, "  ").is_err());
@@ -447,15 +458,15 @@ mod tests {
     }
 
     #[test]
-    fn stores_written_with_authors_still_load() {
-        let json = r#"{"version":1,"doc":"/tmp/x.md","next_id":2,"threads":[{"id":1,
-            "status":"resolved","anchor":{"start":0,"end":5,"quote":"hello"},
-            "messages":[{"author":"tibbe","at":"2026-09-27T10:00:00Z","body":"hi"}],
-            "resolved_by":"Claude","resolved_at":"2026-09-27T11:00:00Z"}],"snapshot":"hello\n"}"#;
-        let c: Comments = serde_json::from_str(json).unwrap();
-        assert_eq!(c.threads[0].messages[0].body, "hi");
-        let out = serde_json::to_string(&c).unwrap();
-        assert!(!out.contains("author") && !out.contains("resolved_by"));
+    fn messages_keep_their_authors() {
+        let mut c = Comments::new("/tmp/x.md".into());
+        let id = c.add("hello\n", 0..5, "Why?", Author::User);
+        c.reply(id, "Because.", Author::Agent).unwrap();
+        let json = serde_json::to_string(&c).unwrap();
+        assert!(json.contains(r#""author":"user""#) && json.contains(r#""author":"agent""#), "{json}");
+        let back: Comments = serde_json::from_str(&json).unwrap();
+        let authors: Vec<Author> = back.threads[0].messages.iter().map(|m| m.author).collect();
+        assert_eq!(authors, [Author::User, Author::Agent]);
     }
 
     #[test]
@@ -467,9 +478,9 @@ mod tests {
         fs::write(&doc, "hello world\n").unwrap();
         let store = Store::for_doc(&doc).unwrap();
         let id = store
-            .update(|c| Ok(c.add("hello world\n", 6..11, "hi")))
+            .update(|c| Ok(c.add("hello world\n", 6..11, "hi", Author::User)))
             .unwrap();
-        store.update(|c| c.reply(id, "done")).unwrap();
+        store.update(|c| c.reply(id, "done", Author::Agent)).unwrap();
         store.update(|c| c.set_resolved(id, true)).unwrap();
         let c = store.load().unwrap();
         assert_eq!(c.threads[0].messages.len(), 2);

@@ -2,7 +2,7 @@
 //! commands coding agents use to read and answer comments.
 
 use margin_core::comments::anchor::line_col;
-use margin_core::comments::{all_stores, read_doc, Comments, Status, Store, Thread};
+use margin_core::comments::{all_stores, read_doc, Author, Comments, Status, Store, Thread};
 use anyhow::{bail, Result};
 use chrono::{DateTime, Local, Utc};
 use clap::{Parser, Subcommand};
@@ -17,7 +17,8 @@ Agent workflow:
   margin reply plan.md 3 \"Done.\" --resolve
   margin add plan.md --quote \"retry budget\" \"Is 3 enough?\"
 
-Threads are numbered per document. Locations are file:line:column, 1-based.";
+Threads are numbered per document. Locations are file:line:column, 1-based.
+Each message's author is \"user\" (from the editor) or \"agent\" (from margin).";
 
 #[derive(Parser, Debug)]
 #[command(
@@ -145,6 +146,7 @@ struct Pos {
 
 #[derive(Serialize)]
 struct JsonMessage<'a> {
+    author: Author,
     at: DateTime<Utc>,
     body: &'a str,
 }
@@ -180,6 +182,7 @@ fn json_thread<'a>(doc: &'a Path, text: &str, t: &'a Thread) -> JsonThread<'a> {
             .messages
             .iter()
             .map(|m| JsonMessage {
+                author: m.author,
                 at: m.at,
                 body: &m.body,
             })
@@ -221,9 +224,12 @@ fn format_thread(out: &mut String, doc: &Path, text: &str, t: &Thread) {
         status
     ));
     out.push_str(&format!("  on {}\n", quote_line(&t.anchor.quote)));
-    for (i, m) in t.messages.iter().enumerate() {
-        let kind = if i == 0 { "comment" } else { "reply" };
-        out.push_str(&format!("  {kind} · {}\n", when(&m.at)));
+    for m in &t.messages {
+        let who = match m.author {
+            Author::User => "user",
+            Author::Agent => "agent",
+        };
+        out.push_str(&format!("  {who} · {}\n", when(&m.at)));
         out.push_str(&indent(&m.body, "    "));
         out.push('\n');
     }
@@ -358,7 +364,7 @@ pub fn run(cmd: Command) -> Result<i32> {
             let (store, _, text) = load(&file)?;
             store.update(|c| {
                 c.sync(&text);
-                c.reply(id, &message)?;
+                c.reply(id, &message, Author::Agent)?;
                 if resolve {
                     c.set_resolved(id, true)?;
                 }
@@ -378,7 +384,7 @@ pub fn run(cmd: Command) -> Result<i32> {
             store.update(|c| {
                 c.sync(&text);
                 if let Some(m) = &message {
-                    c.reply(id, m)?;
+                    c.reply(id, m, Author::Agent)?;
                 }
                 c.set_resolved(id, true)
             })?;
@@ -400,7 +406,7 @@ pub fn run(cmd: Command) -> Result<i32> {
             let (store, _, text) = load(&file)?;
             let range = find_quote(&text, &quote)?;
             let (l, c) = line_col(&text, range.start);
-            let id = store.update(|cm| Ok(cm.add(&text, range.clone(), &message)))?;
+            let id = store.update(|cm| Ok(cm.add(&text, range.clone(), &message, Author::Agent)))?;
             print(&format!("Added #{id} at {}:{l}:{c}.", display_path(&store.doc)));
         }
         Command::Delete { file, id } => {

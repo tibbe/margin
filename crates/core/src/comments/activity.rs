@@ -108,14 +108,14 @@ impl Change {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::comments::Comments;
+    use crate::comments::{Author, Comments};
     use std::path::PathBuf;
 
     fn doc() -> (Comments, &'static str) {
         let text = "One two three.\n";
         let mut c = Comments::new(PathBuf::from("/d.md"));
-        c.add(text, 0..3, "Why?");
-        c.add(text, 4..7, "And this?");
+        c.add(text, 0..3, "Why?", Author::User);
+        c.add(text, 4..7, "And this?", Author::User);
         (c, text)
     }
 
@@ -130,8 +130,8 @@ mod tests {
     fn each_reply_is_a_change() {
         let (old, _) = doc();
         let mut new = old.clone();
-        new.reply(1, "Because.").unwrap();
-        new.reply(1, "Also.").unwrap();
+        new.reply(1, "Because.", Author::Agent).unwrap();
+        new.reply(1, "Also.", Author::Agent).unwrap();
         let cs = changes(&old.threads, &new.threads);
         assert_eq!(cs.iter().map(|c| (c.id, c.kind, c.message.as_deref())).collect::<Vec<_>>(), [
             (1, Kind::Replied, Some("Because.")),
@@ -145,7 +145,7 @@ mod tests {
     fn a_reply_goes_with_its_resolve() {
         let (old, _) = doc();
         let mut new = old.clone();
-        new.reply(1, "Done.").unwrap();
+        new.reply(1, "Done.", Author::Agent).unwrap();
         new.set_resolved(1, true).unwrap();
         new.set_resolved(2, true).unwrap();
         let cs = changes(&old.threads, &new.threads);
@@ -162,7 +162,7 @@ mod tests {
         let mut new = old.clone();
         new.set_resolved(1, false).unwrap();
         new.delete(2).unwrap();
-        new.add(text, 8..13, "Plural?");
+        new.add(text, 8..13, "Plural?", Author::User);
         let cs = changes(&old.threads, &new.threads);
         assert_eq!(cs.iter().map(|c| c.headline()).collect::<Vec<_>>(), [
             "Reopened \u{201c}One\u{201d}",

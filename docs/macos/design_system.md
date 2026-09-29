@@ -36,13 +36,16 @@ conventions of Apple's document apps (TextEdit, Pages, Notes).
   or focus ring. Below a hairline, bezel-less text buttons: Cancel in the
   secondary label color, Comment or Reply in the accent color, greyed while
   empty.
-- Each message has a row with its time and a "…" button (`ellipsis.circle`)
-  whose menu has Edit and Delete; the comment's row also has Resolve
-  (`checkmark.circle`, or `arrow.uturn.backward.circle` to reopen). The
-  symbols are at the small system font's size, each in a 20×20pt target
-  (the HIG's macOS minimum). All the card's buttons show while the pointer
-  is over the card or the card is focused; hidden, they keep their room and
-  stay reachable with VoiceOver.
+- A message's header row is 28pt tall. The author is in the small system
+  font, semibold, in the label color, "Agent" after a `sparkles` symbol (as
+  Copilot marks its reviews); the time is in the secondary label color.
+  Resolve is `checkmark.circle` (`arrow.uturn.backward.circle` to reopen),
+  and the menu a "…" button (`ellipsis.circle`) with Edit and Delete. The
+  symbols are at the regular system font's size, each in a 28×28pt target
+  (the HIG's default control size). The symbols, not the targets, line up
+  with the text's edge; the targets reach into the card's padding. All the card's buttons show while the
+  pointer is over the card or the card is focused; hidden, they keep their
+  room and stay reachable with VoiceOver.
 - A message longer than seven lines ends in "…" at its third line, with a
   bezel-less Show More text button in the accent color below it, at the
   small system font's size, as in Pages' comments; expanded, the button

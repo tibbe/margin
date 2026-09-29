@@ -2,7 +2,7 @@
 //! tuicr's `y` copies a review.
 
 use super::anchor::line_col;
-use super::store::Thread;
+use super::store::{Author, Message, Thread};
 use std::path::Path;
 
 /// How items name the document: relative to its git repository when it is
@@ -64,11 +64,20 @@ fn shell_word(s: &str) -> String {
     }
 }
 
+/// A message as a list item under its thread, after its author.
+fn item(m: &Message) -> String {
+    let who = match m.author {
+        Author::User => "User",
+        Author::Agent => "Agent",
+    };
+    format!("  - {who}: {}\n", continued(&m.body, "    "))
+}
+
 /// The threads (anchored against `text`, the document now) as a list in
 /// document order, each under its thread number, with where it is. A
-/// thread's comment and latest message are given in full; the replies
-/// between, which the agent has seen on earlier copies, become a
-/// `margin thread` command that prints them.
+/// thread's comment and latest message are given in full, each after its
+/// author; the replies between, which the agent has seen on earlier
+/// copies, become a `margin thread` command that prints them.
 pub fn for_agent(doc: &Path, text: &str, threads: &[Thread]) -> String {
     let name = item_path(doc);
     let mut threads: Vec<&Thread> = threads.iter().collect();
@@ -77,8 +86,6 @@ pub fn for_agent(doc: &Path, text: &str, threads: &[Thread]) -> String {
         "I left comments on `{}`. Please address them.\n\n",
         doc.display()
     );
-    let pad = "  ";
-    let reply_pad = "    ";
     for t in threads {
         let a = &t.anchor;
         let at = if a.detached {
@@ -90,14 +97,16 @@ pub fn for_agent(doc: &Path, text: &str, threads: &[Thread]) -> String {
         } else {
             format!("`{name}:{}` \"{}\"", span(text, a.start, a.end), short_quote(&a.quote))
         };
-        let body = t.messages.first().map_or(String::new(), |m| continued(&m.body, pad));
-        out.push_str(&format!("#{} {at}: {body}\n", t.id));
+        out.push_str(&format!("#{} {at}\n", t.id));
+        if let Some(m) = t.messages.first() {
+            out.push_str(&item(m));
+        }
         let replies = t.messages.get(1..).unwrap_or_default();
         let shown = match replies.split_last() {
             Some((last, earlier)) if !earlier.is_empty() => {
                 let n = earlier.len();
                 out.push_str(&format!(
-                    "{pad}- ({n} earlier repl{}: `margin thread {} {}`)\n",
+                    "  - ({n} earlier repl{}: `margin thread {} {}`)\n",
                     if n == 1 { "y" } else { "ies" },
                     shell_word(&name),
                     t.id
@@ -107,7 +116,7 @@ pub fn for_agent(doc: &Path, text: &str, threads: &[Thread]) -> String {
             _ => replies,
         };
         for m in shown {
-            out.push_str(&format!("{pad}- Reply: {}\n", continued(&m.body, reply_pad)));
+            out.push_str(&item(m));
         }
     }
     out
@@ -116,23 +125,25 @@ pub fn for_agent(doc: &Path, text: &str, threads: &[Thread]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::comments::Comments;
+    use crate::comments::{Author, Comments};
 
     #[test]
     fn numbered_in_document_order_with_line_and_column() {
         let text = "# Plan\n\nSome **bold words** here.\nNext line with a naïve idea.\n";
         let mut c = Comments::new("/nowhere/plan.md".into());
         let naive = text.find("naïve idea").unwrap();
-        c.add(text, naive..naive + "naïve idea".len(), "Say more.\n\nWhat changes?");
+        c.add(text, naive..naive + "naïve idea".len(), "Say more.\n\nWhat changes?", Author::Agent);
         let bold = text.find("bold words").unwrap();
-        let id = c.add(text, bold..bold + 10, "Italic instead?");
-        c.reply(id, "Done.").unwrap();
+        let id = c.add(text, bold..bold + 10, "Italic instead?", Author::User);
+        c.reply(id, "Done.", Author::Agent).unwrap();
         assert_eq!(
             for_agent(Path::new("/nowhere/plan.md"), text, &c.threads),
             "I left comments on `/nowhere/plan.md`. Please address them.\n\n\
-             #2 `/nowhere/plan.md:3:8-3:17` \"bold words\": Italic instead?\n  \
-             - Reply: Done.\n\
-             #1 `/nowhere/plan.md:4:18-4:27` \"naïve idea\": Say more.\n\n  What changes?\n"
+             #2 `/nowhere/plan.md:3:8-3:17` \"bold words\"\n  \
+             - User: Italic instead?\n  \
+             - Agent: Done.\n\
+             #1 `/nowhere/plan.md:4:18-4:27` \"naïve idea\"\n  \
+             - Agent: Say more.\n\n    What changes?\n"
         );
     }
 
@@ -142,30 +153,32 @@ mod tests {
         assert_eq!(span(text, 0, 8), "1:1-2:3");
         assert_eq!(span(text, 4, 4), "2:1");
         let mut c = Comments::new("/x/a.md".into());
-        c.add(text, 4..7, "Why?");
+        c.add(text, 4..7, "Why?", Author::User);
         c.sync("one\n");
         let out = for_agent(Path::new("/x/a.md"), "one\n", &c.threads);
-        assert!(out.contains("#1 `/x/a.md:2:1` (the commented text, \"two\", was deleted): Why?"), "{out}");
+        assert!(out.contains("#1 `/x/a.md:2:1` (the commented text, \"two\", was deleted)\n  - User: Why?"), "{out}");
     }
 
     #[test]
     fn replies_before_the_latest_are_left_to_margin_thread() {
         let text = "one two\n";
         let mut c = Comments::new("/x/my plan.md".into());
-        let id = c.add(text, 0..3, "Why?");
-        for r in ["Because.", "Not enough.", "Rewrote it.", "Better,\nbut shorter?"] {
-            c.reply(id, r).unwrap();
+        let id = c.add(text, 0..3, "Why?", Author::User);
+        for (r, a) in [("Because.", Author::Agent), ("Not enough.", Author::User), ("Rewrote it.", Author::Agent), ("Better,\nbut shorter?", Author::User)] {
+            c.reply(id, r, a).unwrap();
         }
-        let short = c.add(text, 4..7, "Typo?");
-        c.reply(short, "Fixed.").unwrap();
+        let short = c.add(text, 4..7, "Typo?", Author::User);
+        c.reply(short, "Fixed.", Author::Agent).unwrap();
         assert_eq!(
             for_agent(Path::new("/x/my plan.md"), text, &c.threads),
             "I left comments on `/x/my plan.md`. Please address them.\n\n\
-             #1 `/x/my plan.md:1:1-1:3` \"one\": Why?\n  \
+             #1 `/x/my plan.md:1:1-1:3` \"one\"\n  \
+             - User: Why?\n  \
              - (3 earlier replies: `margin thread '/x/my plan.md' 1`)\n  \
-             - Reply: Better,\n    but shorter?\n\
-             #2 `/x/my plan.md:1:5-1:7` \"two\": Typo?\n  \
-             - Reply: Fixed.\n"
+             - User: Better,\n    but shorter?\n\
+             #2 `/x/my plan.md:1:5-1:7` \"two\"\n  \
+             - User: Typo?\n  \
+             - Agent: Fixed.\n"
         );
     }
 

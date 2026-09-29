@@ -298,6 +298,7 @@ textview.margin-doc > text > selection:backdrop {{ background-color: {selection}
 .comment-card.resolved {{ opacity: 0.7; }}
 .comment-card.detached .quote {{ text-decoration-line: line-through; }}
 .comment-card .time {{ color: {dim}; font-size: 0.85em; }}
+.comment-card .author {{ font-weight: bold; font-size: 0.85em; }}
 .comment-card .quote {{ color: {dim}; font-style: italic; font-size: 0.9em; }}
 .comment-card .body {{ font-size: 1em; }}
 .comment-card .reply-sep {{ background-color: {border}; min-height: 1px; margin: 6px 0 6px 0; }}

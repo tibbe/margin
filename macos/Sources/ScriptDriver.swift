@@ -233,6 +233,21 @@ enum ScriptDriver {
             } else {
                 print("script: no button \(arg)")
             }
+        case "hit-more":
+            // Prints what a click finds at the outer edge of card ID's first
+            // "…" button's target, in the card's padding beside its symbol.
+            func find(_ v: NSView) -> NSButton? {
+                if let b = v as? NSButton, b.toolTip == "More" { return b }
+                for s in v.subviews { if let f = find(s) { return f } }
+                return nil
+            }
+            if let it = w.layer.items.first(where: { $0.thread.id == UInt64(arg) ?? 0 }), let b = find(it.card),
+               let frame = win.contentView?.superview {
+                let p = b.convert(NSPoint(x: b.bounds.maxX - 1, y: b.bounds.midY), to: nil)
+                let inPadding = !it.card.stack.bounds.contains(it.card.stack.convert(p, from: nil))
+                let hit = frame.hitTest(frame.convert(p, from: nil))
+                print("hit-more \(arg): \(hit === b ? "button" : String(describing: hit.map { type(of: $0) }))\(inPadding ? " (in padding)" : "")")
+            }
         case "click-resolve":
             if let it = w.layer.items.first(where: { $0.thread.id == UInt64(arg) ?? 0 }), let b = it.card.resolveButton {
                 click(b, at: NSPoint(x: b.bounds.midX, y: b.bounds.midY))
@@ -275,6 +290,11 @@ enum ScriptDriver {
             // Prints whether each message on card ID is short, collapsed or expanded.
             if let it = w.layer.items.first(where: { $0.thread.id == UInt64(arg) ?? 0 }) {
                 print("texts \(arg): \(it.card.messageStates.joined(separator: ", "))")
+            }
+        case "card-authors":
+            // Prints each message's author on card ID (✦ for the agent's symbol).
+            if let it = w.layer.items.first(where: { $0.thread.id == UInt64(arg) ?? 0 }) {
+                print("authors \(arg): \(it.card.authors.joined(separator: ", "))")
             }
         case "hover-card":
             // The pointer moves onto (or off) card ID; prints whether its buttons show.

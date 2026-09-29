@@ -31,8 +31,8 @@ answer through a CLI.
 - **Keys behave like a word processor's**, expressed as minimal changes to
   the source.
 - **Comments live beside the file, never in it**, and stay attached to their
-  text as anyone edits it. One person comments, agents reply; messages have
-  no author.
+  text as anyone edits it. One person and their agents comment and reply,
+  and each message says which of them wrote it.
 - **Agents are first-class** through the `margin` CLI, like `tuicr` and
   `hunk`. Their edits and replies appear in the open editor as they happen.
 - **Quiet and native.** Documents save themselves; rarely used commands live
@@ -72,20 +72,21 @@ agent**.
 27. As a writer, I want the cursor entering commented text to focus its thread, so that moving through the text moves through the review.
 28. As a writer, I want to edit or delete any comment or reply, so that I can fix what I wrote or clear what no longer helps.
 29. As a writer, I want long comments and replies cut short until I ask for the rest, so that one long message doesn't push the other threads out of view.
-30. As a writer, I want resolving, resolving all, editing and deleting to be undoable, so that a slip doesn't lose a thread.
-31. As a writer, I want resolved threads hidden unless I ask for them, so that the margin shows what is still open.
-32. As a writer, I want a thread whose text was deleted to stay, showing what it was about, so that feedback is never silently lost.
-33. As a writer, I want a thread to follow its text when it is reworded, so that a comment on "blue/green" follows the change to "canary".
-34. As a writer, I want to be told when an agent adds, answers, resolves, reopens or deletes threads, even while I am in another app, so that I notice its answers when it replies asynchronously.
-35. As a writer, I want to copy the open comments as a list with locations, so that I can paste a review into an agent's chat.
-36. As a coding agent, I want the open threads with `file:line:column` locations against the file as it is now, so that I can find what was asked even after my own edits.
-37. As a coding agent, I want to find documents with open threads under the current directory, so that I don't need to be told the file.
-38. As a coding agent, I want a thread's quote as the file's exact Markdown source, so that I can find and edit the text.
-39. As a coding agent, I want to reply, resolve and reopen, so that I report what I did where the writer will see it.
-40. As a coding agent, I want to start threads on quoted text, with ambiguous quotes refused, so that my question lands on the right text.
-41. As a coding agent, I want to open a document for review and return at once, so that my shell isn't blocked.
-42. As a coding agent, I want JSON output, so that I can process threads reliably.
-43. As a coding agent, I want the same commands and output on every platform, so that one skill works everywhere.
+30. As a writer, I want each message to say whether I or an agent wrote it, so that I can follow who said what in a thread.
+31. As a writer, I want resolving, resolving all, editing and deleting to be undoable, so that a slip doesn't lose a thread.
+32. As a writer, I want resolved threads hidden unless I ask for them, so that the margin shows what is still open.
+33. As a writer, I want a thread whose text was deleted to stay, showing what it was about, so that feedback is never silently lost.
+34. As a writer, I want a thread to follow its text when it is reworded, so that a comment on "blue/green" follows the change to "canary".
+35. As a writer, I want to be told when an agent adds, answers, resolves, reopens or deletes threads, even while I am in another app, so that I notice its answers when it replies asynchronously.
+36. As a writer, I want to copy the open comments as a list with locations, so that I can paste a review into an agent's chat.
+37. As a coding agent, I want the open threads with `file:line:column` locations against the file as it is now, so that I can find what was asked even after my own edits.
+38. As a coding agent, I want to find documents with open threads under the current directory, so that I don't need to be told the file.
+39. As a coding agent, I want a thread's quote as the file's exact Markdown source, so that I can find and edit the text.
+40. As a coding agent, I want to reply, resolve and reopen, so that I report what I did where the writer will see it.
+41. As a coding agent, I want to start threads on quoted text, with ambiguous quotes refused, so that my question lands on the right text.
+42. As a coding agent, I want to open a document for review and return at once, so that my shell isn't blocked.
+43. As a coding agent, I want JSON output, so that I can process threads reliably.
+44. As a coding agent, I want the same commands and output on every platform, so that one skill works everywhere.
 
 ## Decisions
 
@@ -160,8 +161,15 @@ Every editor produces the same source for the same keys. The choices:
 
 ### Comments
 
-- A thread is a comment plus replies, each with a time; no authors. Threads
-  are numbered per document and numbers are never reused.
+- A thread is a comment plus replies, each with a time and an author: the
+  writer, for messages from the editor, or an agent, for messages from the
+  CLI. Agents aren't told apart. Threads are numbered per document and
+  numbers are never reused.
+- Each message has a header row, as in Pages, Figma and GitHub: at its
+  start the author, "You" or "Agent", and the time on one line ("Agent ·
+  14:10"); at its end the message's buttons, Resolve (or Reopen) on the
+  comment's row, and a menu for the rarer actions. Editing a message
+  doesn't change its author.
 - Anchors: edits elsewhere move them; replacing the anchored text re-anchors
   to the replacement (even inside formatting); insertions inside grow the
   anchor, insertions at its edges don't join it; deleting all of it detaches
@@ -199,14 +207,16 @@ Every editor produces the same source for the same keys. The choices:
   ```text
   I left comments on `/home/me/proj/plan.md`. Please address them.
 
-  #3 `plan.md:3:8-3:17` "bold words": Italic instead?
+  #3 `plan.md:3:8-3:17` "bold words"
+    - User: Italic instead?
     - (2 earlier replies: `margin thread plan.md 3`)
-    - Reply: Keep them bold, but fewer words.
-  #1 `plan.md:4:1` (the commented text, "old step", was deleted): Why?
+    - User: Keep them bold, but fewer words.
+  #1 `plan.md:4:1` (the commented text, "old step", was deleted)
+    - User: Why?
   ```
 
   Items go in document order under their thread numbers. Each gives the
-  comment and the latest message; the replies between, which the agent saw
+  comment and the latest message, each after its author, `User` or `Agent`; the replies between, which the agent saw
   on earlier copies, are left to `margin thread`, so copying again after
   each round doesn't paste the whole conversation again.
 
@@ -229,9 +239,9 @@ A thread in text, as listings print it, under a header per document
 ```text
 #3 plan.md:12:10 (open)
   on "blue/green deploy"
-  comment · 14:02
+  user · 14:02
     Why not canary?
-  reply · 14:10
+  agent · 14:10
     Switched to canary in §2.
 ```
 
@@ -248,13 +258,14 @@ The status is `open`, `open, detached: the commented text was deleted`, or
   "end": { "line": 12, "column": 27 },
   "quote": "blue/green deploy",
   "messages": [
-    { "at": "2026-09-29T12:02:00Z", "body": "Why not canary?" },
-    { "at": "2026-09-29T12:10:00Z", "body": "Switched to canary in §2." }
+    { "author": "user", "at": "2026-09-29T12:02:00Z", "body": "Why not canary?" },
+    { "author": "agent", "at": "2026-09-29T12:10:00Z", "body": "Switched to canary in §2." }
   ]
 }
 ```
 
-A resolved thread also has `resolved_at`.
+A message's author is `user` or `agent`: the CLI speaks to agents, so it
+calls the writer the user. A resolved thread also has `resolved_at`.
 
 The commands:
 

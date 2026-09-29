@@ -361,20 +361,62 @@ class GutterCard: NSView {
 
 /// An icon button for a card's rows: the symbol at the size of the small
 /// text beside it, in a click target of the minimum control size.
-private func rowButton(_ symbol: String, _ label: String, _ target: AnyObject, _ action: Selector) -> NSButton {
-    let config = NSImage.SymbolConfiguration(pointSize: NSFont.smallSystemFontSize, weight: .regular, scale: .medium)
+/// A symbol button in a message's header row, with a target `side` points
+/// square. Layout lines up its symbol, not its target: the alignment rect
+/// is the symbol's width, so the target reaches past the row's ends into
+/// the card's padding (see `ThreadCard.hitTest`).
+private final class RowButton: NSButton {
+    static let side: CGFloat = 28
+
+    override var alignmentRectInsets: NSEdgeInsets {
+        let dx = (RowButton.side - (image?.size.width ?? RowButton.side)) / 2
+        return NSEdgeInsets(top: 0, left: dx, bottom: 0, right: dx)
+    }
+}
+
+private func rowButton(_ symbol: String, _ label: String, _ target: AnyObject, _ action: Selector) -> RowButton {
+    let config = NSImage.SymbolConfiguration(pointSize: NSFont.systemFontSize, weight: .regular, scale: .medium)
     let image = NSImage(systemSymbolName: symbol, accessibilityDescription: label)!.withSymbolConfiguration(config)!
-    let b = NSButton(image: image, target: target, action: action)
+    let b = RowButton(image: image, target: target, action: action)
     b.isBordered = false
     b.imagePosition = .imageOnly
     b.toolTip = label
     b.contentTintColor = .secondaryLabelColor
     b.translatesAutoresizingMaskIntoConstraints = false
     NSLayoutConstraint.activate([
-        b.widthAnchor.constraint(equalToConstant: 20),
-        b.heightAnchor.constraint(equalToConstant: 20),
+        b.widthAnchor.constraint(equalToConstant: image.size.width),
+        b.heightAnchor.constraint(equalToConstant: RowButton.side),
     ])
     return b
+}
+
+/// A message's author and time, "Agent · 14:10", with a sparkles symbol
+/// before "Agent" as Copilot marks its reviews.
+private func byline(_ m: ThreadMessage) -> NSAttributedString {
+    let small = NSFont.systemFont(ofSize: NSFont.smallSystemFontSize)
+    let author: [NSAttributedString.Key: Any] = [
+        .font: NSFont.systemFont(ofSize: NSFont.smallSystemFontSize, weight: .semibold),
+        .foregroundColor: NSColor.labelColor,
+    ]
+    let s = NSMutableAttributedString()
+    switch m.author {
+    case .user:
+        s.append(NSAttributedString(string: "You", attributes: author))
+    case .agent:
+        let config = NSImage.SymbolConfiguration(pointSize: NSFont.smallSystemFontSize, weight: .semibold)
+        if let image = NSImage(systemSymbolName: "sparkles", accessibilityDescription: nil)?.withSymbolConfiguration(config) {
+            let a = NSTextAttachment()
+            a.image = image
+            s.append(NSAttributedString(attachment: a))
+            s.addAttributes(author, range: NSRange(location: 0, length: s.length))
+            s.append(NSAttributedString(string: " ", attributes: author))
+        }
+        s.append(NSAttributedString(string: "Agent", attributes: author))
+    }
+    s.append(NSAttributedString(string: " · \(timeLabel(ms: m.atMs))", attributes: [
+        .font: small, .foregroundColor: NSColor.secondaryLabelColor,
+    ]))
+    return s
 }
 
 /// A message's text on its card, cut off at `collapsedLines` lines, with a
@@ -456,13 +498,15 @@ final class ThreadCard: GutterCard {
     /// The message being edited, and its text box.
     private var editing: (index: Int, composer: Composer)?
     /// Every row's buttons, shown on hover or focus.
-    private var rowButtons: [NSButton] = []
+    private var rowButtons: [RowButton] = []
     /// Each message's views, top to bottom, to find the message a click is on.
     private var messageViews: [[NSView]] = []
     /// The message the last menu was opened for.
     private var menuIndex = 0
     /// Each message's text (nil while it is edited).
     private var texts: [MessageText?] = []
+    /// Each message's author and time.
+    private var bylines: [NSTextField] = []
     /// The messages shown in full, by time, kept across rebuilds.
     private var expanded: Set<Int64> = []
     var onResolve: ((Bool) -> Void)?
@@ -507,6 +551,7 @@ final class ThreadCard: GutterCard {
         rowButtons = []
         messageViews = []
         texts = []
+        bylines = []
         let small = NSFont.systemFont(ofSize: NSFont.smallSystemFontSize)
         let bodyFont = NSFont.systemFont(ofSize: NSFont.systemFontSize)
         for (i, m) in thread.messages.enumerated() {
@@ -520,10 +565,9 @@ final class ThreadCard: GutterCard {
             let row = NSStackView()
             row.orientation = .horizontal
             row.spacing = 2
-            let time = NSTextField(labelWithString: timeLabel(ms: m.atMs))
-            time.font = small
-            time.textColor = .secondaryLabelColor
+            let time = NSTextField(labelWithAttributedString: byline(m))
             row.addArrangedSubview(time)
+            bylines.append(time)
             row.addArrangedSubview(NSView())
             if i == 0 {
                 let resolve = rowButton(thread.resolved ? "arrow.uturn.backward.circle" : "checkmark.circle",
@@ -533,6 +577,10 @@ final class ThreadCard: GutterCard {
                 rowButtons.append(resolve)
             }
             let more = rowButton("ellipsis.circle", "More", self, #selector(moreClicked(_:)))
+            if let resolve = resolveButton, i == 0 {
+                // Spacing is between symbols; keep the targets from overlapping.
+                row.setCustomSpacing(resolve.alignmentRectInsets.right + more.alignmentRectInsets.left + row.spacing, after: resolve)
+            }
             more.tag = i
             row.addArrangedSubview(more)
             rowButtons.append(more)
@@ -592,6 +640,11 @@ final class ThreadCard: GutterCard {
         for t in texts { t?.fit(width: w) }
     }
 
+    /// Each message's author as shown, without the time.
+    var authors: [String] {
+        bylines.map { String($0.stringValue.replacingOccurrences(of: "\u{FFFC} ", with: "✦ ").split(separator: " · ")[0]) }
+    }
+
     /// Each message's text: "short", "collapsed", "expanded" or "editing".
     var messageStates: [String] { texts.map { $0?.state ?? "editing" } }
 
@@ -614,6 +667,17 @@ final class ThreadCard: GutterCard {
 
     override func hoverChanged() {
         syncButtons()
+    }
+
+    /// The rows' buttons, whose targets reach past the contents into the
+    /// padding, where AppKit's hit testing, which stops at each superview's
+    /// bounds, would miss them.
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        let p = convert(point, from: superview)
+        for b in rowButtons {
+            if let sv = b.superview, b.frame.contains(sv.convert(p, from: self)) { return b }
+        }
+        return super.hitTest(point)
     }
 
     /// Whether the rows' buttons show. Hidden ones keep their room, so the

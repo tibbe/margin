@@ -3,7 +3,7 @@
 //! position crosses [`Utf16Index`].
 
 use margin_core::comments::anchor::floor_char_boundary;
-use margin_core::comments::{self, activity, export, Comments, Message, Status, Store, Thread};
+use margin_core::comments::{self, activity, export, Author, Comments, Message, Status, Store, Thread};
 use margin_core::md::edit::{self, BlockType, Plan};
 use margin_core::md::{self, search, Container, Doc, InlineKind, LineKind, Style};
 use std::ops::Range;
@@ -833,8 +833,17 @@ pub fn data_dir() -> String {
 
 // --- Comments ---------------------------------------------------------------
 
+/// Who wrote a message: the writer, in the editor, or an agent, through
+/// the CLI.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum MessageAuthor {
+    User,
+    Agent,
+}
+
 #[derive(Debug, Clone, uniffi::Record)]
 pub struct ThreadMessage {
+    pub author: MessageAuthor,
     /// Milliseconds since the Unix epoch.
     pub at_ms: i64,
     pub body: String,
@@ -896,6 +905,22 @@ fn from_ms(ms: i64) -> chrono::DateTime<chrono::Utc> {
     chrono::DateTime::from_timestamp_millis(ms).unwrap_or_default()
 }
 
+fn message_to_ffi(m: &Message) -> ThreadMessage {
+    let author = match m.author {
+        Author::User => MessageAuthor::User,
+        Author::Agent => MessageAuthor::Agent,
+    };
+    ThreadMessage { author, at_ms: ms(&m.at), body: m.body.clone() }
+}
+
+fn message_from_ffi(m: &ThreadMessage) -> Message {
+    let author = match m.author {
+        MessageAuthor::User => Author::User,
+        MessageAuthor::Agent => Author::Agent,
+    };
+    Message { author, at: from_ms(m.at_ms), body: m.body.clone() }
+}
+
 fn to_ffi(t: &Thread, text: &str, index: &Utf16Index) -> CommentThread {
     CommentThread {
         id: t.id,
@@ -904,7 +929,7 @@ fn to_ffi(t: &Thread, text: &str, index: &Utf16Index) -> CommentThread {
         start: index.u16_of(text, t.anchor.start),
         end: index.u16_of(text, t.anchor.end),
         quote: t.anchor.quote.clone(),
-        messages: t.messages.iter().map(|m| ThreadMessage { at_ms: ms(&m.at), body: m.body.clone() }).collect(),
+        messages: t.messages.iter().map(message_to_ffi).collect(),
         resolved_at_ms: t.resolved_at.as_ref().map(ms),
     }
 }
@@ -970,9 +995,9 @@ impl CommentStore {
                 CommentChange::Anchors => {}
                 CommentChange::Add { start, end, body } => {
                     let (s, e) = (bytes(*start), bytes(*end));
-                    added = Some(c.add(&text, s.min(e)..s.max(e), body));
+                    added = Some(c.add(&text, s.min(e)..s.max(e), body, Author::User));
                 }
-                CommentChange::Reply { id, body } => c.reply(*id, body)?,
+                CommentChange::Reply { id, body } => c.reply(*id, body, Author::User)?,
                 CommentChange::SetResolved { ids, resolved } => {
                     for id in ids {
                         c.set_resolved(*id, *resolved)?;
@@ -982,8 +1007,7 @@ impl CommentStore {
                 CommentChange::Edit { id, index, body } => c.edit(*id, *index as usize, body)?,
                 CommentChange::DeleteMessage { id, index } => c.delete_message(*id, *index as usize)?,
                 CommentChange::InsertMessage { id, index, message } => {
-                    let m = Message { at: from_ms(message.at_ms), body: message.body.clone() };
-                    c.insert_message(*id, *index as usize, m)?
+                    c.insert_message(*id, *index as usize, message_from_ffi(message))?
                 }
                 CommentChange::Restore { thread } => {
                     if c.thread(thread.id).is_none() {
@@ -998,11 +1022,7 @@ impl CommentStore {
                                 quote: if detached { thread.quote.clone() } else { text[s..e].to_string() },
                                 detached,
                             },
-                            messages: thread
-                                .messages
-                                .iter()
-                                .map(|m| Message { at: from_ms(m.at_ms), body: m.body.clone() })
-                                .collect(),
+                            messages: thread.messages.iter().map(message_from_ffi).collect(),
                             resolved_at: thread.resolved_at_ms.map(from_ms),
                         });
                         c.threads.sort_by_key(|t| t.id);
@@ -1107,7 +1127,7 @@ pub fn thread_activity(old: Vec<CommentThread>, new: Vec<CommentThread>) -> Vec<
                 id: t.id,
                 status: if t.resolved { Status::Resolved } else { Status::Open },
                 anchor: comments::Anchor { start: 0, end: 0, quote: t.quote.clone(), detached: t.detached },
-                messages: t.messages.iter().map(|m| Message { at: from_ms(m.at_ms), body: m.body.clone() }).collect(),
+                messages: t.messages.iter().map(message_from_ffi).collect(),
                 resolved_at: t.resolved_at_ms.map(from_ms),
             })
             .collect()
@@ -1155,7 +1175,7 @@ pub fn comments_for_agent(document: String, text: String, threads: Vec<CommentTh
                     quote: if t.detached { t.quote.clone() } else { text[start..end].to_string() },
                     detached: t.detached,
                 },
-                messages: t.messages.iter().map(|m| Message { at: from_ms(m.at_ms), body: m.body.clone() }).collect(),
+                messages: t.messages.iter().map(message_from_ffi).collect(),
                 resolved_at: t.resolved_at_ms.map(from_ms),
             }
         })

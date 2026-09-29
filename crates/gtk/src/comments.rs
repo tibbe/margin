@@ -6,7 +6,7 @@ use super::buffer::DocBuffer;
 use super::card::{Card, CardActions, DraftCard};
 use super::view::DocView;
 use margin_core::comments::activity::{self, Change};
-use margin_core::comments::{Comments, Store, Thread};
+use margin_core::comments::{Author, Comments, Store, Thread};
 use margin_core::md::edit;
 use adw::prelude::*;
 use gtk::glib;
@@ -561,7 +561,7 @@ impl CommentLayer {
         };
         let text = self.buffer.text_string();
         let body = body.to_string();
-        let id = self.update_store(move |c| Ok(c.add(&text, range, &body)));
+        let id = self.update_store(move |c| Ok(c.add(&text, range, &body, Author::User)));
         self.remove_draft();
         if let Some(id) = id {
             self.activate(Some(id), false);
@@ -571,7 +571,7 @@ impl CommentLayer {
 
     pub fn reply(&self, id: u64, body: &str) {
         let body = body.to_string();
-        self.update_store(move |c| c.reply(id, &body));
+        self.update_store(move |c| c.reply(id, &body, Author::User));
     }
 
     pub fn set_resolved(&self, id: u64, resolved: bool) {

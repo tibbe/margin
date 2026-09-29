@@ -112,8 +112,8 @@ At a 16px (12pt) body, scaled with the text size:
   thread's quote is struck through.
 - Times and "Resolved …" in dimmed text at 85% size; quotes dimmed, italic,
   90%. Replies are separated by a 1px rule.
-- The header row holds the time, a Resolve (or Reopen) icon button, and a
-  More menu with Delete thread.
+- In the header row, the author is bold at 85% size; the buttons are a
+  Resolve (or Reopen) icon button and a More menu with Delete thread.
 - The reply box and the draft's text box have a 1px border that turns the
   accent color while focused. Buttons: Comment or Reply, and Cancel.
 - The gutter's comment button appears beside the top of a selection, with a

@@ -31,7 +31,7 @@ Threads are numbered per document (`#3`). Locations are `file:line:column`,
    Leave threads open: the user resolves them once they are satisfied.
    Resolve (`margin resolve FILE ID`) only when the user asks you to.
 4. **Check before reporting back:** rerun `margin comments FILE`. The step is
-   done when every open thread ends with a reply you wrote. The user may keep
+   done when every open thread ends with an `agent` message. The user may keep
    commenting while you work, so this can surface new threads and follow-ups.
 
 Edits to the file show up in the open editor at once, and threads stay
@@ -63,6 +63,8 @@ When you have written a document the user should review (a plan, a spec):
   about specific text. The quote must occur once in the file; if it occurs
   more often, the error lists its lines, and you quote more of the text
   around it.
-- **Messages are unsigned.** A thread is its first message (`comment`, the
-  user's unless you started the thread) and then `reply` messages, yours and
-  the user's follow-ups alike. Tell them apart by what you wrote.
+- **Authors.** Each message is marked `user` or `agent` (`author` in the
+  JSON; `User:` and `Agent:` in comments the user pastes). Every message
+  sent through the CLI is `agent`, yours or another agent's; the rest are
+  the user's, from the editor. A thread's first message is its comment,
+  and a `user` message after an `agent` one is a follow-up to answer.
