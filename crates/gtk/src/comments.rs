@@ -14,7 +14,6 @@ use std::ops::Range;
 use std::rc::{Rc, Weak};
 
 const CARD_GAP: i32 = 10;
-const ACTIVE_SHIFT: i32 = 14;
 
 struct ThreadUi {
     thread: Thread,
@@ -84,7 +83,7 @@ impl CommentLayer {
             }
         });
         gutter.add_controller(clicks);
-        gutter.put(&add_button, ACTIVE_SHIFT as f64, 0.0);
+        gutter.put(&add_button, 0.0, 0.0);
         view.add_overlay(&gutter, 0, 0);
 
         let layer = Rc::new(CommentLayer {
@@ -351,7 +350,7 @@ impl CommentLayer {
             threads.sort_by_key(|tu| tu.thread.id);
         }
         for w in added_cards {
-            self.gutter.put(&w, ACTIVE_SHIFT as f64, 0.0);
+            self.gutter.put(&w, 0.0, 0.0);
         }
         if let Some(id) = self.active.get()
             && !self.threads.borrow().iter().any(|t| t.thread.id == id && self.visible(&t.thread))
@@ -963,10 +962,9 @@ impl CommentLayer {
             ys[i] = want.max(bottom + CARD_GAP).max(0);
             bottom = ys[i] + items[i].h;
         }
-        self.view.move_overlay(&self.gutter, g.gutter_x - ACTIVE_SHIFT, 0);
+        self.view.move_overlay(&self.gutter, g.gutter_x, 0);
         for (i, item) in items.iter().enumerate() {
-            let x = if item.focused { 0 } else { ACTIVE_SHIFT };
-            self.gutter.move_(&item.widget, x as f64, ys[i] as f64);
+            self.gutter.move_(&item.widget, 0.0, ys[i] as f64);
         }
         // Size the gutter explicitly: cards wrap at a fixed width, which
         // the text view's overlay allocation does not account for.
@@ -981,7 +979,7 @@ impl CommentLayer {
             .selection_bounds()
             .map_or(0, |(a, _)| self.view.iter_location(&a).y() + 48);
         self.gutter
-            .set_size_request(width + ACTIVE_SHIFT, extent.max(sel_y) + 24);
+            .set_size_request(width, extent.max(sel_y) + 24);
 
         let show_add = self.draft.borrow().is_none() && self.store().is_some();
         match self.buffer.selection_bounds().filter(|_| show_add) {
@@ -989,7 +987,7 @@ impl CommentLayer {
                 let top = if a.offset() < b.offset() { a } else { b };
                 let y = self.view.iter_location(&top).y().max(0);
                 self.add_button.set_visible(true);
-                self.gutter.move_(&self.add_button, ACTIVE_SHIFT as f64, y as f64);
+                self.gutter.move_(&self.add_button, 0.0, y as f64);
             }
             _ => self.add_button.set_visible(false),
         }

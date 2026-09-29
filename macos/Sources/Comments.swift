@@ -57,7 +57,6 @@ final class CommentLayer {
     private var relayoutQueued = false
 
     static let cardGap: CGFloat = 10
-    static let activeShift: CGFloat = 14
 
     init(page: PageView) {
         self.page = page
@@ -511,10 +510,8 @@ final class CommentLayer {
             ys[i] = max(ys[i], bottom + CommentLayer.cardGap, minTop)
             bottom = ys[i] + entries[i].h
         }
-        // The focused card sits at the gutter's edge; the others a little in.
-        let edge = gutter.convert(NSPoint(x: g.gutterX, y: 0), from: page).x - CommentLayer.activeShift
+        let x = gutter.convert(NSPoint(x: g.gutterX, y: 0), from: page).x
         for (i, e) in entries.enumerated() {
-            let x = edge + (e.focused ? 0 : CommentLayer.activeShift)
             e.card.frame = NSRect(x: x, y: ys[i], width: width, height: e.h)
         }
         page.gutterExtent = gutter.convert(NSPoint(x: 0, y: max(bottom, 0)), to: page).y

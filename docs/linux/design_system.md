@@ -71,8 +71,7 @@ At a 16px (12pt) body, scaled with the text size:
 - Text column up to 760px (about 100 characters), at least 300px, centered,
   with 28px side padding.
 - Comment cards 300px wide (scaled with the desktop's text scaling only),
-  40px from the text. Cards stack with 10px between them; unfocused cards sit
-  14px further right than the focused one.
+  40px from the text. Cards stack with 10px between them.
 - Default window 1340×920.
 
 ## Window
