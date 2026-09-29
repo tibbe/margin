@@ -44,7 +44,7 @@ The actors are the **writer** (the one person who comments) and a **coding
 agent**.
 
 1. As a writer, I want saving to change only the bytes I edited, so that diffs show only real changes.
-2. As a writer, I want tables, HTML, front matter and link reference definitions shown as dimmed source, so that nothing in the file is hidden or misrendered.
+2. As a writer, I want HTML, front matter and link reference definitions shown as dimmed source, and tables as grids that edit as text, so that nothing in the file is hidden or misrendered.
 3. As a writer, I want images shown as their alt text, so that I know an image is there without the editor loading files.
 4. As a writer, I want the syntax of the blank line I'm on, and the fences of the code block I'm in, shown, so that I can edit what is otherwise invisible.
 5. As a writer, I want a marker without its space (`#`, `-`) left as typed, so that a line isn't formatted before I mean it.
@@ -113,7 +113,12 @@ agent**.
 
 - CommonMark with GitHub tables, strikethrough and task lists, and YAML front
   matter.
-- Tables, HTML, front matter and link reference definitions show as dimmed
+- Tables show as grids: the `|`s, the cells' padding and the delimiter row
+  are hidden, columns take their widest cell's width and the delimiter row's
+  alignment, and the header row is bold. A row stays on one line. Where a
+  platform does not draw grids yet (see its design system), tables show as
+  source like HTML.
+- HTML, front matter and link reference definitions show as dimmed
   monospace source; images as italic, link-colored alt text; bare URLs and
   autolinks as links with the URL visible. Checked tasks are struck through
   and dimmed; Heading 6 is dimmed.

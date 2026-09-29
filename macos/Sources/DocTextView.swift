@@ -4,8 +4,8 @@ import AppKit
 /// every other edit go through the core's editing rules, which answer with
 /// minimal changes to the source; styling is then re-derived from the
 /// analysis. Hidden syntax is laid out as null glyphs (see
-/// `HidingLayoutDelegate`), and bullets, checkboxes, quote bars, rules and
-/// code boxes are drawn here. Uses TextKit 1, whose glyph generation can
+/// `HidingLayoutDelegate`), and bullets, checkboxes, quote bars, rules,
+/// code boxes and table grids are drawn here. Uses TextKit 1, whose glyph generation can
 /// hide characters.
 final class DocTextView: NSTextView, NSTextStorageDelegate, NSTextViewDelegate, NSViewToolTipOwner {
     private(set) var analysis = Analysis(text: "")
@@ -13,6 +13,13 @@ final class DocTextView: NSTextView, NSTextStorageDelegate, NSTextViewDelegate, 
     private(set) var items: [ItemInfo] = []
     private(set) var quotes: [QuoteInfo] = []
     private(set) var codeBlocks: [CodeBlockInfo] = []
+    private(set) var tables: [TableGrid] = []
+    /// Where each table cell's text starts, in its line fragment, by the
+    /// character before it that is laid out as the space up to there.
+    private(set) var tableGaps: [Int: CGFloat] = [:]
+    /// Starts of table rows with a leading `|`: the cursor starts in the
+    /// first cell instead.
+    private var tableRowStarts = Set<Int>()
     /// Newlines inside paragraphs, laid out as spaces while reflowing.
     private(set) var softBreaks = Set<Int>()
     let styler = Styler()
@@ -27,6 +34,7 @@ final class DocTextView: NSTextView, NSTextStorageDelegate, NSTextViewDelegate, 
     private(set) var geometry = PageGeometry(width: 1200, scale: 1)
     /// Links and images, for their tooltips.
     private var linkRanges: [NSRange] = []
+    private var tableInfos: [TableInfo] = []
 
     var sourceMode = false {
         didSet { if oldValue != sourceMode { forceRestyle() } }
@@ -177,6 +185,7 @@ final class DocTextView: NSTextView, NSTextStorageDelegate, NSTextViewDelegate, 
         items = analysis.items()
         quotes = analysis.quotes()
         codeBlocks = analysis.codeBlocks()
+        tableInfos = analysis.tables()
         let newSoft = Set(analysis.softBreaks().map { Int($0) })
         let changedSoft = newSoft.symmetricDifference(softBreaks)
         softBreaks = newSoft
@@ -201,9 +210,11 @@ final class DocTextView: NSTextView, NSTextStorageDelegate, NSTextViewDelegate, 
     private func restyle() {
         guard let storage = textStorage else { return }
         let opts = Styler.Options(sourceMode: sourceMode, revealed: revealed, generation: Theme.generation)
-        let spans = Span.decode(analysis.spansPacked())
+        var spans = Span.decode(analysis.spansPacked())
+        if !sourceMode { spans += tableSpans() }
         styler.apply(lines: lines, spans: spans, dirty: pendingDirty, to: storage, options: opts)
         pendingDirty = nil
+        layOutTables()
         linkRanges = spans.filter { $0.code == .link || $0.code == .image }
             .map { NSRange(location: $0.start, length: $0.end - $0.start) }
         window?.invalidateCursorRects(for: self)
@@ -218,6 +229,102 @@ final class DocTextView: NSTextView, NSTextStorageDelegate, NSTextViewDelegate, 
         needsDisplay = true
         onHighlight?()
         onLayout?()
+    }
+
+    // MARK: - Tables
+
+    /// A table laid out as a grid: its columns' left edges and widths, in
+    /// text container coordinates.
+    struct TableGrid {
+        var info: TableInfo
+        var columnX: [CGFloat]
+        var columnWidths: [CGFloat]
+        var width: CGFloat { columnWidths.reduce(0, +) + 2 * Theme.tableCellPad * Theme.scale * CGFloat(columnWidths.count) }
+    }
+
+    /// Tables show as grids: the delimiter row is hidden, and so are each
+    /// cell's padding and `|` but for one character, which is laid out as
+    /// the space to the cell's column.
+    private func tableSpans() -> [Span] {
+        var out: [Span] = []
+        let len = (string as NSString).length
+        for t in tableInfos {
+            let d = lines[Int(t.delimiterLine)]
+            out.append(Span(start: Int(d.start), end: min(Int(d.end) + 1, len), code: .hidden, param: 0))
+            for row in t.rows {
+                for cell in row.cells where cell.lead.end > cell.lead.start {
+                    let gap = Int(cell.lead.end) - 1
+                    out.append(Span(start: Int(cell.lead.start), end: gap, code: .hidden, param: 0))
+                    out.append(Span(start: gap, end: gap + 1, code: .tableGap, param: 0))
+                }
+                out.append(Span(start: Int(row.trail.start), end: Int(row.trail.end), code: .hidden, param: 0))
+            }
+        }
+        return out
+    }
+
+    /// Sizes each table's columns to their widest cell, and lays out again
+    /// the tables whose columns moved.
+    private func layOutTables() {
+        guard let storage = textStorage, let lm = layoutManager else { return }
+        var grids: [TableGrid] = []
+        var gaps: [Int: CGFloat] = [:]
+        tableRowStarts = []
+        if !sourceMode {
+            let pad = Theme.tableCellPad * Theme.scale
+            let minWidth = 2 * pad
+            for t in tableInfos {
+                let n = t.aligns.count
+                guard n > 0, let first = t.rows.first else { continue }
+                var widths = [CGFloat](repeating: minWidth, count: n)
+                var cellWidths: [[CGFloat]] = []
+                for row in t.rows {
+                    let ws = row.cells.prefix(n).map { visibleWidth(NSRange($0.content), in: storage) }
+                    for (j, w) in ws.enumerated() { widths[j] = max(widths[j], w) }
+                    cellWidths.append(ws)
+                }
+                let l = lines[Int(first.line)]
+                var x = indent(quotes: l.quotes, items: l.items)
+                var columnX: [CGFloat] = []
+                for w in widths {
+                    columnX.append(x)
+                    x += w + 2 * pad
+                }
+                for (row, ws) in zip(t.rows, cellWidths) {
+                    if let c = row.cells.first, c.lead.end > c.lead.start { tableRowStarts.insert(Int(c.lead.start)) }
+                    for (j, cell) in row.cells.prefix(n).enumerated() where cell.lead.end > cell.lead.start {
+                        let slack = widths[j] - ws[j]
+                        let offset: CGFloat
+                        switch t.aligns[j] {
+                        case .right: offset = slack
+                        case .center: offset = (slack / 2).rounded()
+                        default: offset = 0
+                        }
+                        gaps[Int(cell.lead.end) - 1] = columnX[j] + pad + offset
+                    }
+                }
+                grids.append(TableGrid(info: t, columnX: columnX, columnWidths: widths))
+            }
+        }
+        tables = grids
+        if gaps != tableGaps {
+            tableGaps = gaps
+            for t in grids {
+                let a = Int(lines[Int(t.info.firstLine)].start)
+                let b = Int(lines[Int(t.info.lastLine)].end)
+                lm.invalidateLayout(forCharacterRange: NSRange(location: a, length: b - a), actualCharacterRange: nil)
+            }
+        }
+    }
+
+    /// The width of a range's shown text, hidden syntax left out.
+    private func visibleWidth(_ r: NSRange, in storage: NSTextStorage) -> CGFloat {
+        guard r.length > 0, NSMaxRange(r) <= storage.length else { return 0 }
+        var w: CGFloat = 0
+        storage.enumerateAttribute(.marginHidden, in: r, options: []) { v, sub, _ in
+            if v == nil { w += storage.attributedSubstring(from: sub).size().width }
+        }
+        return ceil(w)
     }
 
     /// Syntax the cursor needs to see: the blank line it is on, and the
@@ -399,6 +506,9 @@ final class DocTextView: NSTextView, NSTextStorageDelegate, NSTextViewDelegate, 
                 label.draw(at: NSPoint(x: x1 - size.width - 8, y: top + 3), withAttributes: attrs)
             }
         }
+        for t in tables where Int(t.info.lastLine) >= shown.lowerBound && Int(t.info.firstLine) <= shown.upperBound {
+            drawGrid(t, in: rect)
+        }
         for q in quotes where Int(q.lastLine) >= shown.lowerBound && Int(q.firstLine) <= shown.upperBound {
             let top = textTop(line: Int(q.firstLine))
             let bottom = textBottom(line: Int(q.lastLine))
@@ -420,6 +530,36 @@ final class DocTextView: NSTextView, NSTextStorageDelegate, NSTextViewDelegate, 
             Theme.border.setFill()
             NSRect(x: x, y: y, width: left + geometry.docWidth - x, height: max(1, s)).fill()
         }
+    }
+
+    /// A table's grid: a rounded box, the header's fill, and lines between
+    /// rows and columns.
+    private func drawGrid(_ t: TableGrid, in rect: NSRect) {
+        let pad = (Theme.tableRowPad * Theme.scale).rounded()
+        let rows = t.info.rows.map { row -> (CGFloat, CGFloat) in
+            let li = Int(row.line)
+            return (textTop(line: li) - pad, textBottom(line: li) + pad)
+        }
+        guard let top = rows.first?.0, let bottom = rows.last?.1, bottom > rect.minY, top < rect.maxY else { return }
+        let x0 = geometry.left + t.columnX[0]
+        let box = NSRect(x: x0, y: top, width: t.width, height: bottom - top).insetBy(dx: 0.5, dy: 0.5)
+        let radius = 6 * Theme.scale
+        let outline = NSBezierPath(roundedRect: box, xRadius: radius, yRadius: radius)
+        NSGraphicsContext.saveGraphicsState()
+        outline.addClip()
+        Theme.codeBackground.setFill()
+        NSRect(x: box.minX, y: top, width: box.width, height: rows[0].1 - top).fill()
+        Theme.border.setFill()
+        for (_, b) in rows.dropLast() {
+            NSRect(x: box.minX, y: b.rounded() - 0.5, width: box.width, height: 1).fill()
+        }
+        for x in t.columnX.dropFirst() {
+            NSRect(x: (geometry.left + x).rounded() - 0.5, y: top, width: 1, height: bottom - top).fill()
+        }
+        NSGraphicsContext.restoreGraphicsState()
+        Theme.border.setStroke()
+        outline.lineWidth = 1
+        outline.stroke()
     }
 
     override func draw(_ dirtyRect: NSRect) {
@@ -656,7 +796,7 @@ final class DocTextView: NSTextView, NSTextStorageDelegate, NSTextViewDelegate, 
     /// collapsed line, and at the left edge of inline syntax only (as in the
     /// GTK editor, whose invisible text the cursor skips).
     private func isStop(_ p: Int) -> Bool {
-        if Int(analysis.visualPos(pos: UInt32(p))) != p { return false }
+        if Int(analysis.visualPos(pos: UInt32(p))) != p || tableRowStarts.contains(p) { return false }
         if inCollapsedLine(p) { return false }
         if p == 0 || !isHidden(p - 1) { return true }
         let li = Int(analysis.lineIndex(pos: UInt32(p)))
@@ -680,6 +820,48 @@ final class DocTextView: NSTextView, NSTextStorageDelegate, NSTextViewDelegate, 
         return q
     }
 
+    /// Left and right in a table row move from stop to stop in the text:
+    /// TextKit's own movement lands on the gaps laid out before cells.
+    private var inTableRow: Bool {
+        guard !sourceMode, !stale, !lines.isEmpty else { return false }
+        let li = Int(analysis.lineIndex(pos: UInt32(cursor)))
+        return li < lines.count && lines[li].kind == .table
+    }
+
+    /// The fixed end of a selection extended in a table row.
+    private var tableAnchor: (anchor: Int, selection: NSRange)?
+
+    private func moveInTable(forward: Bool, extending: Bool) {
+        let sel = selectedRange()
+        if !extending {
+            let p = sel.length > 0 ? (forward ? NSMaxRange(sel) : sel.location) : step(from: sel.location, forward: forward)
+            setSelectedRange(NSRange(location: p, length: 0))
+        } else {
+            let anchor = tableAnchor.flatMap { $0.selection == sel ? $0.anchor : nil } ?? sel.location
+            let head = step(from: anchor == sel.location ? NSMaxRange(sel) : sel.location, forward: forward)
+            let r = NSRange(location: min(anchor, head), length: abs(head - anchor))
+            setSelectedRange(r)
+            tableAnchor = (anchor, selectedRange())
+        }
+        scrollRangeToVisible(NSRange(location: cursor, length: 0))
+    }
+
+    override func moveLeft(_ sender: Any?) {
+        inTableRow ? moveInTable(forward: false, extending: false) : super.moveLeft(sender)
+    }
+
+    override func moveRight(_ sender: Any?) {
+        inTableRow ? moveInTable(forward: true, extending: false) : super.moveRight(sender)
+    }
+
+    override func moveLeftAndModifySelection(_ sender: Any?) {
+        inTableRow ? moveInTable(forward: false, extending: true) : super.moveLeftAndModifySelection(sender)
+    }
+
+    override func moveRightAndModifySelection(_ sender: Any?) {
+        inTableRow ? moveInTable(forward: true, extending: true) : super.moveRightAndModifySelection(sender)
+    }
+
     /// Every selection change passes here: keyboard movement of any kind
     /// (in either writing direction), clicks and drags. The cursor never
     /// rests in hidden syntax or on a collapsed line; a key movement that
@@ -693,9 +875,11 @@ final class DocTextView: NSTextView, NSTextStorageDelegate, NSTextViewDelegate, 
             let p = r.location
             if isStop(p) { return new }
             let stepped = o.length == 0 && abs(p - o.location) <= 2
-            let q = stepped || inCollapsedLine(p)
+            var q = stepped || inCollapsedLine(p)
                 ? step(from: p, forward: p > o.location)
                 : Int(analysis.visualPos(pos: UInt32(p)))
+            // In a table's hidden padding, which the core does not know of.
+            if !isStop(q) { q = step(from: q, forward: true) }
             return [NSValue(range: NSRange(location: q, length: 0))]
         }
         // Extending a selection: its moving end skips hidden syntax too.
@@ -1150,8 +1334,11 @@ final class HidingLayoutDelegate: NSObject, NSLayoutManagerDelegate {
         let first = charIndexes[0]
         let last = charIndexes[n - 1]
         var any = false
-        storage.enumerateAttribute(.marginHidden, in: NSRange(location: first, length: last - first + 1), options: []) { v, _, stop in
-            if v != nil { any = true; stop.pointee = true }
+        let range = NSRange(location: first, length: last - first + 1)
+        for key in [NSAttributedString.Key.marginHidden, .marginTableGap] where !any {
+            storage.enumerateAttribute(key, in: range, options: []) { v, _, stop in
+                if v != nil { any = true; stop.pointee = true }
+            }
         }
         if !any { return 0 }
         let s = storage.string as NSString
@@ -1162,6 +1349,8 @@ final class HidingLayoutDelegate: NSObject, NSLayoutManagerDelegate {
             // collapsed in `shouldSetLineFragmentRect` instead.
             if storage.attribute(.marginHidden, at: ci, effectiveRange: nil) != nil && s.character(at: ci) != 10 {
                 newProps[i] = .null
+            } else if storage.attribute(.marginTableGap, at: ci, effectiveRange: nil) != nil {
+                newProps[i] = .controlCharacter
             }
         }
         newProps.withUnsafeBufferPointer { buf in
@@ -1174,12 +1363,18 @@ final class HidingLayoutDelegate: NSObject, NSLayoutManagerDelegate {
         if let v = view, v.reflowsParagraphs, !v.sourceMode, v.softBreaks.contains(charIndex) {
             return .whitespace
         }
+        if view?.tableGaps[charIndex] != nil {
+            return .whitespace
+        }
         return action
     }
 
     /// A newline laid out as whitespace (Reflow Paragraphs) is as wide as a
-    /// space.
+    /// space; a table cell's gap reaches to where the cell's text starts.
     func layoutManager(_ layoutManager: NSLayoutManager, boundingBoxForControlGlyphAt glyphIndex: Int, for textContainer: NSTextContainer, proposedLineFragment proposedRect: NSRect, glyphPosition: NSPoint, characterIndex charIndex: Int) -> NSRect {
+        if let x = view?.tableGaps[charIndex] {
+            return NSRect(x: glyphPosition.x, y: 0, width: max(0, x - glyphPosition.x), height: 0)
+        }
         let font = layoutManager.textStorage?.attribute(.font, at: charIndex, effectiveRange: nil) as? NSFont ?? Theme.font(size: Theme.bodySize)
         let width = (" " as NSString).size(withAttributes: [.font: font]).width
         return NSRect(x: glyphPosition.x, y: 0, width: width, height: 0)

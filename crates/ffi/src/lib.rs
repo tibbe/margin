@@ -197,6 +197,40 @@ pub struct CodeBlockInfo {
     pub items: u8,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum TableAlign {
+    None,
+    Left,
+    Center,
+    Right,
+}
+
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct TableInfo {
+    pub first_line: u32,
+    pub last_line: u32,
+    pub delimiter_line: u32,
+    pub aligns: Vec<TableAlign>,
+    /// The header row first.
+    pub rows: Vec<TableRowInfo>,
+}
+
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct TableRowInfo {
+    pub line: u32,
+    pub cells: Vec<TableCellInfo>,
+    /// Padding and the closing `|` after the last cell.
+    pub trail: TextRange,
+}
+
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct TableCellInfo {
+    /// The cell's text without its padding.
+    pub content: TextRange,
+    /// Padding and the `|` before the cell's text.
+    pub lead: TextRange,
+}
+
 #[derive(Debug, Clone, uniffi::Record)]
 pub struct Replacement {
     /// UTF-16 range of the text before the change.
@@ -507,6 +541,41 @@ impl Analysis {
                     quotes,
                     items,
                 }
+            })
+            .collect()
+    }
+
+    pub fn tables(&self) -> Vec<TableInfo> {
+        self.doc
+            .tables
+            .iter()
+            .map(|t| TableInfo {
+                first_line: self.doc.line_index(t.range.start) as u32,
+                last_line: t.rows.last().map_or(t.delimiter_line, |r| r.line.max(t.delimiter_line)) as u32,
+                delimiter_line: t.delimiter_line as u32,
+                aligns: t
+                    .aligns
+                    .iter()
+                    .map(|a| match a {
+                        md::Align::None => TableAlign::None,
+                        md::Align::Left => TableAlign::Left,
+                        md::Align::Center => TableAlign::Center,
+                        md::Align::Right => TableAlign::Right,
+                    })
+                    .collect(),
+                rows: t
+                    .rows
+                    .iter()
+                    .map(|r| TableRowInfo {
+                        line: r.line as u32,
+                        cells: r
+                            .cells
+                            .iter()
+                            .map(|c| TableCellInfo { content: self.range(c.content.clone()), lead: self.range(c.lead.clone()) })
+                            .collect(),
+                        trail: self.range(r.trail.clone()),
+                    })
+                    .collect(),
             })
             .collect()
     }

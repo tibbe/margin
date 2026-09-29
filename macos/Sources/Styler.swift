@@ -6,6 +6,9 @@ extension NSAttributedString.Key {
     /// On a line's first character: the signature of the styling applied to
     /// the line, so unchanged lines are left alone.
     static let marginLineSig = NSAttributedString.Key("marginLineSig")
+    /// The one character left of a table cell's padding and `|`, laid out
+    /// as space wide enough to reach the cell's column.
+    static let marginTableGap = NSAttributedString.Key("marginTableGap")
 }
 
 extension NSRange {
@@ -28,6 +31,8 @@ struct Span {
     enum Code: UInt32 {
         case para, heading, codeBlock, fence, table, htmlBlock, frontMatter, rule, raw, quote
         case indent, above, strong, emphasis, strike, code, link, image, inlineHtml, tableHeader, taskDone, hidden
+        /// Not from the core: added by the view for tables laid out as grids.
+        case tableGap
     }
 
     static func decode(_ data: Data) -> [Span] {
@@ -142,7 +147,7 @@ final class Styler {
             let start = Int(line.start)
             let end = min(Int(line.end) + 1, length)
             let lineSpans = bucket[counts[i]..<counts[i + 1]].map { spans[$0] }
-            let block = lineStyle(lineSpans)
+            let block = lineStyle(lineSpans, sourceMode: options.sourceMode)
             metrics.append(LineMetrics(spaceAbove: block.above, lineSpacing: block.spacing))
             guard start < end else { continue }
             let range = NSRange(location: start, length: end - start)
@@ -179,6 +184,8 @@ final class Styler {
         var mono = false
         var height: CGFloat = 1.5
         var charWrap = false
+        /// A table row laid out as a grid: one line, never wrapped.
+        var gridRow = false
         var indent: CGFloat = 0
         var above: CGFloat = 0
         var spacing: CGFloat = 0
@@ -187,7 +194,7 @@ final class Styler {
 
     private var paragraphs: [[CGFloat]: NSParagraphStyle] = [:]
 
-    private func lineStyle(_ spans: [Span]) -> LineStyle {
+    private func lineStyle(_ spans: [Span], sourceMode: Bool) -> LineStyle {
         var st = LineStyle()
         for s in spans {
             switch s.code {
@@ -201,7 +208,11 @@ final class Styler {
             case .fence:
                 st.mono = true; st.size = 0.8; st.height = 1.2
             case .table:
-                st.mono = true; st.size = 0.88; st.height = 1.2
+                if sourceMode {
+                    st.mono = true; st.size = 0.88; st.height = 1.2
+                } else {
+                    st.size = 0.94; st.height = 1.3; st.gridRow = true
+                }
             case .htmlBlock:
                 st.mono = true; st.size = 0.85; st.height = 1.2
             case .frontMatter:
@@ -217,7 +228,15 @@ final class Styler {
         }
         let font = Theme.font(size: Theme.bodySize * st.size, weight: st.weight, mono: st.mono)
         st.spacing = max(0, (st.height * font.pointSize - Theme.naturalHeight(font)).rounded())
-        let key = [st.indent, st.above, st.spacing, st.charWrap ? 1 : 0]
+        if st.gridRow {
+            // Cell padding: the text starts inside its cell, and the row
+            // has room above and below it for the grid's lines.
+            let pad = (Theme.tableRowPad * Theme.scale).rounded()
+            st.indent += Theme.tableCellPad * Theme.scale
+            st.above += pad
+            st.spacing += pad
+        }
+        let key = [st.indent, st.above, st.spacing, st.charWrap ? 1 : 0, st.gridRow ? 1 : 0]
         if let p = paragraphs[key] {
             st.paragraph = p
         } else {
@@ -226,7 +245,7 @@ final class Styler {
             p.headIndent = st.indent
             p.paragraphSpacingBefore = st.above
             p.lineSpacing = st.spacing
-            p.lineBreakMode = st.charWrap ? .byCharWrapping : .byWordWrapping
+            p.lineBreakMode = st.gridRow ? .byClipping : st.charWrap ? .byCharWrapping : .byWordWrapping
             paragraphs[key] = p
             st.paragraph = p
         }
@@ -260,6 +279,7 @@ final class Styler {
             var underline = false
             var strike = false
             var hidden = false
+            var gap = false
             // Later styles win, as in the GTK editor's tag priorities; the
             // codes are in that order.
             for s in ordered where s.start <= a && b <= s.end {
@@ -290,6 +310,8 @@ final class Styler {
                 case .hidden:
                     let shown = revealed.contains { $0.location <= a && b <= NSMaxRange($0) }
                     if sourceMode || shown { color = Theme.dim } else { hidden = true }
+                case .tableGap:
+                    gap = true
                 default:
                     break
                 }
@@ -303,6 +325,7 @@ final class Styler {
             if underline { attrs[.underlineStyle] = NSUnderlineStyle.single.rawValue }
             if strike { attrs[.strikethroughStyle] = NSUnderlineStyle.single.rawValue }
             if hidden { attrs[.marginHidden] = true }
+            if gap { attrs[.marginTableGap] = true }
             out.append((NSRange(location: a, length: b - a), attrs))
         }
         return out

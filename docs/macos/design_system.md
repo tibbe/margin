@@ -38,6 +38,10 @@ conventions of Apple's document apps (TextEdit, Pages, Notes).
   Cancel and Save. Undo is named for the step: Undo Edit, Undo Delete
   Reply, Undo Delete Comment.
 - Code blocks sit in a tinted box with a 6pt radius; quote bars are rounded.
+- Tables are grids in a box with a 6pt radius, the header row tinted like a
+  code block, with separator-colored lines between rows and columns. Cells
+  have 10pt of padding at the sides and 6pt above and below. Text is at 94%
+  of body size. A table wider than the page is cut off at its right edge.
 - Toolbar: the open-comment count and a comment button. Everything else is
   in the menu bar.
 

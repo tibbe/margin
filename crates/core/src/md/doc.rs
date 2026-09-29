@@ -6,7 +6,7 @@
 //! and where list markers, quote bars and code blocks sit so the view can
 //! draw them. It also exposes the structure that editing commands need.
 
-use pulldown_cmark::{CodeBlockKind, Event, LinkType, Options, Parser, Tag, TagEnd};
+use pulldown_cmark::{Alignment, CodeBlockKind, Event, LinkType, Options, Parser, Tag, TagEnd};
 use std::ops::Range;
 
 /// A styling instruction for a byte range of the source.
@@ -164,6 +164,45 @@ pub struct Block {
     pub item: Option<usize>,
 }
 
+/// A GitHub pipe table, row by row, so a view can lay it out as a grid.
+#[derive(Clone, Debug)]
+pub struct Table {
+    pub range: Range<usize>,
+    /// The `|---|:--:|` line under the header.
+    pub delimiter_line: usize,
+    /// One per column.
+    pub aligns: Vec<Align>,
+    /// The header row first. A row may have fewer cells than there are
+    /// columns; the parser pads such rows, but the padding has no source.
+    pub rows: Vec<TableRow>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Align {
+    None,
+    Left,
+    Center,
+    Right,
+}
+
+#[derive(Clone, Debug)]
+pub struct TableRow {
+    pub line: usize,
+    pub cells: Vec<TableCell>,
+    /// After the last cell's content: its padding and the closing `|`.
+    pub trail: Range<usize>,
+}
+
+#[derive(Clone, Debug)]
+pub struct TableCell {
+    /// The cell's text without its padding. An empty cell's is an empty
+    /// range one space into the cell, where typing goes.
+    pub content: Range<usize>,
+    /// Between the previous cell's content (or the start of the row) and
+    /// this cell's: padding and the `|` between them.
+    pub lead: Range<usize>,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum InlineKind {
     Strong,
@@ -203,6 +242,7 @@ pub struct Doc {
     pub lists: Vec<List>,
     pub quotes: Vec<Quote>,
     pub code_blocks: Vec<CodeBlock>,
+    pub tables: Vec<Table>,
     pub inlines: Vec<Inline>,
     /// Hidden inline syntax (emphasis markers, link destinations, escapes),
     /// sorted and merged. Block prefixes are described by
@@ -260,6 +300,9 @@ struct Builder<'a> {
     /// Inline content directly inside a tight list item (no paragraph event).
     implicit: Option<Range<usize>>,
     table_heads: Vec<Range<usize>>,
+    tables: Vec<Table>,
+    /// Start of the table row being parsed (after any container markers).
+    row_start: usize,
     code_info: Option<(bool, String)>,
     /// Plain text outside links and code, where bare URLs are looked for.
     texts: Vec<Range<usize>>,
@@ -288,6 +331,8 @@ pub fn parse(src: &str) -> Doc {
         leaf: None,
         implicit: None,
         table_heads: Vec::new(),
+        tables: Vec::new(),
+        row_start: 0,
         code_info: None,
         texts: Vec::new(),
         soft_breaks: Vec::new(),
@@ -510,15 +555,37 @@ impl Builder<'_> {
                 });
                 self.leaf = Some((BlockKind::Code(self.code_blocks.len()), range.start));
             }
-            Tag::Table(_) => {
+            Tag::Table(aligns) => {
                 self.flush_implicit();
                 self.leaf = Some((BlockKind::Table, range.start));
+                let line = self.line_of(range.start);
+                self.tables.push(Table {
+                    range: range.clone(),
+                    delimiter_line: line + 1,
+                    aligns: aligns
+                        .iter()
+                        .map(|a| match a {
+                            Alignment::None => Align::None,
+                            Alignment::Left => Align::Left,
+                            Alignment::Center => Align::Center,
+                            Alignment::Right => Align::Right,
+                        })
+                        .collect(),
+                    rows: Vec::new(),
+                });
             }
-            Tag::TableHead => {
+            Tag::TableHead | Tag::TableRow => {
+                if matches!(tag, Tag::TableHead) {
+                    self.table_heads.push(range.clone());
+                }
                 self.covered.push(range.clone());
-                self.table_heads.push(range);
+                let line = self.line_of(range.start);
+                self.row_start = range.start;
+                if let Some(t) = self.tables.last_mut() {
+                    t.rows.push(TableRow { line, cells: Vec::new(), trail: range.start..range.start });
+                }
             }
-            Tag::TableRow => self.covered.push(range),
+            Tag::TableCell => self.table_cell(range),
             Tag::HtmlBlock => {
                 self.flush_implicit();
                 self.leaf = Some((BlockKind::Html, range.start));
@@ -632,6 +699,11 @@ impl Builder<'_> {
                     item: self.item_stack.last().copied(),
                 });
             }
+            TagEnd::TableHead | TagEnd::TableRow => {
+                let Some(row) = self.tables.last_mut().and_then(|t| t.rows.last_mut()) else { return };
+                let from = row.cells.last().map_or(self.row_start, |c| c.content.end);
+                row.trail = from..self.lines[row.line].end.max(from);
+            }
             TagEnd::BlockQuote(_) => {
                 self.flush_implicit();
                 self.quote_depth = self.quote_depth.saturating_sub(1);
@@ -646,6 +718,25 @@ impl Builder<'_> {
             }
             _ => {}
         }
+    }
+
+    fn table_cell(&mut self, raw: Range<usize>) {
+        let Some(row) = self.tables.last_mut().and_then(|t| t.rows.last_mut()) else { return };
+        // Cells the parser adds to short rows sit past the line's end.
+        if raw.start > self.lines[row.line].end {
+            return;
+        }
+        let text = &self.src[raw.clone()];
+        let start = raw.start + (text.len() - text.trim_start().len());
+        let end = raw.end - (text.len() - text.trim_end().len());
+        let content = if start < end {
+            start..end
+        } else {
+            let p = (raw.start + 1).min(raw.end);
+            p..p
+        };
+        let from = row.cells.last().map_or(self.row_start, |c| c.content.end);
+        row.cells.push(TableCell { lead: from..content.start.max(from), content });
     }
 
     fn finish_code_block(&mut self, range: Range<usize>, first_line: usize, last_line: usize) {
@@ -710,6 +801,7 @@ impl Builder<'_> {
             lists: self.lists,
             quotes: self.quotes,
             code_blocks: self.code_blocks,
+            tables: self.tables,
             inlines: self.inlines,
             hidden,
             spans: self.spans,
@@ -1490,6 +1582,41 @@ mod tests {
         let doc = parse(src);
         assert!(doc.lines[..3].iter().all(|l| l.kind == LineKind::Table));
         assert_eq!(hidden_text(src, &doc), src);
+    }
+
+    #[test]
+    fn table_rows_and_cells() {
+        let src = "| A | B |  C |\n|:--|--:|:-:|\n| x |  | `a\\|b` |\na | b\n";
+        let doc = parse(src);
+        assert_eq!(doc.tables.len(), 1);
+        let t = &doc.tables[0];
+        assert_eq!(t.delimiter_line, 1);
+        assert_eq!(t.aligns, [Align::Left, Align::Right, Align::Center]);
+        let text = |r: &Range<usize>| &src[r.clone()];
+        let rows: Vec<(usize, Vec<(&str, &str)>, &str)> = t
+            .rows
+            .iter()
+            .map(|r| (r.line, r.cells.iter().map(|c| (text(&c.lead), text(&c.content))).collect(), text(&r.trail)))
+            .collect();
+        assert_eq!(
+            rows,
+            [
+                (0, vec![("| ", "A"), (" | ", "B"), (" |  ", "C")], " |"),
+                (2, vec![("| ", "x"), (" | ", ""), (" | ", "`a\\|b`")], " |"),
+                // The missing third cell has no source.
+                (3, vec![("", "a"), (" | ", "b")], ""),
+            ]
+        );
+        assert_eq!(t.rows[1].cells[1].content, 35..35);
+    }
+
+    #[test]
+    fn table_in_quote_rows_start_after_the_marker() {
+        let src = "> | q | r |\n> |---|---|\n> | 1 | 2 |\n";
+        let doc = parse(src);
+        let t = &doc.tables[0];
+        assert_eq!(t.rows.iter().map(|r| r.line).collect::<Vec<_>>(), [0, 2]);
+        assert_eq!(&src[t.rows[1].cells[0].lead.clone()], "| ");
     }
 
     fn above(doc: &Doc, line: usize) -> u16 {

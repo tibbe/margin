@@ -48,6 +48,10 @@ enum Theme {
 
     static let quoteStep: CGFloat = 22
     static let itemStep: CGFloat = 28
+    /// A table cell's padding, left and right of its text, and above and
+    /// below it.
+    static let tableCellPad: CGFloat = 10
+    static let tableRowPad: CGFloat = 6
 
     static var text: NSColor { .textColor }
     /// The text color, faded; it follows the appearance, as the text

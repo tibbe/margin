@@ -1,0 +1,21 @@
+# Tables show as grids: the cursor moves through cells' text, never
+# resting in the hidden padding and `|` between them.
+reset | Name | Role |\n|:-----|:----:|\n| Grace Hopper |  |\n| Alan | Engineer |\n
+# Right from the end of a cell goes to the start of the next.
+find Hopper
+key right
+selection
+# Into an empty cell, and typing there.
+type X
+dump
+# Left from a row's first cell goes to the end of the row above.
+find-before Grace
+key left
+selection
+key right
+selection
+# Extending a selection across cells.
+key shift-right shift-right shift-right shift-right shift-right shift-right shift-right shift-right shift-right shift-right shift-right shift-right shift-right
+selection
+key down
+selection

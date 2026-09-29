@@ -56,7 +56,8 @@ checked tasks at 50%.
   Omarchy sets), default Adwaita Sans 12pt. `MARGIN_FONT` overrides it.
 - **Code**: the generic `monospace` family, which fontconfig resolves to the
   font `omarchy font set` picks. `MARGIN_MONO_FONT` overrides it. Code blocks
-  and tables are at 88% of body size, inline code at 90%, fences at 80%.
+  and tables (shown as source, not yet as grids) are at 88% of body size,
+  inline code at 90%, fences at 80%.
 - **Interface** (comment cards): the desktop's interface font
   (`gtk-font-name`).
 - **Text scaling**: Omarchy's text size sets GNOME's text-scaling-factor,
