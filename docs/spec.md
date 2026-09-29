@@ -40,62 +40,22 @@ answer through a CLI.
 - **Quiet and native.** Documents save themselves; rarely used commands live
   in menus; each platform's editor behaves like that platform's apps.
 
-## User Stories
+User stories name two actors: the **writer** (the one person who
+comments) and a **coding agent**.
 
-The actors are the **writer** (the one person who comments) and a **coding
-agent**.
+## Files
+
+### User Stories
 
 1. As a writer, I want saving to change only the bytes I edited, so that diffs show only real changes.
-2. As a writer, I want HTML, front matter and link reference definitions shown as dimmed source, and tables as grids that edit as text, so that nothing in the file is hidden or misrendered.
-3. As a writer, I want images shown as their alt text, so that I know an image is there without the editor loading files.
-4. As a writer, I want the syntax of the blank line I'm on, and the fences of the code block I'm in, shown, so that I can edit what is otherwise invisible.
-5. As a writer, I want a marker without its space (`#`, `-`) left as typed, so that a line isn't formatted before I mean it.
-6. As a writer, I want to switch a window to raw source, keeping my place, so that I can see exactly what is in the file.
-7. As a writer, I want hard-wrapped paragraphs to reflow to the window when I choose, without changing the file, so that I can read them comfortably.
-8. As a writer, I want Enter to start a new paragraph and Shift+Enter to break the line within it, so that I get the break I mean.
-9. As a writer, I want Enter in a list, quote or code block to continue it, and Enter on an empty item to leave the list, so that I never type markers.
-10. As a writer, I want numbered lists renumbered only when they are numbered in sequence, so that `1.` `1.` `1.` lists stay that way.
-11. As a writer, I want Backspace at the start of a heading, quote or item to turn it back into a paragraph, so that undoing a block type is one key.
-12. As a writer, I want deleting the last character of formatted text to remove its markers, so that no empty `****` is left behind.
-13. As a writer, I want splitting or partly un-formatting a phrase to leave well-formed Markdown on both sides, so that I never see stray markers.
-14. As a writer, I want typing at the end of bold text to continue the bold only when the cursor is inside it, and never to extend a link, so that formatting starts and stops where I expect.
-15. As a writer, I want copying to give balanced Markdown and pasting to insert Markdown, so that formatting survives the clipboard.
-16. As a writer, I want the characters I type written exactly as typed, so that the file holds what I typed.
-17. As a writer, I want search to match the text as shown, so that "bold text" finds `**bold** text`.
-18. As a writer, I want replacing to keep formatting around a match, so that I can rename things safely.
-19. As a writer, I want documents to save themselves, so that I never think about saving.
-20. As a writer, I want to be asked before closing only when text would be lost, so that closing is quick but never destructive.
-21. As a writer, I want untitled documents kept until I name them, and brought back after a crash, so that drafts are never lost.
-22. As a writer, I want comments to move with a document I save under a new name, so that renaming doesn't lose my review.
-23. As a writer, I want an agent's edits to an open document picked up, and merged with mine when they don't overlap, so that we can both work at once.
-24. As a writer, I want to choose which version to keep when our edits overlap, so that nothing is lost without my say.
-25. As a writer, I want to select text and comment on it, so that feedback is attached to exactly the passage it is about.
-26. As a writer, I want each thread's card beside its text in the margin, so that I read comments alongside the document.
-27. As a writer, I want the cursor entering commented text to focus its thread, so that moving through the text moves through the review.
-28. As a writer, I want to edit or delete any comment or reply, so that I can fix what I wrote or clear what no longer helps.
-29. As a writer, I want long comments and replies cut short until I ask for the rest, so that one long message doesn't push the other threads out of view.
-30. As a writer, I want each message to say whether I or an agent wrote it, so that I can follow who said what in a thread.
-31. As a writer, I want resolving, resolving all, editing and deleting to be undoable, so that a slip doesn't lose a thread.
-32. As a writer, I want resolved threads hidden unless I ask for them, so that the margin shows what is still open.
-33. As a writer, I want a thread whose text was deleted to stay, showing what it was about, so that feedback is never silently lost.
-34. As a writer, I want a thread to follow its text when it is reworded, so that a comment on "blue/green" follows the change to "canary".
-35. As a writer, I want to be told when an agent adds, answers, resolves, reopens or deletes threads, even while I am in another app, so that I notice its answers when it replies asynchronously.
-36. As a writer, I want to copy the open comments as a list with locations, so that I can paste a review into an agent's chat.
-37. As a writer, I want to send the open comments to the agent waiting on a document in one step, so that I don't paste every round of review into its chat.
-38. As a writer, I want to see whether an agent is waiting on a document or working on what I sent, so that I know whether answers are coming.
-39. As a coding agent, I want the open threads with `file:line:column` locations against the file as it is now, so that I can find what was asked even after my own edits.
-40. As a coding agent, I want to find documents with open threads under the current directory, so that I don't need to be told the file.
-41. As a coding agent, I want a thread's quote as the file's exact Markdown source, so that I can find and edit the text.
-42. As a coding agent, I want to reply, resolve and reopen, so that I report what I did where the writer will see it.
-43. As a coding agent, I want to start threads on quoted text, with ambiguous quotes refused, so that my question lands on the right text.
-44. As a coding agent, I want to open a document for review and return at once, so that my shell isn't blocked.
-45. As a coding agent, I want to wait until the writer sends a document's comments, so that I pick up each round of review without being told in chat.
-46. As a coding agent, I want JSON output, so that I can process threads reliably.
-47. As a coding agent, I want the same commands and output on every platform, so that one skill works everywhere.
+2. As a writer, I want documents to save themselves, so that I never think about saving.
+3. As a writer, I want to be asked before closing only when text would be lost, so that closing is quick but never destructive.
+4. As a writer, I want untitled documents kept until I name them, and brought back after a crash, so that drafts are never lost.
+5. As a writer, I want comments to move with a document I save under a new name, so that renaming doesn't lose my review.
+6. As a writer, I want an agent's edits to an open document picked up, and merged with mine when they don't overlap, so that we can both work at once.
+7. As a writer, I want to choose which version to keep when our edits overlap, so that nothing is lost without my say.
 
-## Decisions
-
-### Files
+### Decisions
 
 - UTF-8 only; other files are refused. A missing path opens empty and is
   created on first save.
@@ -115,7 +75,18 @@ agent**.
 - Comments are keyed by path. Save As moves them and drops any stored for a
   file it overwrites; moving a file outside Margin loses them.
 
-### Rendering
+## Rendering
+
+### User Stories
+
+1. As a writer, I want HTML, front matter and link reference definitions shown as dimmed source, and tables as grids that edit as text, so that nothing in the file is hidden or misrendered.
+2. As a writer, I want images shown as their alt text, so that I know an image is there without the editor loading files.
+3. As a writer, I want the syntax of the blank line I'm on, and the fences of the code block I'm in, shown, so that I can edit what is otherwise invisible.
+4. As a writer, I want a marker without its space (`#`, `-`) left as typed, so that a line isn't formatted before I mean it.
+5. As a writer, I want to switch a window to raw source, keeping my place, so that I can see exactly what is in the file.
+6. As a writer, I want hard-wrapped paragraphs to reflow to the window when I choose, without changing the file, so that I can read them comfortably.
+
+### Decisions
 
 - CommonMark with GitHub tables, strikethrough and task lists, and YAML front
   matter.
@@ -135,7 +106,23 @@ agent**.
 - Reflow Paragraphs is off by default, global and persisted. Show Markdown is
   per window and not persisted.
 
-### Editing
+## Editing
+
+### User Stories
+
+1. As a writer, I want Enter to start a new paragraph and Shift+Enter to break the line within it, so that I get the break I mean.
+2. As a writer, I want Enter in a list, quote or code block to continue it, and Enter on an empty item to leave the list, so that I never type markers.
+3. As a writer, I want numbered lists renumbered only when they are numbered in sequence, so that `1.` `1.` `1.` lists stay that way.
+4. As a writer, I want Backspace at the start of a heading, quote or item to turn it back into a paragraph, so that undoing a block type is one key.
+5. As a writer, I want deleting the last character of formatted text to remove its markers, so that no empty `****` is left behind.
+6. As a writer, I want splitting or partly un-formatting a phrase to leave well-formed Markdown on both sides, so that I never see stray markers.
+7. As a writer, I want typing at the end of bold text to continue the bold only when the cursor is inside it, and never to extend a link, so that formatting starts and stops where I expect.
+8. As a writer, I want copying to give balanced Markdown and pasting to insert Markdown, so that formatting survives the clipboard.
+9. As a writer, I want the characters I type written exactly as typed, so that the file holds what I typed.
+10. As a writer, I want search to match the text as shown, so that "bold text" finds `**bold** text`.
+11. As a writer, I want replacing to keep formatting around a match, so that I can rename things safely.
+
+### Decisions
 
 Every editor produces the same source for the same keys. The choices:
 
@@ -164,7 +151,26 @@ Every editor produces the same source for the same keys. The choices:
 - Print renders the document as shown, without comments, with the body at
   11pt in the light appearance.
 
-### Comments
+## Comments
+
+### User Stories
+
+1. As a writer, I want to select text and comment on it, so that feedback is attached to exactly the passage it is about.
+2. As a writer, I want each thread's card beside its text in the margin, so that I read comments alongside the document.
+3. As a writer, I want the cursor entering commented text to focus its thread, so that moving through the text moves through the review.
+4. As a writer, I want to edit or delete any comment or reply, so that I can fix what I wrote or clear what no longer helps.
+5. As a writer, I want long comments and replies cut short until I ask for the rest, so that one long message doesn't push the other threads out of view.
+6. As a writer, I want each message to say whether I or an agent wrote it, so that I can follow who said what in a thread.
+7. As a writer, I want resolving, resolving all, editing and deleting to be undoable, so that a slip doesn't lose a thread.
+8. As a writer, I want resolved threads hidden unless I ask for them, so that the margin shows what is still open.
+9. As a writer, I want a thread whose text was deleted to stay, showing what it was about, so that feedback is never silently lost.
+10. As a writer, I want a thread to follow its text when it is reworded, so that a comment on "blue/green" follows the change to "canary".
+11. As a writer, I want to be told when an agent adds, answers, resolves, reopens or deletes threads, even while I am in another app, so that I notice its answers when it replies asynchronously.
+12. As a writer, I want to copy the open comments as a list with locations, so that I can paste a review into an agent's chat.
+13. As a writer, I want to send the open comments to the agent waiting on a document in one step, so that I don't paste every round of review into its chat.
+14. As a writer, I want to see whether an agent is waiting on a document or working on what I sent, so that I know whether answers are coming.
+
+### Decisions
 
 - A thread is a comment plus replies, each with a time and an author: the
   writer, for messages from the editor, or an agent, for messages from the
@@ -234,7 +240,21 @@ Every editor produces the same source for the same keys. The choices:
   document again) or neither. Working gives up after 30 minutes without
   agent activity on the document.
 
-### CLI
+## CLI
+
+### User Stories
+
+1. As a coding agent, I want the open threads with `file:line:column` locations against the file as it is now, so that I can find what was asked even after my own edits.
+2. As a coding agent, I want to find documents with open threads under the current directory, so that I don't need to be told the file.
+3. As a coding agent, I want a thread's quote as the file's exact Markdown source, so that I can find and edit the text.
+4. As a coding agent, I want to reply, resolve and reopen, so that I report what I did where the writer will see it.
+5. As a coding agent, I want to start threads on quoted text, with ambiguous quotes refused, so that my question lands on the right text.
+6. As a coding agent, I want to open a document for review and return at once, so that my shell isn't blocked.
+7. As a coding agent, I want to wait until the writer sends a document's comments, so that I pick up each round of review without being told in chat.
+8. As a coding agent, I want JSON output, so that I can process threads reliably.
+9. As a coding agent, I want the same commands and output on every platform, so that one skill works everywhere.
+
+### Decisions
 
 The CLI's help and the agent skill follow this section.
 
@@ -304,7 +324,7 @@ The commands:
   as their edit tools do, rather than by line and column, which they count
   badly.
 
-### Platforms
+## Platforms
 
 Every editor shares the core: Markdown analysis, editing rules, find, the
 comment store and anchoring, and the CLI. Each platform provides the UI and
