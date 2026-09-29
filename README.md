@@ -29,11 +29,10 @@ Needs Rust, GTK 4.20+ and libadwaita 1.8+ (all present on Omarchy).
 ```
 
 This builds a release binary into `~/.local/bin/margin` and adds a launcher
-entry and icon. To teach Claude Code the agent workflow, link the skill (other
-agents that read `~/.agents/skills` can use the same directory):
+entry and icon. To teach your coding agent the workflow, install the skill:
 
 ```sh
-ln -s "$PWD/skill" ~/.claude/skills/margin
+npx skills add tibbe/margin
 ```
 
 ## Writing
@@ -105,8 +104,8 @@ margin wait [FILE…]          block until the user comments, then print the thr
 ```
 
 Every listing command takes `--json`. `margin --help` has the rest. The
-skill in [`skill/SKILL.md`](skill/SKILL.md) describes the workflow for Claude
-Code.
+skill in [`skills/margin/SKILL.md`](skills/margin/SKILL.md) describes the
+workflow for coding agents.
 
 ## Development
 
