@@ -13,6 +13,7 @@ use std::path::{Path, PathBuf};
 const AFTER_HELP: &str = "\
 Agent workflow:
   margin comments plan.md          read the open threads on a document
+  margin thread plan.md 3          read one thread, with all its replies
   margin reply plan.md 3 \"Done.\" --resolve
   margin add plan.md --quote \"retry budget\" \"Is 3 enough?\"
 
@@ -53,6 +54,14 @@ pub enum Command {
         /// Without files: every document, not just ones under the current directory.
         #[arg(long)]
         all: bool,
+        #[arg(long)]
+        json: bool,
+    },
+
+    /// Show one thread, open or resolved.
+    Thread {
+        file: PathBuf,
+        id: u64,
         #[arg(long)]
         json: bool,
     },
@@ -325,6 +334,19 @@ pub fn run(cmd: Command) -> Result<i32> {
                 print(&threads_json(&docs, resolved)?);
             } else {
                 print(&threads_text(&docs, resolved));
+            }
+        }
+        Command::Thread { file, id, json } => {
+            let (store, comments, text) = load(&file)?;
+            let Some(t) = comments.thread(id) else {
+                bail!("no comment #{id} on {}", store.doc.display());
+            };
+            if json {
+                print(&serde_json::to_string_pretty(&json_thread(&store.doc, &text, t))?);
+            } else {
+                let mut out = String::new();
+                format_thread(&mut out, &store.doc, &text, t);
+                print(&out);
             }
         }
         Command::Reply {

@@ -51,6 +51,8 @@ When you have written a document the user should review (a plan, a spec):
 - **The quote is Markdown source.** A thread's quote, and the `--quote` text
   of `margin add`, is the file's text including `**`, backticks and link
   syntax, exactly as it appears in the file.
+- **One thread in full:** `margin thread FILE ID` prints a thread with all
+  its replies, open or resolved.
 - **Detached threads:** the text a thread was anchored to was deleted. The
   thread still needs an answer; its quote shows what it was about.
 - **Your own threads.** `margin add FILE --quote "text" "question"` starts a

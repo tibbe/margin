@@ -205,7 +205,7 @@ The CLI's help and the agent skill follow this section.
   current directory when they are under it.
 - Without files, `comments` looks at the documents with open threads under
   the current directory; `--all`, anywhere.
-- `comments` takes `--json`.
+- `comments` and `thread` take `--json`.
 - The editor and the CLI can change a document's comments at the same time
   without losing either's changes.
 
@@ -249,6 +249,8 @@ The commands:
   attached until the editor quits.
 - `margin comments [FILE…]` lists open threads; `--resolved` adds resolved
   ones.
+- `margin thread FILE ID` shows one thread, open or resolved, in full. The
+  JSON is the one thread's object.
 - `margin reply FILE ID MESSAGE [--resolve]`, `margin resolve FILE ID
   [MESSAGE]`, `margin reopen FILE ID`, `margin delete FILE ID`.
 - `margin add FILE --quote TEXT MESSAGE` starts a thread on TEXT, which must
