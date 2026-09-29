@@ -61,6 +61,7 @@ final class CommentLayer {
     init(page: PageView) {
         self.page = page
         view = page.textView
+        page.gutter.onEmptyClick = { [weak self] in self?.leave() }
     }
 
     var openCount: Int { items.filter { !$0.thread.resolved }.count }
@@ -407,6 +408,14 @@ final class CommentLayer {
             return true
         }
         return false
+    }
+
+    /// A click beside the cards: the focused thread is left and the keyboard
+    /// goes back to the text, with the cursor where it was. A draft keeps
+    /// its card and text, as when the text is clicked.
+    func leave() {
+        if active != nil { activate(nil, scroll: false) }
+        view.window?.makeFirstResponder(view)
     }
 
     /// Whether keyboard focus is in the gutter.

@@ -13,3 +13,14 @@ context-menu Comment on Selection
 wait 100
 focus
 comments
+# Clicking empty gutter space leaves the focused thread, and the keyboard
+# goes back to the text.
+key escape
+size 1200 900
+click-card 1
+wait 200
+comments
+click 1100 700
+wait 100
+comments
+focus

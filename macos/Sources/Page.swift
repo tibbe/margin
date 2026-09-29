@@ -79,9 +79,13 @@ final class PageView: NSView {
 /// The comment gutter. An ordinary view: the arrow cursor, and clicks that
 /// reach the cards and never the text.
 final class GutterView: NSView {
+    /// A click on empty gutter space.
+    var onEmptyClick: (() -> Void)?
+
     override var isFlipped: Bool { true }
 
     override func mouseDown(with event: NSEvent) {
-        // Empty gutter space does nothing, like the margin of a page.
+        // Leaves the focused card, but never moves the text cursor.
+        onEmptyClick?()
     }
 }

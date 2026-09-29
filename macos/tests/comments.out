@@ -3,3 +3,8 @@ focus Optional(Margin.ComposerTextView)
 #1 open [0,5) ["Why?"]
 draft [0,5)
 active none
+#1 open [0,5) ["Why?"]
+active 1
+#1 open [0,5) ["Why?"]
+active none
+focus Optional(Margin.DocTextView)

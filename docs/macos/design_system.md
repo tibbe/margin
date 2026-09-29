@@ -15,8 +15,9 @@ conventions of Apple's document apps (TextEdit, Pages, Notes).
 - The gutter is the page's margin: one text background behind the text and
   the cards, with no separator. Not a comments sidebar as in Pages: that
   would be a list, not notes beside their lines.
-- Clicking the left margin places the cursor. Over the gutter the pointer is
-  the arrow.
+- Clicking the left margin places the cursor. Clicking empty gutter space
+  leaves the focused thread and returns the keyboard to the text, with the
+  cursor where it was. Over the gutter the pointer is the arrow.
 - Comment cards: the control background, an 8pt corner radius and a 1pt
   separator border. The focused card (or the draft) is raised on a soft
   shadow, as the open comments of Pages, Ulysses and Final Draft are; no
