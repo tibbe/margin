@@ -92,13 +92,6 @@ Margin's own:
 - Cards: the system font at the regular and small sizes.
 - A Settings window picks the body font (SF Pro or New York) and size.
 
-Open questions:
-
-- Do the spec's heading sizes need adjusting for SF Pro or New York?
-- Should the default body font follow the user's document font
-  (`NSFont.userFont`, which TextEdit uses; Helvetica 12 unless the user set
-  another)? macOS has no control for it in System Settings.
-
 ## Menu bar
 
 The standard menus, with Margin's commands where Mac users look for them:
