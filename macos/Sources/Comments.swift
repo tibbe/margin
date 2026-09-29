@@ -446,9 +446,16 @@ final class CommentLayer {
         let all = NSRange(location: 0, length: len)
         lm.removeTemporaryAttribute(.backgroundColor, forCharacterRange: all)
         let dark = view.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+        // A highlight replaces the text's own background, so inline code
+        // gets its fill drawn over the highlight instead.
+        let appearance = view.effectiveAppearance
         func mark(_ a: Int, _ b: Int, _ color: NSColor) {
             let s = max(0, min(a, len)), e = max(0, min(b, len))
-            if s < e { lm.addTemporaryAttribute(.backgroundColor, value: color, forCharacterRange: NSRange(location: s, length: e - s)) }
+            guard s < e, let storage = view.textStorage else { return }
+            storage.enumerateAttribute(.backgroundColor, in: NSRange(location: s, length: e - s)) { own, r, _ in
+                let c = (own as? NSColor).map { Theme.composite($0, over: color, in: appearance) } ?? color
+                lm.addTemporaryAttribute(.backgroundColor, value: c, forCharacterRange: r)
+            }
         }
         for it in items where visible(it.thread) && !it.detached && it.thread.id != active {
             mark(it.start, it.end, Theme.highlight(active: false, dark: dark))

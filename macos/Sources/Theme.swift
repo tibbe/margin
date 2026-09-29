@@ -71,6 +71,23 @@ enum Theme {
         return active ? rgb(220, 175, 253) : rgb(237, 209, 254)
     }
 
+    /// `top` painted over `bottom`, as one color, in `appearance`.
+    static func composite(_ top: NSColor, over bottom: NSColor, in appearance: NSAppearance) -> NSColor {
+        var t: NSColor?, b: NSColor?
+        appearance.performAsCurrentDrawingAppearance {
+            t = top.usingColorSpace(.sRGB)
+            b = bottom.usingColorSpace(.sRGB)
+        }
+        guard let t, let b else { return bottom }
+        let a = t.alphaComponent + b.alphaComponent * (1 - t.alphaComponent)
+        guard a > 0 else { return bottom }
+        func mix(_ x: CGFloat, _ y: CGFloat) -> CGFloat {
+            (x * t.alphaComponent + y * b.alphaComponent * (1 - t.alphaComponent)) / a
+        }
+        return NSColor(srgbRed: mix(t.redComponent, b.redComponent), green: mix(t.greenComponent, b.greenComponent),
+                       blue: mix(t.blueComponent, b.blueComponent), alpha: a)
+    }
+
     static func findMatch(current: Bool) -> NSColor {
         NSColor.findHighlightColor.withAlphaComponent(current ? 0.9 : 0.35)
     }
