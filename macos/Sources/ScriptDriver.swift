@@ -33,6 +33,7 @@ import AppKit
 /// menu TITLE               validate a menu item; print enabled and checked
 /// size W H | wait MS | shot PATH | dump | comments | banner | focus
 /// selection | sh CMD | quit
+///                           sh runs CMD in the document's folder
 /// ```
 ///
 /// Text steps accept `\n` and `\t` escapes.
@@ -336,6 +337,7 @@ enum ScriptDriver {
             let p = Process()
             p.executableURL = URL(fileURLWithPath: "/bin/sh")
             p.arguments = ["-c", arg]
+            p.currentDirectoryURL = URL(fileURLWithPath: (w.path as NSString).deletingLastPathComponent)
             try? p.run()
             p.waitUntilExit()
             return 0.3
