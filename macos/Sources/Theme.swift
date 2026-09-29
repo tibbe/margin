@@ -44,7 +44,7 @@ enum Theme {
 
     // Relative to body, H1 to H6.
     static let headingScales: [CGFloat] = [1.8, 1.42, 1.2, 1.07, 1.0, 0.94]
-    static let headingWeights: [NSFont.Weight] = [.heavy, .bold, .bold, .semibold, .semibold, .semibold]
+    static let headingWeights: [NSFont.Weight] = [.bold, .bold, .bold, .semibold, .semibold, .semibold]
 
     static let quoteStep: CGFloat = 22
     static let itemStep: CGFloat = 28

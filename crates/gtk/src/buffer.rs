@@ -1021,7 +1021,7 @@ fn configure_tag(tag: &gtk::TextTag, style: Style, look: &Look, source_mode: boo
         Style::Heading(n) => {
             let i = (n.clamp(1, 6) - 1) as usize;
             let scales = [1.8, 1.42, 1.2, 1.07, 1.0, 0.94];
-            let weights = [800, 700, 700, 650, 650, 600];
+            let weights = [700, 700, 700, 650, 650, 600];
             tag.set_scale(scales[i]);
             tag.set_weight(weights[i]);
             tag.set_line_height(1.12);

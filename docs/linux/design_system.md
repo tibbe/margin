@@ -63,7 +63,7 @@ checked tasks at 50%.
 - **Text scaling**: Omarchy's text size sets GNOME's text-scaling-factor,
   which GTK applies to every font. Margin follows it live, and follows font
   changes live.
-- Heading weights, H1 to H6: 800, 700, 700, 650, 650, 600.
+- Heading weights, H1 to H6: 700, 700, 700, 650, 650, 600.
 
 ## Page geometry
 
