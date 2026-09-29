@@ -18,15 +18,19 @@ conventions of Apple's document apps (TextEdit, Pages, Notes).
 - Clicking the left margin places the cursor. Over the gutter the pointer is
   the arrow.
 - Comment cards: the control background, an 8pt corner radius and a 1pt
-  separator border; the focused card's border is the accent color at 2pt.
-  Resolved cards are at 70% opacity.
+  separator border. The focused card (or the draft) is raised on a soft
+  shadow, as the open comments of Pages, Ulysses and Final Draft are; no
+  accent outline. Resolved cards are at 70% opacity.
+- A comment or reply is typed straight onto the card, with no field border
+  or focus ring. Below a hairline, bezel-less text buttons: Cancel in the
+  secondary label color, Comment or Reply in the accent color, greyed while
+  empty.
 - Code blocks sit in a tinted box with a 6pt radius; quote bars are rounded.
 - Toolbar: the open-comment count and a comment button. Everything else is
   in the menu bar.
 
 Open questions:
 
-- Should cards use a material (vibrancy) or a plain background?
 - Is a toolbar worth having at all, or should the window be title-only like
   Notes' full-screen editor?
 

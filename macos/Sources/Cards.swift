@@ -50,10 +50,12 @@ final class ComposerTextView: NSTextView {
 
     /// As tall as its text; the width comes from the layout.
     override var intrinsicContentSize: NSSize {
-        guard let lm = layoutManager, let tc = textContainer else { return NSSize(width: NSView.noIntrinsicMetric, height: 26) }
+        let line = ceil((font ?? NSFont.systemFont(ofSize: NSFont.systemFontSize)).boundingRectForFont.height)
+        let least = line + 2 * textContainerInset.height
+        guard let lm = layoutManager, let tc = textContainer else { return NSSize(width: NSView.noIntrinsicMetric, height: least) }
         lm.ensureLayout(for: tc)
         let h = ceil(lm.usedRect(for: tc).height + 2 * textContainerInset.height)
-        return NSSize(width: NSView.noIntrinsicMetric, height: max(26, h))
+        return NSSize(width: NSView.noIntrinsicMetric, height: max(least, h))
     }
 
     override func setFrameSize(_ newSize: NSSize) {
@@ -90,7 +92,8 @@ final class ComposerTextView: NSTextView {
                 .font: font ?? NSFont.systemFont(ofSize: NSFont.systemFontSize),
                 .foregroundColor: NSColor.placeholderTextColor,
             ]
-            (placeholder as NSString).draw(at: NSPoint(x: textContainerInset.width + 1, y: textContainerInset.height), withAttributes: attrs)
+            let x = textContainerInset.width + (textContainer?.lineFragmentPadding ?? 0)
+            (placeholder as NSString).draw(at: NSPoint(x: x, y: textContainerInset.height), withAttributes: attrs)
         }
     }
 
@@ -107,12 +110,12 @@ final class ComposerTextView: NSTextView {
     }
 }
 
-/// A multi-line text box with submit and cancel buttons.
+/// Text typed straight onto the card, with submit and cancel buttons
+/// below a hairline.
 final class Composer: NSView {
     let textView: ComposerTextView
     let submit: NSButton
     let cancel: NSButton
-    private let box = NSView()
     var onSubmit: ((String) -> Void)?
     var onCancel: (() -> Void)?
     var onResize: (() -> Void)?
@@ -131,8 +134,8 @@ final class Composer: NSView {
         textView.isRichText = false
         textView.allowsUndo = true
         textView.drawsBackground = false
-        textView.textContainerInset = NSSize(width: 4, height: 5)
-        textView.textContainer?.lineFragmentPadding = 2
+        textView.textContainerInset = NSSize(width: 0, height: 2)
+        textView.textContainer?.lineFragmentPadding = 0
         textView.isAutomaticQuoteSubstitutionEnabled = false
         textView.isAutomaticDashSubstitutionEnabled = false
         textView.isVerticallyResizable = false
@@ -145,23 +148,23 @@ final class Composer: NSView {
         }
         textView.onFocusChange = { [weak self] in self?.focusChanged() }
 
-        box.wantsLayer = true
-        box.translatesAutoresizingMaskIntoConstraints = false
-        box.layer?.cornerRadius = 6
-        box.layer?.borderWidth = 1
-        addSubview(box)
-
-        submit.bezelStyle = .push
-        submit.keyEquivalent = ""
-        submit.controlSize = .small
-        submit.target = self
+        // Bezel-less text buttons, as in Pages' comments: the submit button
+        // in the accent color, greyed while there is nothing to send.
+        for (b, color) in [(submit, NSColor.controlAccentColor), (cancel, NSColor.secondaryLabelColor)] {
+            b.isBordered = false
+            b.font = NSFont.systemFont(ofSize: NSFont.systemFontSize, weight: b === submit ? .semibold : .regular)
+            b.contentTintColor = color
+            b.target = self
+        }
         submit.action = #selector(submitClicked)
-        cancel.bezelStyle = .push
-        cancel.controlSize = .small
-        cancel.target = self
         cancel.action = #selector(cancelClicked)
-        let buttons = NSStackView(views: [NSView(), cancel, submit])
-        buttons.orientation = .horizontal
+        let rule = NSBox()
+        rule.boxType = .separator
+        let row = NSStackView(views: [NSView(), cancel, submit])
+        row.orientation = .horizontal
+        row.spacing = 14
+        let buttons = NSStackView(views: [rule, row])
+        buttons.orientation = .vertical
         buttons.spacing = 6
         // A stack view, so hidden buttons take no room.
         let column = NSStackView(views: [textView, buttons])
@@ -177,10 +180,8 @@ final class Composer: NSView {
             column.bottomAnchor.constraint(equalTo: bottomAnchor),
             textView.widthAnchor.constraint(equalTo: column.widthAnchor),
             buttons.widthAnchor.constraint(equalTo: column.widthAnchor),
-            box.topAnchor.constraint(equalTo: textView.topAnchor),
-            box.leadingAnchor.constraint(equalTo: textView.leadingAnchor),
-            box.trailingAnchor.constraint(equalTo: textView.trailingAnchor),
-            box.bottomAnchor.constraint(equalTo: textView.bottomAnchor),
+            rule.widthAnchor.constraint(equalTo: buttons.widthAnchor),
+            row.widthAnchor.constraint(equalTo: buttons.widthAnchor),
         ])
         buttonsView = buttons
         syncButtons()
@@ -208,7 +209,6 @@ final class Composer: NSView {
 
     func focusChanged() {
         syncButtons()
-        applyColors()
     }
 
     private func syncButtons() {
@@ -218,24 +218,7 @@ final class Composer: NSView {
             onResize?()
         }
         submit.isEnabled = !text.isEmpty
-    }
-
-    override func viewDidChangeEffectiveAppearance() {
-        super.viewDidChangeEffectiveAppearance()
-        applyColors()
-    }
-
-    override func viewDidMoveToWindow() {
-        super.viewDidMoveToWindow()
-        applyColors()
-    }
-
-    private func applyColors() {
-        effectiveAppearance.performAsCurrentDrawingAppearance {
-            box.layer?.backgroundColor = NSColor.textBackgroundColor.cgColor
-            box.layer?.borderColor = (hasFocus ? NSColor.controlAccentColor : NSColor.separatorColor).cgColor
-            box.layer?.borderWidth = hasFocus ? 2 : 1
-        }
+        submit.contentTintColor = submit.isEnabled ? .controlAccentColor : .tertiaryLabelColor
     }
 
     private func submitText() {
@@ -279,15 +262,28 @@ class GutterCard: NSView {
     override var isFlipped: Bool { true }
     override var wantsUpdateLayer: Bool { true }
 
+    /// The focused card (or the draft) is raised on a soft shadow; every
+    /// card has the same hairline border.
     override func updateLayer() {
         layer?.backgroundColor = Theme.cardBackground.cgColor
-        layer?.borderColor = (active ? Theme.accent : Theme.border).cgColor
-        layer?.borderWidth = active ? 2 : 1
-        layer?.shadowOpacity = 0
+        layer?.borderColor = Theme.border.cgColor
+        layer?.borderWidth = 1
+        updateShadow()
+    }
+
+    private func updateShadow() {
+        guard active else { shadow = nil; return }
+        let dark = effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+        let s = NSShadow()
+        s.shadowColor = NSColor.black.withAlphaComponent(dark ? 0.6 : 0.18)
+        s.shadowBlurRadius = 10
+        s.shadowOffset = NSSize(width: 0, height: 3)
+        shadow = s
     }
 
     func activeChanged() {
         needsDisplay = true
+        updateShadow()
     }
 
     /// The height the card needs at `width`.
@@ -319,6 +315,8 @@ class GutterCard: NSView {
 final class ThreadCard: GutterCard {
     let id: UInt64
     let composer = Composer(placeholder: "Reply…", submitLabel: "Reply", alwaysShowButtons: false)
+    /// The hairline between the thread and the reply box.
+    private let composerRule = NSBox()
     private var resolved = false
     var onResolve: ((Bool) -> Void)?
     var onDelete: (() -> Void)?
@@ -410,6 +408,9 @@ final class ThreadCard: GutterCard {
             l.textColor = .secondaryLabelColor
             stack.addArrangedSubview(l)
         }
+        composerRule.boxType = .separator
+        stack.addArrangedSubview(composerRule)
+        composerRule.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
         stack.addArrangedSubview(composer)
         composer.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
         alphaValue = thread.resolved ? 0.7 : 1
@@ -425,6 +426,7 @@ final class ThreadCard: GutterCard {
     private func syncComposer() {
         let show = (active && !resolved) || !composer.textView.string.isEmpty
         composer.isHidden = !show
+        composerRule.isHidden = !show
     }
 
     var hasFocus: Bool {
@@ -457,6 +459,7 @@ final class ThreadCard: GutterCard {
 
     @objc private func replyClicked() {
         composer.isHidden = false
+        composerRule.isHidden = false
         composer.focus()
     }
 
