@@ -58,9 +58,17 @@ enum Theme {
     static var codeBackground: NSColor { .quaternarySystemFill }
     static var cardBackground: NSColor { .controlBackgroundColor }
 
+    /// Commented text: Apple's purple author color, not yellow, which is
+    /// find's. In light mode Pages' own fills for it (its comment fill, and
+    /// the stronger one it uses where ranges overlap, for the focused
+    /// thread); Pages has no dark page, so in dark mode the author color
+    /// itself (Notes' first participant color) at low alpha.
     static func highlight(active: Bool, dark: Bool) -> NSColor {
-        let alpha: CGFloat = dark ? (active ? 0.45 : 0.22) : (active ? 0.6 : 0.3)
-        return NSColor.systemYellow.withAlphaComponent(alpha)
+        func rgb(_ r: CGFloat, _ g: CGFloat, _ b: CGFloat, _ a: CGFloat = 1) -> NSColor {
+            NSColor(srgbRed: r / 255, green: g / 255, blue: b / 255, alpha: a)
+        }
+        if dark { return rgb(164, 119, 236, active ? 0.4 : 0.2) }
+        return active ? rgb(220, 175, 253) : rgb(237, 209, 254)
     }
 
     static func findMatch(current: Bool) -> NSColor {

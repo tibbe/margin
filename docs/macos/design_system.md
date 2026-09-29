@@ -49,7 +49,7 @@ setting (Increase Contrast, Reduce Transparency) works.
 | Accent, focus, checked boxes | `controlAccentColor` |
 | Code background | `quaternarySystemFill` |
 | Card background | `controlBackgroundColor` |
-| Comment highlight | `systemYellow` at 30% (60% focused); 22% and 45% in dark mode |
+| Comment highlight | Apple's purple author color: Pages' fills `#EDD1FE` (`#DCAFFD` focused); `#A477EC` at 20% (40% focused) in dark mode. Not yellow, which is find's |
 | Find matches | `findHighlightColor` at 35% (90% for the current match) |
 | Links | `linkColor` |
 
