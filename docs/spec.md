@@ -84,9 +84,8 @@ agent**.
 39. As a coding agent, I want to reply, resolve and reopen, so that I report what I did where the writer will see it.
 40. As a coding agent, I want to start threads on quoted text or whole lines, with ambiguous quotes refused, so that my question lands on the right text.
 41. As a coding agent, I want to open a document for review and return at once, so that my shell isn't blocked.
-42. As a coding agent, I want to block until the writer comments, with a timeout and a distinct exit code, so that I can wait for review without polling.
-43. As a coding agent, I want JSON output, so that I can process threads reliably.
-44. As a coding agent, I want the same commands and output on every platform, so that one skill works everywhere.
+42. As a coding agent, I want JSON output, so that I can process threads reliably.
+43. As a coding agent, I want the same commands and output on every platform, so that one skill works everywhere.
 
 ## Decisions
 
@@ -199,19 +198,63 @@ Every editor produces the same source for the same keys. The choices:
 
 ### CLI
 
-- Locations are 1-based `file:line:column`, columns in characters, against
-  the file as it is now; every read re-anchors first.
-- Without files, `comments`, `files` and `wait` look at documents under the
-  current directory (`--all` for anywhere, where offered).
-- `margin FILE…` opens in the running editor and returns at once, after
-  reporting problems with the files; `--foreground` waits until the editor
-  quits.
-- `add --quote` refuses an ambiguous quote, listing the lines, until
-  `--occurrence N` picks one; `--line` anchors from the first non-blank
-  character.
-- `wait` has a timeout and a distinct exit code when it expires.
+The CLI's help and the agent skill follow this section.
+
+- Locations are `file:line:column`, columns in characters, against the file
+  as it is now; every command re-anchors first. Paths print relative to the
+  current directory when they are under it.
+- Without files, `comments` looks at the documents with open threads under
+  the current directory; `--all`, anywhere.
+- `comments` takes `--json`.
 - The editor and the CLI can change a document's comments at the same time
   without losing either's changes.
+
+A thread in text, as listings print it, under a header per document
+(`plan.md: 2 open threads, 1 resolved (--resolved to show)`):
+
+```text
+#3 plan.md:12:10 (open)
+  on "blue/green deploy"
+  comment · 14:02
+    Why not canary?
+  reply · 14:10
+    Switched to canary in §2.
+```
+
+The status is `open`, `open, detached: the commented text was deleted`, or
+`resolved`. Quotes print on one line, cut at 160 characters. In JSON:
+
+```json
+{
+  "doc": "/abs/path/plan.md",
+  "id": 3,
+  "status": "open",
+  "detached": false,
+  "start": { "line": 12, "column": 10 },
+  "end": { "line": 12, "column": 27 },
+  "quote": "blue/green deploy",
+  "messages": [
+    { "at": "2026-09-29T12:02:00Z", "body": "Why not canary?" },
+    { "at": "2026-09-29T12:10:00Z", "body": "Switched to canary in §2." }
+  ]
+}
+```
+
+A resolved thread also has `resolved_at`.
+
+The commands:
+
+- `margin FILE…` (or `margin open FILE…`) opens documents in the editor and
+  returns at once, after reporting files it can't open. `--foreground` stays
+  attached until the editor quits.
+- `margin comments [FILE…]` lists open threads; `--resolved` adds resolved
+  ones.
+- `margin reply FILE ID MESSAGE [--resolve]`, `margin resolve FILE ID
+  [MESSAGE]`, `margin reopen FILE ID`, `margin delete FILE ID`.
+- `margin add FILE (--quote TEXT | --line N [--end-line M]) MESSAGE` starts a
+  thread. A quote that occurs more than once is refused, listing its lines,
+  until `--occurrence N` picks one. `--line` anchors from the first non-blank
+  character.
 
 ### Platforms
 

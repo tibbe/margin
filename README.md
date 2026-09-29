@@ -88,22 +88,19 @@ Undo). Comments carry no author: one person comments, agents
 reply.
 
 Comments are stored outside the document, in
-`~/.local/share/margin/docs/`, one JSON file per document. `margin where
-FILE` prints the path.
+`~/.local/share/margin/docs/`, one JSON file per document.
 
 ## For agents
 
 ```text
 margin comments [FILE…]      open threads, with file:line:column and the quoted text
-margin context FILE          the document, numbered, with threads under their lines
 margin reply FILE ID "…" [--resolve]
 margin resolve FILE ID ["closing note"]
 margin add FILE --quote "text" "question"
 margin open FILE             show a document to the user (returns at once)
-margin wait [FILE…]          block until the user comments, then print the threads
 ```
 
-Every listing command takes `--json`. `margin --help` has the rest. The
+`comments` takes `--json`. `margin --help` has the rest. The
 skill in [`skills/margin/SKILL.md`](skills/margin/SKILL.md) describes the
 workflow for coding agents.
 

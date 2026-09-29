@@ -7,20 +7,16 @@ use anyhow::{bail, Context, Result};
 use chrono::{DateTime, Local, Utc};
 use clap::{Parser, Subcommand};
 use serde::Serialize;
-use std::collections::BTreeMap;
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::time::{Duration, Instant};
 
 const AFTER_HELP: &str = "\
 Agent workflow:
   margin comments plan.md          read the open threads on a document
-  margin context plan.md           read the document with threads inline
   margin reply plan.md 3 \"Done.\" --resolve
   margin add plan.md --quote \"retry budget\" \"Is 3 enough?\"
 
-Threads are numbered per document. Locations are file:line:column, 1-based.
-Comments live outside the document; `margin where FILE` prints where.";
+Threads are numbered per document. Locations are file:line:column, 1-based.";
 
 #[derive(Parser, Debug)]
 #[command(
@@ -57,22 +53,6 @@ pub enum Command {
         /// Without files: every document, not just ones under the current directory.
         #[arg(long)]
         all: bool,
-        #[arg(long)]
-        json: bool,
-    },
-
-    /// Print a document with line numbers and its open threads inline.
-    Context {
-        file: PathBuf,
-        /// Include resolved threads.
-        #[arg(long)]
-        resolved: bool,
-    },
-
-    /// Show one thread with the lines around it.
-    Show {
-        file: PathBuf,
-        id: u64,
         #[arg(long)]
         json: bool,
     },
@@ -118,28 +98,6 @@ pub enum Command {
     /// Delete a thread.
     Delete { file: PathBuf, id: u64 },
 
-    /// List documents that have comments.
-    Files {
-        /// Every document, not just ones under the current directory.
-        #[arg(long)]
-        all: bool,
-        #[arg(long)]
-        json: bool,
-    },
-
-    /// Block until someone adds, answers, resolves or reopens a thread,
-    /// then print the open threads. Exits 124 on timeout.
-    Wait {
-        files: Vec<PathBuf>,
-        /// Seconds to wait.
-        #[arg(long, default_value_t = 540)]
-        timeout: u64,
-        #[arg(long)]
-        json: bool,
-    },
-
-    /// Print where a document's comments are stored.
-    Where { file: PathBuf },
 }
 
 /// Loads a document's threads, re-anchored against the file as it is now.
@@ -377,25 +335,6 @@ pub fn run(cmd: Command) -> Result<i32> {
                 print(&threads_text(&docs, resolved));
             }
         }
-        Command::Context { file, resolved } => {
-            let (store, comments, text) = load(&file)?;
-            print(&context_view(&store.doc, &comments, &text, resolved));
-        }
-        Command::Show { file, id, json } => {
-            let (store, comments, text) = load(&file)?;
-            let t = comments
-                .thread(id)
-                .with_context(|| format!("no comment #{id} on {}", display_path(&store.doc)))?;
-            if json {
-                print(&serde_json::to_string_pretty(&json_thread(&store.doc, &text, t))?);
-            } else {
-                let mut out = String::new();
-                format_thread(&mut out, &store.doc, &text, t);
-                out.push('\n');
-                out.push_str(&excerpt(&text, t.anchor.start, t.anchor.end, 3));
-                print(&out);
-            }
-        }
         Command::Reply {
             file,
             id,
@@ -462,68 +401,8 @@ pub fn run(cmd: Command) -> Result<i32> {
             store.update(|c| c.delete(id))?;
             print(&format!("Deleted #{id}."));
         }
-        Command::Files { all, json } => {
-            let cwd = std::env::current_dir()?;
-            let stores: Vec<(Store, Comments)> = all_stores()?
-                .into_iter()
-                .filter(|(s, c)| (all || s.doc.starts_with(&cwd)) && !c.threads.is_empty())
-                .collect();
-            if json {
-                #[derive(Serialize)]
-                struct F<'a> {
-                    doc: &'a Path,
-                    exists: bool,
-                    open: usize,
-                    resolved: usize,
-                    last_activity: Option<DateTime<Utc>>,
-                }
-                let rows: Vec<F> = stores
-                    .iter()
-                    .map(|(s, c)| F {
-                        doc: &s.doc,
-                        exists: s.doc.exists(),
-                        open: c.open_count(),
-                        resolved: c.threads.len() - c.open_count(),
-                        last_activity: last_activity(c),
-                    })
-                    .collect();
-                print(&serde_json::to_string_pretty(&rows)?);
-            } else if stores.is_empty() {
-                print("No documents with comments.");
-            } else {
-                let mut out = String::new();
-                for (s, c) in &stores {
-                    let open = c.open_count();
-                    out.push_str(&format!(
-                        "{}  {} open, {} resolved{}{}\n",
-                        display_path(&s.doc),
-                        open,
-                        c.threads.len() - open,
-                        last_activity(c).map_or(String::new(), |t| format!(", last activity {}", when(&t))),
-                        if s.doc.exists() { "" } else { "  (file missing)" }
-                    ));
-                }
-                print(&out);
-            }
-        }
-        Command::Wait {
-            files,
-            timeout,
-            json,
-        } => return wait(files, timeout, json),
-        Command::Where { file } => {
-            let store = Store::for_doc(&file)?;
-            print(&store.path.display().to_string());
-        }
     }
     Ok(0)
-}
-
-fn last_activity(c: &Comments) -> Option<DateTime<Utc>> {
-    c.threads
-        .iter()
-        .flat_map(|t| t.messages.iter().map(|m| m.at).chain(t.resolved_at))
-        .max()
 }
 
 fn find_occurrence(text: &str, quote: &str, occurrence: Option<usize>) -> Result<std::ops::Range<usize>> {
@@ -569,125 +448,4 @@ fn line_range(text: &str, first: usize, last: usize) -> Result<std::ops::Range<u
         bail!("line {first} is empty");
     }
     Ok(start + lead..end)
-}
-
-/// Lines around a range, numbered.
-fn excerpt(text: &str, start: usize, end: usize, context: usize) -> String {
-    let mut lines: Vec<&str> = text.split('\n').collect();
-    if text.ends_with('\n') {
-        lines.pop();
-    }
-    let (l1, _) = line_col(text, start);
-    let (l2, _) = line_col(text, end.saturating_sub(1).max(start));
-    let from = l1.saturating_sub(context).max(1);
-    let to = (l2 + context).min(lines.len()).max(from);
-    let width = to.to_string().len();
-    let mut out = String::new();
-    for n in from..=to {
-        let mark = if n >= l1 && n <= l2 { '>' } else { ' ' };
-        out.push_str(&format!("{mark} {n:>width$} │ {}\n", lines.get(n - 1).unwrap_or(&"")));
-    }
-    out
-}
-
-/// The document with line numbers and each thread printed under the line
-/// where its text ends.
-fn context_view(doc: &Path, comments: &Comments, text: &str, include_resolved: bool) -> String {
-    let mut by_line: BTreeMap<usize, Vec<&Thread>> = BTreeMap::new();
-    for t in comments
-        .threads
-        .iter()
-        .filter(|t| include_resolved || t.is_open())
-    {
-        let end = if t.anchor.end > t.anchor.start { t.anchor.end - 1 } else { t.anchor.end };
-        by_line.entry(line_col(text, end).0).or_default().push(t);
-    }
-    let lines: Vec<&str> = text.split('\n').collect();
-    let n = if text.ends_with('\n') { lines.len() - 1 } else { lines.len() };
-    let width = n.max(1).to_string().len();
-    let pad = " ".repeat(width);
-    let open = comments.open_count();
-    let mut out = format!(
-        "{}: {} line{}, {} open thread{}\n\n",
-        display_path(doc),
-        n,
-        if n == 1 { "" } else { "s" },
-        open,
-        if open == 1 { "" } else { "s" }
-    );
-    for (i, line) in lines.iter().take(n).enumerate() {
-        let num = i + 1;
-        out.push_str(&format!("{num:>width$} │ {line}\n"));
-        for t in by_line.get(&num).into_iter().flatten() {
-            let (sl, sc) = line_col(text, t.anchor.start);
-            let status = match (t.status, t.anchor.detached) {
-                (Status::Resolved, _) => " (resolved)",
-                (_, true) => " (detached: text deleted)",
-                _ => "",
-            };
-            out.push_str(&format!(
-                "{pad} ┆   ╰─ #{} on {} from {sl}:{sc}{status}\n",
-                t.id,
-                quote_line(&t.anchor.quote)
-            ));
-            for (i, m) in t.messages.iter().enumerate() {
-                let body = indent(&m.body, &format!("{pad} ┆        "));
-                let kind = if i == 0 { "comment" } else { "reply" };
-                out.push_str(&format!("{pad} ┆      {kind}:\n{body}\n"));
-            }
-        }
-    }
-    out
-}
-
-/// What `wait` watches: the conversation, not anchor bookkeeping.
-fn fingerprint(c: &Comments) -> Vec<(u64, Status, usize)> {
-    c.threads
-        .iter()
-        .map(|t| (t.id, t.status, t.messages.len()))
-        .collect()
-}
-
-fn wait(files: Vec<PathBuf>, timeout: u64, json: bool) -> Result<i32> {
-    let stores: Vec<Store> = if files.is_empty() {
-        let cwd = std::env::current_dir()?;
-        let mut v: Vec<Store> = all_stores()?
-            .into_iter()
-            .filter(|(s, _)| s.doc.starts_with(&cwd))
-            .map(|(s, _)| s)
-            .collect();
-        if v.is_empty() {
-            bail!("no documents with comments under the current directory; pass the file to wait on");
-        }
-        v.dedup_by(|a, b| a.path == b.path);
-        v
-    } else {
-        files.iter().map(|f| Store::for_doc(f)).collect::<Result<_>>()?
-    };
-    let snapshot = |s: &Store| s.load().map(|c| fingerprint(&c)).unwrap_or_default();
-    let before: Vec<_> = stores.iter().map(snapshot).collect();
-    let deadline = Instant::now() + Duration::from_secs(timeout);
-    loop {
-        std::thread::sleep(Duration::from_millis(500));
-        let now: Vec<_> = stores.iter().map(snapshot).collect();
-        if now != before {
-            let changed: Vec<PathBuf> = stores
-                .iter()
-                .zip(before.iter().zip(now.iter()))
-                .filter(|(_, (a, b))| a != b)
-                .map(|(s, _)| s.doc.clone())
-                .collect();
-            let docs = load_many(&changed)?;
-            if json {
-                print(&threads_json(&docs, false)?);
-            } else {
-                print(&threads_text(&docs, false));
-            }
-            return Ok(0);
-        }
-        if Instant::now() >= deadline {
-            eprintln!("No comment activity in {timeout}s.");
-            return Ok(124);
-        }
-    }
 }
