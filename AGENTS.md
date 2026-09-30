@@ -10,8 +10,11 @@ This project uses specification-driven development.
 
 - `docs/spec.md`: the product spec: problem, user stories, product
   decisions, and the UX the platforms share.
-- `docs/linux/design_system.md`: the Linux (GTK) editor's design system.
-- `docs/macos/design_system.md`: the macOS (AppKit) editor's design system.
+- `docs/linux/design_system.md`: the Linux editor's design system.
+- `docs/macos/design_system.md`: the macOS editor's design system.
+- `docs/macos/architecture.md`: the macOS editor's architecturally
+  significant decisions, the ones costly to change later, such as its
+  language, frameworks, and key libraries.
 
 UX that holds on every platform belongs in the spec; a design system holds
 only the UX specific to its platform.
