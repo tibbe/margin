@@ -39,6 +39,8 @@ import AppKit
 /// path | title | stored | windows      print file, title, stored threads, windows
 /// menu TITLE | menu A > B   validate a menu item; print enabled and checked
 /// appearance light|dark   the app's appearance, whatever the system's
+/// fills TEXT                print the fill behind TEXT's shown characters,
+///                           as runs: runs filled alike share a letter
 /// size W H | wait MS | shot PATH | dump | comments | banner | focus
 /// selection | caret | undo-name | sh CMD | quit
 ///                           sh runs CMD in the document's folder, with the
@@ -357,6 +359,10 @@ enum ScriptDriver {
             return 0.3
         case "shot":
             shot(win, path: arg)
+        case "fills":
+            let r = (view.string as NSString).range(of: unescape(arg))
+            if r.location == NSNotFound { print("script: \(arg) not found"); break }
+            print("fills \(fills(view, r))")
         case "replace-all":
             let parts = unescape(arg).components(separatedBy: "|")
             w.findBar.open(showingReplaceField: true)
@@ -663,6 +669,37 @@ enum ScriptDriver {
         if let data = rep.representation(using: .png, properties: [:]) {
             try? data.write(to: URL(fileURLWithPath: path))
         }
+    }
+
+    /// The drawn fill behind each shown character of `r`, sampled just
+    /// above its x-height (so pick letters without ascenders), as runs of
+    /// characters filled alike: `"oov":a " now":b`.
+    private static func fills(_ view: DocTextView, _ r: NSRange) -> String {
+        guard let lm = view.layoutManager, let tc = view.textContainer, let storage = view.textStorage else { return "" }
+        lm.ensureLayout(for: tc)
+        let b = view.visibleRect
+        guard let rep = view.bitmapImageRepForCachingDisplay(in: b) else { return "" }
+        view.cacheDisplay(in: b, to: rep)
+        let scale = CGFloat(rep.pixelsWide) / b.width
+        let origin = view.textContainerOrigin
+        let s = storage.string as NSString
+        var seen: [[Int]] = []
+        var runs: [(text: String, fill: Int)] = []
+        for ci in r.location..<NSMaxRange(r) where storage.attribute(.marginHidden, at: ci, effectiveRange: nil) == nil {
+            let g = lm.glyphIndexForCharacter(at: ci)
+            let glyph = lm.boundingRect(forGlyphRange: NSRange(location: g, length: 1), in: tc)
+            let frag = lm.lineFragmentRect(forGlyphAt: g, effectiveRange: nil)
+            let font = storage.attribute(.font, at: ci, effectiveRange: nil) as? NSFont ?? Theme.font(size: Theme.bodySize)
+            let baseline = frag.minY + lm.location(forGlyphAt: g).y
+            let p = NSPoint(x: origin.x + glyph.midX, y: origin.y + baseline - font.xHeight - 2)
+            guard let c = rep.colorAt(x: Int((p.x - b.minX) * scale), y: Int((p.y - b.minY) * scale))?.usingColorSpace(.sRGB) else { continue }
+            let rgb = [c.redComponent, c.greenComponent, c.blueComponent].map { Int(($0 * 255).rounded()) }
+            // Within a step or two is the same fill.
+            let fill = seen.firstIndex { zip($0, rgb).allSatisfy { abs($0 - $1) <= 2 } } ?? { seen.append(rgb); return seen.count - 1 }()
+            let ch = s.substring(with: NSRange(location: ci, length: 1))
+            if let last = runs.last, last.fill == fill { runs[runs.count - 1].text += ch } else { runs.append((ch, fill)) }
+        }
+        return runs.map { "\($0.text.debugDescription):\(Character(UnicodeScalar(UInt8(97 + $0.fill))))" }.joined(separator: " ")
     }
 }
 #endif
