@@ -4,7 +4,9 @@ The Linux editor is built for [Omarchy](https://omarchy.org) with GTK 4
 (4.20+) and libadwaita (1.8+). The goal is for Margin to feel like one of
 Omarchy's own apps (such as Omawrite).
 
-## Look
+## Foundations
+
+### Look
 
 Omarchy's look: **square, flat, muted.**
 
@@ -21,7 +23,7 @@ Omarchy's look: **square, flat, muted.**
 - Header bars use the window background, so the chrome disappears into the
   page.
 
-## Color
+### Color
 
 Margin follows the current Omarchy theme, live, when there is one: it reads
 `~/.local/state/omarchy/current/theme/colors.toml` and watches the theme
@@ -50,7 +52,7 @@ the desktop's light or dark preference.
 Derived colors: quotes are text at 78% opacity; strikethrough text at 65%;
 checked tasks at 50%.
 
-## Type
+### Type
 
 - **Body**: the desktop's document font (GNOME's `document-font-name`, which
   Omarchy sets), default Adwaita Sans 12pt. `MARGIN_FONT` overrides it.
@@ -65,7 +67,7 @@ checked tasks at 50%.
   changes live.
 - Heading weights, H1 to H6: 700, 700, 700, 650, 650, 600.
 
-## Page geometry
+### Geometry
 
 At a 16px (12pt) body, scaled with the text size:
 
@@ -75,42 +77,38 @@ At a 16px (12pt) body, scaled with the text size:
   40px from the text. Cards stack with 10px between them.
 - Default window 1340×920.
 
-## Window
+### Feedback
+
+- **Notifications** are libadwaita toasts at the bottom of the window. Undo
+  is a toast button.
+- **Dialogs** are `AdwAlertDialog`s.
+
+## Files
 
 - **Header bar** (`AdwHeaderBar`): the file name as title (prefixed with `•`
   while unsaved) and its folder as subtitle (`~/…`, or "Not saved yet" for
-  untitled documents). On the right: the open-comment count ("3 open
-  comments", "2 resolved"), Send to Agent (`mail-send-symbolic`), a comment
-  button, and the menu button.
-- Send to Agent is insensitive unless an agent is waiting and a thread is
-  open; its tooltip says which is missing. While the agent works on a send,
-  an `AdwSpinner` sits before it. A send says "Sent 2 open comments to the
-  agent" in a toast.
+  untitled documents).
 - The window manager's title is "name – Margin", for task switchers and the
   bar.
-- **Find** is a bar under the header: search field, match count, previous
-  and next buttons, an **Aa** toggle for Match case, and a toggle for the
-  replace row (Replace with, Replace, Replace All).
-- **Notifications** are libadwaita toasts at the bottom of the window. Undo
-  is a toast button.
-- **System notifications** (see the spec for when) are one `GNotification`
-  per document, as GNOME Shell doesn't group them: replaced with the running
-  totals ("3 new replies, 1 comment resolved") until the window is active
-  again, when it is withdrawn. For a single change the body reads `Resolved
-  "quote": Done.`. Normal priority, no category, no permission to ask.
-  GNOME Shell shows notifications even for the focused app, so the window
-  decides.
-- **Dialogs** are `AdwAlertDialog`s: the conflict dialog (Keep My Version,
-  Load Disk Version as destructive), Unsaved Changes (Cancel, Discard as
-  destructive, Save… as suggested), and Insert Link or Edit Link (a URL
-  field with Cancel, Remove Link as destructive, Apply as suggested).
-- **Keyboard Shortcuts** is an `AdwShortcutsDialog`; **About** an
-  `AdwAboutDialog`.
+- Dialogs: the conflict dialog (Keep My Version, Load Disk Version as
+  destructive) and Unsaved Changes (Cancel, Discard as destructive, Save… as
+  suggested).
 - Open and Save As use `GtkFileDialog` (the desktop portal), filtered to
   Markdown (`.md`, `.markdown`, `text/markdown`). Open starts in the current
   document's folder.
 
-## Comment cards
+## Editing
+
+- **Find** is a bar under the header: search field, match count, previous
+  and next buttons, an **Aa** toggle for Match case, and a toggle for the
+  replace row (Replace with, Replace, Replace All).
+- Insert Link or Edit Link is a dialog: a URL field with Cancel, Remove Link
+  as destructive, Apply as suggested.
+- The pointer becomes a hand over checkboxes, and over links while Ctrl is
+  held. A link's tooltip is its URL and "Ctrl+click to open".
+- Printing uses GTK's print dialog.
+
+## Comments
 
 - Card background, 1px border, padding 10px by 12px. The focused card's
   border is the accent color. Resolved cards are at 70% opacity. A detached
@@ -123,8 +121,24 @@ At a 16px (12pt) body, scaled with the text size:
   accent color while focused. Buttons: Comment or Reply, and Cancel.
 - The gutter's comment button appears beside the top of a selection, with a
   card background and border.
+- On the right of the header bar: the open-comment count ("3 open
+  comments", "2 resolved"), Send to Agent (`mail-send-symbolic`), a comment
+  button, and the menu button.
+- Send to Agent is insensitive unless an agent is waiting and a thread is
+  open; its tooltip says which is missing. While the agent works on a send,
+  an `AdwSpinner` sits before it. A send says "Sent 2 open comments to the
+  agent" in a toast.
+- **System notifications** (see the spec for when) are one `GNotification`
+  per document, as GNOME Shell doesn't group them: replaced with the running
+  totals ("3 new replies, 1 comment resolved") until the window is active
+  again, when it is withdrawn. For a single change the body reads `Resolved
+  "quote": Done.`. Normal priority, no category, no permission to ask.
+  GNOME Shell shows notifications even for the focused app, so the window
+  decides.
 
-## Menu
+## Commands
+
+### Menu
 
 One menu, behind the header's menu button (F10), with no menu bar. Rarely
 used commands live here rather than in the header.
@@ -142,7 +156,10 @@ used commands live here rather than in the header.
 Headings 4–6, indent, outdent, Toggle Task, Open Link and the comment
 navigation commands are keyboard only.
 
-## Key bindings
+**Keyboard Shortcuts** is an `AdwShortcutsDialog`; **About** an
+`AdwAboutDialog`.
+
+### Key bindings
 
 Ctrl is the main modifier and Alt the second; the platform's conventions
 are GNOME's.
@@ -173,10 +190,21 @@ are GNOME's.
 | Undo, Redo, Cut, Copy, Paste, Select All | GTK's: Ctrl+Z, Ctrl+Shift+Z, Ctrl+X, Ctrl+C, Ctrl+V, Ctrl+A |
 | Emoji, move focus out of the text | GTK's: Ctrl+., Ctrl+Tab |
 
-- The pointer becomes a hand over checkboxes, and over links while Ctrl is
-  held. A link's tooltip is its URL and "Ctrl+click to open".
+## System
 
-## Files and storage
+### Lifecycle
+
+- One instance per user through `GApplication` with the ID
+  `io.github.tibbe.Margin`: a second launch hands its files to the running
+  editor over D-Bus.
+- `margin FILE…` from a terminal starts the editor detached, in its own
+  process group, and returns at once. The launcher runs
+  `margin --foreground %F`.
+- Launched without files and with no drafts to recover, cancelling the Open
+  dialog quits.
+- The app quits when its last window closes.
+
+### Storage
 
 XDG base directories:
 
@@ -188,27 +216,14 @@ XDG base directories:
   don't write it.
 - File changes are watched with GIO file monitors.
 
-## App lifecycle
-
-- One instance per user through `GApplication` with the ID
-  `io.github.tibbe.Margin`: a second launch hands its files to the running
-  editor over D-Bus.
-- `margin FILE…` from a terminal starts the editor detached, in its own
-  process group, and returns at once. The launcher runs
-  `margin --foreground %F`.
-- Launched without files and with no drafts to recover, cancelling the Open
-  dialog quits.
-- The app quits when its last window closes.
-- Printing uses GTK's print dialog.
-
-## Installation
+### Installation
 
 `./install.sh` builds a release binary into `~/.local/bin/margin` and
 installs a desktop entry (`io.github.tibbe.Margin.desktop`: Office and text
 editor categories, `text/markdown` MIME types) and a scalable icon under
 `~/.local/share`.
 
-## Testing
+### Testing
 
 The UI is tested on a Broadway display with `MARGIN_SCRIPT`, taking
 screenshots with the script's `shot` step. Anything a mouse does is tested

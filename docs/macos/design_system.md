@@ -3,26 +3,125 @@
 Margin on macOS follows Apple's Human Interface Guidelines and the
 conventions of Apple's document apps (TextEdit, Pages, Notes).
 
-## Look
+## Foundations
+
+### Look
+
+- Light and dark follow the system appearance. The system accent color marks
+  focus.
+
+### Color
+
+System semantic colors, so every appearance, accent and accessibility
+setting (Increase Contrast, Reduce Transparency) works, and one color of
+Margin's own:
+
+- `commentHighlightColor`: Apple's purple author color, so commented text
+  never looks like a find match (yellow). In light mode Pages' comment
+  fills, `#EDD1FE` (`#DCAFFD` for the focused thread); in dark mode, where
+  Pages has none, Notes' first participant color `#A477EC` at 20% (40%
+  focused).
+
+| Role | Color |
+| --- | --- |
+| Background | `textBackgroundColor` |
+| Text | `textColor` |
+| Headings | `labelColor` |
+| Dimmed text (syntax, times, H6) | `secondaryLabelColor` |
+| Borders, rules, quote bars | `separatorColor` |
+| Accent, focus, checked boxes | `controlAccentColor` |
+| Code background | `quaternarySystemFill` |
+| Card background | `controlBackgroundColor` |
+| Comment highlight | `commentHighlightColor` |
+| Find matches | `findHighlightColor` at 35% (90% for the current match) |
+| Links | `linkColor` |
+
+### Type
+
+- Body: the system font (SF Pro) at 15pt, before zoom.
+- Code: SF Mono.
+- Cards: the system font at the regular and small sizes.
+- A Settings window picks the body font (SF Pro or New York) and size.
+
+### Geometry
+
+- The page is centered: the text alone while there are no cards, the text
+  and the cards together once there are. The first card moves the text
+  left, and the last one resolved moves it back. Cards are 300pt wide,
+  growing to 400pt with half of any spare width; narrower windows narrow
+  the text instead.
+
+### Feedback
+
+A small banner at the bottom of the window, on the HUD material, says
+"Updated from disk", "1 new reply" and the like, and fades after 3 seconds,
+or 6 when it has an Undo button. It is also announced to VoiceOver. Apple
+sets no duration, and its HIG
+[discourages](https://developer.apple.com/design/human-interface-guidelines/accessibility)
+views that dismiss on a timer, so a banner only repeats what the window
+shows anyway: its Undo is the Edit menu's, and new replies are on their
+cards.
+
+## Files
+
+Documents follow the spec's saving rules rather than the Mac's own autosave,
+so there is no version history (Revert To ▸ Browse All Versions) and no
+"changed by another application" alert.
 
 - Standard window with a unified toolbar. The title is the document name,
   the subtitle its folder (`~/…`, or "Not saved yet"), with the document
   proxy icon. Documents save themselves, so the edited dot on the close
   button only shows while a save is failing, or on an untitled document with
   text.
-- Light and dark follow the system appearance. The system accent color marks
-  focus.
+- Saves keep the file's Finder tags and extended attributes too.
+- **Save As…** writes the document under a new name and continues there;
+  its comments move along. **Rename…** and **Move To…** move the file itself,
+  with its comments. **Duplicate** opens an untitled copy, comments included.
+  **Revert to Last Opened** is one undoable step.
+- A change an agent makes to the file, or a merge, is one undo step ("Undo
+  Outside Change"), so earlier steps stay undoable.
+- Comment changes are on the Edit menu's Undo too, in order with text
+  edits.
+- Windows reopen where they were after a relaunch, and documents can share a
+  window as tabs; "+" in the tab bar opens an untitled document.
+- The conflict ("Keep My Version", "Load Disk Version") and Unsaved Changes
+  prompts are sheets. Unsaved Changes uses the Mac wording: "Do you want to
+  save the changes made to “name”?" with Save…, Cancel and Don’t Save.
+
+## Rendering
+
+- Code blocks sit in a tinted box with a 6pt radius; quote bars are rounded.
+- Tables are grids in a box with a 6pt radius, the header row tinted like a
+  code block, with separator-colored lines between rows and columns. Cells
+  have 10pt of padding at the sides and 6pt above and below. Text is at 94%
+  of body size. A table wider than the page is cut off at its right edge.
+
+## Editing
+
+- Clicking the left margin places the cursor.
+- **No substitutions:** smart quotes, smart dashes, text replacement,
+  autocorrect and link detection are off. Inline predictions are on:
+  accepting one inserts text like typing does.
+- **Spelling** underlines are on, except in code, links and hidden syntax.
+  Grammar is off.
+- **Input methods** (Japanese, Chinese, dead keys) compose where typed text
+  would go (after a link, not inside it). Text being composed keeps its
+  marked-text underline and is styled once committed. Press-and-hold accents
+  replace the letter like typing does.
+- **Edits the system makes** (deleting a word, Transpose, dragging text,
+  spelling corrections, Writing Tools) follow the same editing rules as
+  typing. A multiple selection (Command-drag) becomes its first range.
+- **Writing Tools** run in their panel, not inline, and their results
+  arrive as ordinary replacements.
+
+## Comments
+
 - The gutter is the page's margin: one text background behind the text and
   the cards, with no separator. Each card sits beside the line it comments
   on.
-- The page is centered: the text alone while there are no cards, the text
-  and the cards together once there are. The first card moves the text
-  left, and the last one resolved moves it back. Cards are 300pt wide,
-  growing to 400pt with half of any spare width; narrower windows narrow
-  the text instead.
-- Clicking the left margin places the cursor. Clicking empty gutter space
-  leaves the focused thread and returns the keyboard to the text, with the
-  cursor where it was. Over the gutter the pointer is the arrow.
+- Clicking empty gutter space leaves the focused thread and returns the
+  keyboard to the text, with the cursor where it was. Over the gutter the
+  pointer is the arrow.
 - Clicking anywhere on a card, its text included, focuses the thread.
   Dragging across a card's text, or double-clicking it, selects it, so the
   pointer over the text is the I-beam.
@@ -55,11 +154,6 @@ conventions of Apple's document apps (TextEdit, Pages, Notes).
 - Edit turns the message into a box on the card holding its text, with
   Cancel and Save. Undo is named for the step: Undo Edit, Undo Delete
   Reply, Undo Delete Comment.
-- Code blocks sit in a tinted box with a 6pt radius; quote bars are rounded.
-- Tables are grids in a box with a 6pt radius, the header row tinted like a
-  code block, with separator-colored lines between rows and columns. Cells
-  have 10pt of padding at the sides and 6pt above and below. Text is at 94%
-  of body size. A table wider than the page is cut off at its right edge.
 - Toolbar: the open-comment count, Send to Agent (`paperplane`) and a
   comment button. Everything else is in the menu bar.
 - Send to Agent is enabled only while an agent is waiting and a thread is
@@ -74,45 +168,24 @@ conventions of Apple's document apps (TextEdit, Pages, Notes).
   notification red, which reads as needing attention. So the agent's state
   is words in the count, not a spinner or a badge.
 
+System notifications (see the spec for when) are one per thread change,
+as Mail and Messages post one per message, grouped by document
+(`threadIdentifier`) so they stack with "+N more". The subtitle is
+`"quote"`, `Resolved "quote"`, `Reopened "quote"`, `New comment on "quote"`
+or `Deleted "quote"`, and the body the message. With previews hidden they
+say "New reply", "Comment resolved" and the like. They play the default
+sound; the Dock icon has no badge. Margin asks for permission the first time
+agent activity is announced while it is frontmost, as Apple advises asking
+in context, and posts nothing before then.
+
 Open questions:
 
 - Is a toolbar worth having at all, or should the window be title-only like
   Notes' full-screen editor?
 
-## Color
+## Commands
 
-System semantic colors, so every appearance, accent and accessibility
-setting (Increase Contrast, Reduce Transparency) works, and one color of
-Margin's own:
-
-- `commentHighlightColor`: Apple's purple author color, so commented text
-  never looks like a find match (yellow). In light mode Pages' comment
-  fills, `#EDD1FE` (`#DCAFFD` for the focused thread); in dark mode, where
-  Pages has none, Notes' first participant color `#A477EC` at 20% (40%
-  focused).
-
-| Role | Color |
-| --- | --- |
-| Background | `textBackgroundColor` |
-| Text | `textColor` |
-| Headings | `labelColor` |
-| Dimmed text (syntax, times, H6) | `secondaryLabelColor` |
-| Borders, rules, quote bars | `separatorColor` |
-| Accent, focus, checked boxes | `controlAccentColor` |
-| Code background | `quaternarySystemFill` |
-| Card background | `controlBackgroundColor` |
-| Comment highlight | `commentHighlightColor` |
-| Find matches | `findHighlightColor` at 35% (90% for the current match) |
-| Links | `linkColor` |
-
-## Type
-
-- Body: the system font (SF Pro) at 15pt, before zoom.
-- Code: SF Mono.
-- Cards: the system font at the regular and small sizes.
-- A Settings window picks the body font (SF Pro or New York) and size.
-
-## Menu bar
+### Menu bar
 
 The standard menus, with Margin's commands where Mac users look for them:
 
@@ -139,45 +212,7 @@ system's own items, as in Pages and Preview. A card's right-click menu has
 Reply and Resolve (Reopen) for the thread, then Edit and Delete for the
 message clicked.
 
-## Documents
-
-Documents follow the spec's saving rules rather than the Mac's own autosave,
-so there is no version history (Revert To ▸ Browse All Versions) and no
-"changed by another application" alert.
-
-- Saves keep the file's Finder tags and extended attributes too.
-- **Save As…** writes the document under a new name and continues there;
-  its comments move along. **Rename…** and **Move To…** move the file itself,
-  with its comments. **Duplicate** opens an untitled copy, comments included.
-  **Revert to Last Opened** is one undoable step.
-- A change an agent makes to the file, or a merge, is one undo step ("Undo
-  Outside Change"), so earlier steps stay undoable.
-- Comment changes are on the Edit menu's Undo too, in order with text
-  edits.
-- Windows reopen where they were after a relaunch, and documents can share a
-  window as tabs; "+" in the tab bar opens an untitled document.
-- The conflict ("Keep My Version", "Load Disk Version") and Unsaved Changes
-  prompts are sheets. Unsaved Changes uses the Mac wording: "Do you want to
-  save the changes made to “name”?" with Save…, Cancel and Don’t Save.
-
-## Text input
-
-- **No substitutions:** smart quotes, smart dashes, text replacement,
-  autocorrect and link detection are off. Inline predictions are on:
-  accepting one inserts text like typing does.
-- **Spelling** underlines are on, except in code, links and hidden syntax.
-  Grammar is off.
-- **Input methods** (Japanese, Chinese, dead keys) compose where typed text
-  would go (after a link, not inside it). Text being composed keeps its
-  marked-text underline and is styled once committed. Press-and-hold accents
-  replace the letter like typing does.
-- **Edits the system makes** (deleting a word, Transpose, dragging text,
-  spelling corrections, Writing Tools) follow the same editing rules as
-  typing. A multiple selection (Command-drag) becomes its first range.
-- **Writing Tools** run in their panel, not inline, and their results
-  arrive as ordinary replacements.
-
-## Key bindings
+### Key bindings
 
 The standard commands (New, Open, Save, Print, Close, Quit, Undo, the
 clipboard, Find and its commands, Bold, Italic, Enter Full Screen, Larger
@@ -223,37 +258,9 @@ for theirs:
 
 Open question: Cmd+Option+Q (Quote) sits next to Cmd+Q; is that too close?
 
-## Notifications
+## System
 
-A small banner at the bottom of the window, on the HUD material, says
-"Updated from disk", "1 new reply" and the like, and fades after 3 seconds,
-or 6 when it has an Undo button. It is also announced to VoiceOver. Apple
-sets no duration, and its HIG
-[discourages](https://developer.apple.com/design/human-interface-guidelines/accessibility)
-views that dismiss on a timer, so a banner only repeats what the window
-shows anyway: its Undo is the Edit menu's, and new replies are on their
-cards.
-
-System notifications (see the spec for when) are one per thread change,
-as Mail and Messages post one per message, grouped by document
-(`threadIdentifier`) so they stack with "+N more". The subtitle is
-`"quote"`, `Resolved "quote"`, `Reopened "quote"`, `New comment on "quote"`
-or `Deleted "quote"`, and the body the message. With previews hidden they
-say "New reply", "Comment resolved" and the like. They play the default
-sound; the Dock icon has no badge. Margin asks for permission the first time
-agent activity is announced while it is frontmost, as Apple advises asking
-in context, and posts nothing before then.
-
-## Files and storage
-
-- Comments in `~/Library/Application Support/Margin/docs/`, the Mac's place
-  for app data, and drafts beside them in `drafts/`. `XDG_DATA_HOME`, when
-  set, and `MARGIN_DATA_DIR` override it, so the CLI and the editor always
-  agree.
-- Preferences (zoom, Reflow Paragraphs) in the user defaults under
-  `io.github.tibbe.Margin`.
-
-## App lifecycle
+### Lifecycle
 
 - One instance. `margin FILE…` creates files that don't exist yet before
   opening them, rather than on first save: Finder only opens existing
@@ -265,7 +272,16 @@ in context, and posts nothing before then.
 - Quitting keeps untitled documents and asks, one window at a time, only
   about text whose save failed; Don't Save finishes quitting.
 
-## Distribution
+### Storage
+
+- Comments in `~/Library/Application Support/Margin/docs/`, the Mac's place
+  for app data, and drafts beside them in `drafts/`. `XDG_DATA_HOME`, when
+  set, and `MARGIN_DATA_DIR` override it, so the CLI and the editor always
+  agree.
+- Preferences (zoom, Reflow Paragraphs) in the user defaults under
+  `io.github.tibbe.Margin`.
+
+### Distribution
 
 - The app runs on Apple silicon and Intel, and the `margin` CLI ships
   inside it.
