@@ -60,6 +60,9 @@ final class CommentLayer {
     unowned let page: PageView
     private var gutter: GutterView { page.gutter }
     private(set) var store: CommentStore?
+    /// Changes made to the store from here, counted so a reload doesn't
+    /// show what one of them replaced.
+    private var changesMade = 0
     private(set) var items: [ThreadItem] = []
     /// What has the gutter's focus: a thread, or the draft of a new one,
     /// never both.
@@ -180,18 +183,25 @@ final class CommentLayer {
 
     /// Re-reads the store, e.g. after an agent replied from the CLI.
     /// Reading waits for the store's lock, which the CLI may hold, so it
-    /// happens off the main thread; the result is shown if the text hasn't
-    /// changed meanwhile (else the next reload brings it).
+    /// happens off the main thread; the result is shown if neither the text
+    /// nor the threads (from here) changed meanwhile, else it reads again.
     func reload() {
         guard let store else { return }
         let text = view.string
+        let changes = changesMade
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             let result = Result { try store.load(text: text) }
             DispatchQueue.main.async {
                 guard let self, self.store === store else { return }
                 switch result {
                 case .success(let threads):
-                    if self.view.string == text { self.merge(threads, announce: true) } else { self.reload() }
+                    // Read before a change made here since, it would put
+                    // back what that change replaced.
+                    if self.view.string == text && self.changesMade == changes {
+                        self.merge(threads, announce: true)
+                    } else {
+                        self.reload()
+                    }
                 case .failure(let error):
                     self.toast?("Could not read comments: \(error.localizedDescription)", nil)
                 }
@@ -206,6 +216,7 @@ final class CommentLayer {
         guard let store else { return nil }
         do {
             let state = try store.update(text: view.string, anchors: anchors(), change: change)
+            changesMade += 1
             merge(state.threads, announce: false)
             return state
         } catch {
