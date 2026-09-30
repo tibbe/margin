@@ -17,5 +17,5 @@ serde_json = "1"
 # workspace builds and tests there too.
 [target.'cfg(not(target_os = "macos"))'.dependencies]
 gtk = { version = "0.11", package = "gtk4", features = ["v4_20"] }
-adw = { version = "0.9", package = "libadwaita", features = ["v1_8"] }
+adw = { version = "0.9", package = "libadwaita", features = ["v1_8", "gtk_v4_20"] }
 pangocairo = "0.22"
