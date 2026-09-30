@@ -1,8 +1,0 @@
-texts 1: collapsed
-texts 1: expanded
-#1 open [0,5) ["1\n2\n3\n4\n5\n6\n7\n8"]
-active 1
-#1 open [0,5) ["1\n2\n3\n4\n5\n6\n7\n8", "1\n2\n3\n4\n5\n6\n7"]
-active 1
-texts 1: expanded, short
-texts 1: collapsed, short

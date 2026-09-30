@@ -4,5 +4,5 @@
 channel = "1.98.1"
 profile = "minimal"
 components = ["clippy", "rustfmt", "rust-analyzer", "rust-src"]
-# `macos/build.sh` builds a universal app.
+# The macOS app builds universal in Release.
 targets = ["aarch64-apple-darwin", "x86_64-apple-darwin"]

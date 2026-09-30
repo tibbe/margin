@@ -28,8 +28,9 @@ This installs `margin` into `~/.local/bin`, with a launcher entry and icon.
 On macOS 26, with Xcode 26 and Rust:
 
 ```sh
-macos/build.sh
-ditto macos/build/Margin.app /Applications/Margin.app
+xcodebuild -project macos/Margin.xcodeproj -scheme Margin -configuration Release \
+  -derivedDataPath macos/build/DerivedData build
+ditto macos/build/DerivedData/Build/Products/Release/Margin.app /Applications/Margin.app
 ln -sf /Applications/Margin.app/Contents/Helpers/margin ~/.local/bin/margin
 ```
 

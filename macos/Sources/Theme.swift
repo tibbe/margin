@@ -2,13 +2,8 @@ import AppKit
 
 /// Preferences that persist between runs, in the app's user defaults.
 enum Prefs {
-    /// Test runs keep their preferences apart, starting from the defaults.
-    private static let defaults: UserDefaults = {
-        guard scriptPath != nil else { return .standard }
-        let suite = "io.github.tibbe.Margin.tests"
-        UserDefaults.standard.removePersistentDomain(forName: suite)
-        return UserDefaults(suiteName: suite) ?? .standard
-    }()
+    /// Where they are kept.
+    static var defaults = UserDefaults.standard
 
     static var zoom: Double {
         get {

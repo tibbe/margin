@@ -1,0 +1,166 @@
+import AppKit
+import XCTest
+
+@testable import MarginKit
+
+/// The window's menus, links and agents.
+final class WindowTests: XCTestCase {
+    /// Menu items' enabled and checked states follow the window.
+    @MainActor
+    func testMenuItemsFollowTheWindow() throws {
+        let h = try Harness()
+        defer { h.close() }
+        h.reset("Some **bold** text\n")
+        XCTAssertEqual(h.menu("Show Markdown"), "enabled")
+        h.key("cmd-/")
+        XCTAssertEqual(h.menu("Show Markdown"), "enabled, checked")
+        XCTAssertEqual(h.menu("Bold"), "disabled")
+        h.key("cmd-/")
+        XCTAssertEqual(h.menu("Show Markdown"), "enabled")
+        XCTAssertEqual(h.menu("Show Resolved"), "enabled")
+        h.action(#selector(DocumentWindow.marginToggleShowResolved(_:)))
+        XCTAssertEqual(h.menu("Show Resolved"), "enabled, checked")
+        XCTAssertEqual(h.menu("Reflow Paragraphs"), "enabled")
+        h.key("cmd-opt-z")
+        XCTAssertEqual(h.menu("Reflow Paragraphs"), "enabled, checked")
+        XCTAssertEqual(h.menu("Reply"), "disabled")
+    }
+
+    /// Command-click opens Markdown files in Margin, relative to the
+    /// document, including names with spaces and fragments.
+    @MainActor
+    func testCommandClickOpensLinkedDocuments() throws {
+        let h = try Harness()
+        defer { h.close() }
+        h.sh(
+            "printf 'Other.\\n' > other.md; printf 'Spaced.\\n' > 'my notes.md'; mkdir -p sub; printf 'Deep.\\n' > sub/deep.md"
+        )
+        h.reset("See [other](other.md), [spaced](my%20notes.md), [raw](<my notes.md>), [deep](sub/deep.md#top).\n")
+        h.save()
+        h.click(text: "other", mods: .command)
+        h.wait(0.3)
+        XCTAssertEqual(h.windows, ["doc.md", "other.md"])
+        h.click(text: "spaced", mods: .command)
+        h.wait(0.3)
+        XCTAssertEqual(h.windows, ["doc.md", "other.md", "my notes.md"])
+        h.click(text: "raw", mods: .command)
+        h.wait(0.3)
+        XCTAssertEqual(h.windows, ["doc.md", "other.md", "my notes.md"])
+        h.click(text: "deep", mods: .command)
+        h.wait(0.3)
+        XCTAssertEqual(h.windows, ["doc.md", "other.md", "my notes.md", "deep.md"])
+        // A plain click places the cursor.
+        h.click(text: "other")
+        h.wait(0.1)
+        XCTAssertEqual(h.windows, ["doc.md", "other.md", "my notes.md", "deep.md"])
+        XCTAssertEqual(h.selection, "7 0")
+    }
+
+    /// Agent activity is announced in the window, and posted as one system
+    /// notification per thread change while the document isn't in front;
+    /// coming back clears them.
+    @MainActor
+    func testAgentActivityIsAnnouncedAndNotified() throws {
+        let h = try Harness("One two three.\n")
+        defer { h.close() }
+        for (text, body) in [("One", "Why?"), ("two", "And this?")] {
+            h.select(text)
+            h.key("cmd-opt-m")
+            h.compose(body)
+            h.key("cmd-enter")
+            h.wait(0.1)
+        }
+        // In front: announced only.
+        XCTAssertEqual(h.margin("reply", "doc.md", "1", "Because."), "Replied to #1.\n")
+        h.wait(forBanner: "1 new reply")
+        XCTAssertEqual(h.banner, "1 new reply")
+
+        // In the background: each change is its own notification.
+        h.looking = false
+        XCTAssertEqual(h.margin("reply", "doc.md", "1", "Done.", "--resolve"), "Replied to #1 and resolved it.\n")
+        h.wait(forBanner: "comment resolved")
+        XCTAssertEqual(h.banner, "1 new reply, 1 comment resolved")
+        XCTAssertEqual(h.margin("add", "doc.md", "--quote", "three", "Plural?"), "Added #3 at doc.md:1:9.\n")
+        h.wait(forBanner: "new comment")
+        XCTAssertEqual(h.margin("reopen", "doc.md", "1"), "Reopened #1.\n")
+        h.wait(forBanner: "reopened")
+        XCTAssertEqual(h.margin("delete", "doc.md", "2"), "Deleted #2.\n")
+        h.wait(forBanner: "deleted")
+        XCTAssertEqual(h.banner, "1 comment deleted")
+
+        // Back in front.
+        h.looking = true
+        h.doc.windowDidBecomeKey(Notification(name: NSWindow.didBecomeKeyNotification, object: h.win))
+        XCTAssertEqual(
+            h.notifications.log,
+            [
+                "notification doc.md | Resolved “One” | Done.",
+                "notification doc.md | New comment on “three” | Plural?",
+                "notification doc.md | Reopened “One” | -",
+                "notification doc.md | Deleted “two” | -",
+                "notifications cleared for doc.md",
+            ])
+        XCTAssertEqual(
+            h.comments,
+            #"#1 open [0,3) ["Why?", "Because.", "Done."]"# + "\n" + #"#3 open [8,13) ["Plural?"]"# + "\nactive none")
+    }
+
+    /// Send to Agent reaches only an agent waiting with `margin wait`, and
+    /// the toolbar follows it: waiting, then working until it waits again.
+    @MainActor
+    func testSendToAgent() throws {
+        let h = try Harness("Retry three times.\n")
+        defer { h.close() }
+        func agent() -> String {
+            _ = h.win.toolbar?.items
+            h.doc.updateAgent()
+            let count = h.doc.countLabel.stringValue
+            return "\(h.doc.agentState) | send \(h.doc.sendItem?.isEnabled == true ? "enabled" : "disabled") | count "
+                + (count.isEmpty ? "-" : count)
+        }
+        XCTAssertEqual(agent(), "none | send disabled | count -")
+        h.select("three")
+        h.key("cmd-opt-m")
+        h.compose("Enough?")
+        h.key("cmd-enter")
+        h.wait(0.1)
+
+        // No agent waiting: nothing to send to.
+        XCTAssertEqual(agent(), "none | send disabled | count 1 open comment")
+        XCTAssertEqual(h.menu("Comments > Send to Agent"), "disabled")
+        h.key("cmd-shift-enter")
+        XCTAssertNil(h.banner)
+
+        h.sh("\(Harness.cli) wait doc.md > wait1.out 2>&1 &")
+        h.wait(0.7)
+        XCTAssertEqual(agent(), "waiting | send enabled | count 1 open comment")
+        XCTAssertEqual(h.menu("Comments > Send to Agent"), "enabled")
+        h.key("cmd-shift-enter")
+        h.wait(forBanner: "Sent")
+        XCTAssertEqual(h.banner, "Sent 1 open comment to the agent")
+        h.wait(0.7)
+        XCTAssertEqual(
+            h.sh("sed -E 's|`/[^`]*/|`|g' wait1.out"),
+            """
+            I left comments on `doc.md`. Please address them.
+
+            #1 `doc.md:1:7-1:11` "three"
+              - User: Enough?
+
+            Once you have answered them, run `margin wait doc.md` again for the next round.
+
+            """)
+        XCTAssertEqual(agent(), "working | send disabled | count 1 open comment · Agent working")
+        XCTAssertEqual(h.margin("reply", "doc.md", "1", "Five, with backoff."), "Replied to #1.\n")
+        h.wait(forBanner: "new reply")
+        XCTAssertEqual(agent(), "working | send disabled | count 1 open comment · Agent working")
+
+        // Waiting again ends working; a waiter that dies stops counting.
+        h.sh("\(Harness.cli) wait doc.md > wait2.out 2>&1 & echo $! > wait2.pid")
+        h.wait(0.7)
+        XCTAssertEqual(agent(), "waiting | send enabled | count 1 open comment")
+        h.sh("kill $(cat wait2.pid)")
+        h.wait(0.3)
+        XCTAssertEqual(agent(), "none | send disabled | count 1 open comment")
+    }
+}

@@ -1,9 +1,0 @@
-# A new comment's card is beside its text as soon as it is posted, never
-# first at the top of the gutter.
-reset First line.\n\nSecond line.\n\nThird line to comment on.\n
-save
-size 1300 700
-select comment
-key cmd-opt-m
-compose Why?
-key-cards cmd-enter

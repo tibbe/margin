@@ -2,14 +2,6 @@ import AppKit
 import UniformTypeIdentifiers
 import margin_ffi
 
-/// The test script this run follows (see `ScriptDriver`). Only test builds
-/// (`build.sh debug`) can be scripted.
-#if SCRIPTING
-let scriptPath = ProcessInfo.processInfo.environment["MARGIN_SCRIPT"]
-#else
-let scriptPath: String? = nil
-#endif
-
 /// Recent documents open through Margin's own windows (there are no
 /// NSDocument subclasses).
 final class MarginDocumentController: NSDocumentController {
@@ -28,10 +20,7 @@ final class DocumentRestoration: NSObject, NSWindowRestoration {
         withIdentifier identifier: NSUserInterfaceItemIdentifier, state: NSCoder,
         completionHandler: @escaping (NSWindow?, Error?) -> Void
     ) {
-        // Test runs share the app's identity, and with it the windows a
-        // person left open; a test must never open those.
-        guard scriptPath == nil,
-            let path = state.decodeObject(of: NSString.self, forKey: DocumentWindow.restorationPathKey) as String?,
+        guard let path = state.decodeObject(of: NSString.self, forKey: DocumentWindow.restorationPathKey) as String?,
             FileManager.default.fileExists(atPath: path),
             let w = AppDelegate.shared.open(path: path, show: false)
         else {
@@ -42,12 +31,12 @@ final class DocumentRestoration: NSObject, NSWindowRestoration {
     }
 }
 
-@main
-enum MarginApp {
+/// The app, started by the app target's `main.swift`.
+public enum MarginApp {
     /// Kept alive for the app's lifetime (`NSApplication.delegate` is weak).
     private static let delegate = AppDelegate()
 
-    static func main() {
+    public static func main() {
         let app = NSApplication.shared
         app.delegate = delegate
         app.run()
@@ -57,7 +46,6 @@ enum MarginApp {
 final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     static var shared: AppDelegate { NSApp.delegate as! AppDelegate }
     private(set) var windows: [DocumentWindow] = []
-    let scripted = scriptPath != nil
     private var shortcutsWindow: NSWindow?
     /// Windows still to ask about unsaved text while quitting.
     private var quitQueue: [DocumentWindow] = []
@@ -66,18 +54,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         _ = MarginDocumentController()
         Notifier.shared.start()
         NSApp.mainMenu = buildMainMenu()
-    }
-
-    func applicationDidFinishLaunching(_ notification: Notification) {
-        #if SCRIPTING
-        // Test runs start the binary directly, naming the file to open;
-        // otherwise Launch Services delivers files through
-        // `application(_:open:)`.
-        if scripted {
-            let opened = CommandLine.arguments.dropFirst().filter { !$0.hasPrefix("-") }.compactMap { open(path: $0) }
-            if let w = opened.first { ScriptDriver.start(window: w) }
-        }
-        #endif
     }
 
     func applicationSupportsSecureRestorableState(_ app: NSApplication) -> Bool {
@@ -92,17 +68,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
     /// Launched (or its Dock icon clicked) with no windows: untitled
     /// documents left by a crash come back; with none, the Open panel.
-    func applicationShouldOpenUntitledFile(_ sender: NSApplication) -> Bool {
-        !scripted
-    }
-
     func applicationOpenUntitledFile(_ sender: NSApplication) -> Bool {
         if recoverDrafts() == 0 { showOpenPanel() }
         return true
-    }
-
-    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
-        scripted
     }
 
     /// Quitting keeps untitled documents (they reopen at the next launch)
@@ -160,14 +128,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             }
             return w
         } catch {
-            if scripted {
-                print("margin: \(error.localizedDescription)")
-            } else {
-                let alert = NSAlert()
-                alert.messageText = "Could not open “\((path as NSString).lastPathComponent)”"
-                alert.informativeText = error.localizedDescription
-                alert.runModal()
-            }
+            let alert = NSAlert()
+            alert.messageText = "Could not open “\((path as NSString).lastPathComponent)”"
+            alert.informativeText = error.localizedDescription
+            alert.runModal()
             return nil
         }
     }

@@ -1,16 +1,18 @@
 # macOS editor
 
-Run these from the repository root.
+See `docs/macos/architecture.md`. Run these from the repository root; `$X`
+is `xcodebuild -project macos/Margin.xcodeproj -scheme Margin -derivedDataPath macos/build/DerivedData`.
 
-- Build: `macos/build.sh debug` (for tests) or `macos/build.sh` (release).
-- Run: `open -g -n -a "$PWD/macos/build/Margin.app" FILE…`
-- Quit: `pkill -f "$PWD/macos/build/Margin.app/"`
-- Test: add a UI script to `macos/tests/` for new behavior. `caret` and
-  `links` fail unless Margin is the active app.
+- Build: `$X build` (Debug) or `$X -configuration Release build`.
+- Run: `open -g -n -a "$PWD/macos/build/DerivedData/Build/Products/Debug/Margin.app" FILE…`
+- Quit: `pkill -f "$PWD/macos/build/DerivedData/Build/Products/Debug/Margin.app/"`
+- Test: add an XCTest to `macos/MarginTests` for new behavior. Add an XCUITest
+  to `macos/MarginUITests` only for what needs the real keyboard or mouse:
+  UI tests take them over while they run, so say so before running them.
 
 ## Checks
 
-- `swift format -i -p -r macos/Sources macos/tools`
-- `swift format lint --strict -p -r macos/Sources macos/tools`
-- `macos/build.sh debug`
-- `macos/tests/run.sh`
+- `swift format -i -p -r macos/Sources macos/App macos/MarginTests macos/MarginUITests macos/tools`
+- `swift format lint --strict -p -r macos/Sources macos/App macos/MarginTests macos/MarginUITests macos/tools`
+- `$X test -only-testing:MarginTests` (builds the app too; the unit tests
+  don't launch it)

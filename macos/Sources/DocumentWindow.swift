@@ -40,12 +40,12 @@ final class DocumentWindow: NSWindowController, NSWindowDelegate, NSToolbarDeleg
     private(set) var layer: CommentLayer!
     private(set) var findBar: FindBar!
     let banner = Banner()
-    private let countLabel = NSTextField(labelWithString: "")
+    let countLabel = NSTextField(labelWithString: "")
     /// Agents waiting on the document, or working on what was sent.
     private var agents: DocAgents?
     private(set) var agentState = AgentState.none
     private var agentTimer: Timer?
-    private var sendItem: NSToolbarItem?
+    private(set) var sendItem: NSToolbarItem?
     /// The text and its file: what to save, and outside edits to take in.
     private let sync: FileSync
     private var saveTimer: Timer?
@@ -81,9 +81,6 @@ final class DocumentWindow: NSWindowController, NSWindowDelegate, NSToolbarDeleg
         window.isReleasedWhenClosed = false
         window.identifier = NSUserInterfaceItemIdentifier("document")
         window.restorationClass = DocumentRestoration.self
-        // Test runs share the app's identity: they must not restore, or
-        // leave, windows.
-        window.isRestorable = scriptPath == nil
         window.tabbingIdentifier = "document"
         super.init(window: window)
         window.delegate = self
@@ -253,18 +250,10 @@ final class DocumentWindow: NSWindowController, NSWindowDelegate, NSToolbarDeleg
         updateAgent()
     }
 
-    /// The toolbar's Send to Agent button is enabled.
-    var sendButtonEnabled: Bool { sendItem?.isEnabled ?? false }
-    var countText: String { countLabel.stringValue }
-
     private var canSend: Bool { agentState == .waiting && layer.openCount > 0 }
 
-    #if SCRIPTING
-    func updateAgentNow() { updateAgent() }
-    #endif
-
     /// Looks at the document's agents again, and shows what they are doing.
-    private func updateAgent() {
+    func updateAgent() {
         agentState = agents?.poll(nowMs: DocumentWindow.nowMs()) ?? .none
         showAgent()
     }

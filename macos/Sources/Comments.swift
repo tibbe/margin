@@ -118,7 +118,7 @@ final class CommentLayer {
     /// - Complexity: O(n), where n is the number of threads.
     var resolvedCount: Int { items.filter { $0.thread.resolved }.count }
 
-    private func visible(_ t: CommentThread) -> Bool {
+    func visible(_ t: CommentThread) -> Bool {
         !t.resolved || showsResolved
     }
 
@@ -623,14 +623,9 @@ final class CommentLayer {
     }
 
     /// Where a character's line is, in the gutter's coordinates.
-    private func lineTop(_ ci: Int) -> CGFloat {
+    func lineTop(_ ci: Int) -> CGFloat {
         let len = (view.string as NSString).length
         return view.convert(NSPoint(x: 0, y: view.location(of: min(ci, len)).minY), to: gutter).y
-    }
-
-    /// How far each shown card is from beside its text, for tests.
-    func cardOffsets() -> [(id: UInt64, offset: CGFloat)] {
-        items.filter { visible($0.thread) }.map { ($0.thread.id, $0.card.frame.minY - lineTop($0.start)) }
     }
 
     /// Places cards beside their text, in the page's layout pass once the

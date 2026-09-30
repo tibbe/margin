@@ -434,7 +434,7 @@ private func byline(_ m: ThreadMessage) -> NSAttributedString {
 /// A message's text on its card, cut off at `collapsedLines` lines, with a
 /// Show More (Show Less) button below, when it is longer than `fullLines`,
 /// as Google Docs and Pages cut off long comments.
-private final class MessageText {
+final class MessageText {
     static let collapsedLines = 3
     static let fullLines = 7
     let body: NSTextField
@@ -495,9 +495,6 @@ private final class MessageText {
         toggleRow.isHidden = !long
         toggle.title = expanded ? "Show Less" : "Show More"
     }
-
-    /// "short", "collapsed" or "expanded", for tests.
-    var state: String { long ? (expanded ? "expanded" : "collapsed") : "short" }
 }
 
 /// A comment thread's card: the comment, its replies, and a reply box.
@@ -520,9 +517,9 @@ final class ThreadCard: GutterCard {
     /// The message the last menu was opened for.
     private var menuIndex = 0
     /// Each message's text (nil while it is edited).
-    private var texts: [MessageText?] = []
+    private(set) var texts: [MessageText?] = []
     /// Each message's author and time.
-    private var bylines: [NSTextField] = []
+    private(set) var bylines: [NSTextField] = []
     /// The messages shown in full, by time, kept across rebuilds.
     private var expanded: Set<Int64> = []
     var onResolve: ((Bool) -> Void)?
@@ -660,16 +657,6 @@ final class ThreadCard: GutterCard {
         super.setLabelWidths(w)
         for t in texts { t?.fit(width: w) }
     }
-
-    /// Each message's author as shown, without the time.
-    var authors: [String] {
-        bylines.map {
-            String($0.stringValue.replacingOccurrences(of: "\u{FFFC} ", with: "✦ ").split(separator: " · ")[0])
-        }
-    }
-
-    /// Each message's text: "short", "collapsed", "expanded" or "editing".
-    var messageStates: [String] { texts.map { $0?.state ?? "editing" } }
 
     /// Show More (Show Less) on a message; like any click on the card, it
     /// focuses the thread.

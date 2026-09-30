@@ -1,6 +1,0 @@
-#1 open [0,5) ["Why is this here?"]
-active none
-#1 open [0,5) ["Why is this here?"]
-active 1
-focus Optional(Margin.ComposerTextView)
-focus Optional(NSTextView)

@@ -601,7 +601,7 @@ final class DocTextView: NSTextView, NSTextStorageDelegate, NSTextViewDelegate, 
     }
 
     /// A task item's drawn checkbox, from the current layout.
-    private func checkboxBox(_ it: ItemInfo) -> NSRect {
+    func checkboxBox(_ it: ItemInfo) -> NSRect {
         let font = Theme.font(size: Theme.bodySize)
         let (baseline, xText) = markerPosition(it)
         let size = (14 * Theme.scale).rounded()
@@ -657,12 +657,6 @@ final class DocTextView: NSTextView, NSTextStorageDelegate, NSTextViewDelegate, 
                 label.draw(at: NSPoint(x: xText - w - 8 * s, y: baseline - font.ascender), withAttributes: attrs)
             }
         }
-    }
-
-    /// The hit area of the `n`th checkbox in the document, for tests.
-    func checkboxRect(_ n: Int) -> NSRect? {
-        let tasks = items.filter { $0.task != nil }
-        return n < tasks.count ? checkboxBox(tasks[n]) : nil
     }
 
     private func bullet(depth: Int) -> String {

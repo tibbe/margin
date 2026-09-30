@@ -1,0 +1,3 @@
+import MarginKit
+
+MarginApp.main()

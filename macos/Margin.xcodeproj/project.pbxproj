@@ -1,0 +1,752 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		0F71366B0716DF693E200D25 /* libMarginFFI.a in Frameworks */ = {
+			isa = PBXBuildFile;
+			fileRef = 0E77DD546D625C11A095020A /* libMarginFFI.a */;
+		};
+		60D61342D8CFA1F94A9971C8 /* libMarginKit.a in Frameworks */ = {
+			isa = PBXBuildFile;
+			fileRef = 7255C5E45028DBABED97E128 /* libMarginKit.a */;
+		};
+		64E8F8869AAAB609D8522337 /* libMarginFFI.a in Frameworks */ = {
+			isa = PBXBuildFile;
+			fileRef = 0E77DD546D625C11A095020A /* libMarginFFI.a */;
+		};
+		7559CC8D141A93DBF5685EEB /* Assets.xcassets in Resources */ = {
+			isa = PBXBuildFile;
+			fileRef = 59DAA59D477A91E75E0468AF /* Assets.xcassets */;
+		};
+		89D5669DE876D670D56CDD7A /* libMarginFFI.a in Frameworks */ = {
+			isa = PBXBuildFile;
+			fileRef = 0E77DD546D625C11A095020A /* libMarginFFI.a */;
+		};
+		8E448CA162E570F1CFF76194 /* margin_ffi.swift in Sources */ = {
+			isa = PBXBuildFile;
+			fileRef = D2680AF5B964AE847A6618D7 /* margin_ffi.swift */;
+		};
+		A9DEDB510F759B7F782D9A14 /* libMarginKit.a in Frameworks */ = {
+			isa = PBXBuildFile;
+			fileRef = 7255C5E45028DBABED97E128 /* libMarginKit.a */;
+		};
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		0352547952CE8FBA68CBCF78 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 46F86FAA6BBF9AC94A7E4595 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 6C806A3EF691E1103EB76F86;
+			remoteInfo = MarginFFI;
+		};
+		0AED92D2863A08E2529B378E /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 46F86FAA6BBF9AC94A7E4595 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = A95A5CE97C6D9394CF24F568;
+			remoteInfo = MarginKit;
+		};
+		2093546535B2F74888F64BB1 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 46F86FAA6BBF9AC94A7E4595 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = C49F4DE63E6C023493546D1B;
+			remoteInfo = Margin;
+		};
+		2C9BCFBBF0A03906A37C7EB0 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 46F86FAA6BBF9AC94A7E4595 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = A95A5CE97C6D9394CF24F568;
+			remoteInfo = MarginKit;
+		};
+		55A3EEC78B18B167D0A85B03 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 46F86FAA6BBF9AC94A7E4595 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 6C806A3EF691E1103EB76F86;
+			remoteInfo = MarginFFI;
+		};
+		5AB2766116A0CA88286BF819 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 46F86FAA6BBF9AC94A7E4595 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 6C806A3EF691E1103EB76F86;
+			remoteInfo = MarginFFI;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		0E77DD546D625C11A095020A /* libMarginFFI.a */ = {
+			isa = PBXFileReference;
+			explicitFileType = archive.ar;
+			includeInIndex = 0;
+			path = libMarginFFI.a;
+			sourceTree = BUILT_PRODUCTS_DIR;
+		};
+		59DAA59D477A91E75E0468AF /* Assets.xcassets */ = {
+			isa = PBXFileReference;
+			lastKnownFileType = folder.assetcatalog;
+			path = Assets.xcassets;
+			sourceTree = "<group>";
+		};
+		6FA60760637821D178185A7F /* MarginTests.xctest */ = {
+			isa = PBXFileReference;
+			explicitFileType = wrapper.cfbundle;
+			includeInIndex = 0;
+			path = MarginTests.xctest;
+			sourceTree = BUILT_PRODUCTS_DIR;
+		};
+		7255C5E45028DBABED97E128 /* libMarginKit.a */ = {
+			isa = PBXFileReference;
+			explicitFileType = archive.ar;
+			includeInIndex = 0;
+			path = libMarginKit.a;
+			sourceTree = BUILT_PRODUCTS_DIR;
+		};
+		770C5B730A8FBE3C009C5372 /* Info.plist */ = {
+			isa = PBXFileReference;
+			lastKnownFileType = text.plist.xml;
+			path = Info.plist;
+			sourceTree = "<group>";
+		};
+		8B9E08BD3CAD9F1751FDE8C3 /* Margin.app */ = {
+			isa = PBXFileReference;
+			explicitFileType = wrapper.application;
+			includeInIndex = 0;
+			path = Margin.app;
+			sourceTree = BUILT_PRODUCTS_DIR;
+		};
+		A91F359DC81DBDBD335B47B9 /* MarginUITests.xctest */ = {
+			isa = PBXFileReference;
+			explicitFileType = wrapper.cfbundle;
+			includeInIndex = 0;
+			path = MarginUITests.xctest;
+			sourceTree = BUILT_PRODUCTS_DIR;
+		};
+		D2680AF5B964AE847A6618D7 /* margin_ffi.swift */ = {
+			isa = PBXFileReference;
+			lastKnownFileType = sourcecode.swift;
+			path = margin_ffi.swift;
+			sourceTree = "<group>";
+		};
+/* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedRootGroup section */
+		072C4FDF3023D3CB603A301E /* MarginUITests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = MarginUITests;
+			sourceTree = "<group>";
+		};
+		7E77067905F52F343F9BE198 /* Sources */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = Sources;
+			sourceTree = "<group>";
+		};
+		AC681E5C16445843A81DB24C /* App */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = App;
+			sourceTree = "<group>";
+		};
+		D532C1E45514BCB3E3F67B85 /* MarginTests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = MarginTests;
+			sourceTree = "<group>";
+		};
+/* End PBXFileSystemSynchronizedRootGroup section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		6F8D9DB8423411D6CBF56A4A /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		BCA56013436EF94A46170EFD /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		D60FD8395ABE6867AD10DEF7 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				64E8F8869AAAB609D8522337 /* libMarginFFI.a in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		DB575B01C9EDB90A46216F71 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				60D61342D8CFA1F94A9971C8 /* libMarginKit.a in Frameworks */,
+				0F71366B0716DF693E200D25 /* libMarginFFI.a in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		DDB6A611A490E90C73AA8C15 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A9DEDB510F759B7F782D9A14 /* libMarginKit.a in Frameworks */,
+				89D5669DE876D670D56CDD7A /* libMarginFFI.a in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		2F3A6B1E78F896718625FF06 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				8B9E08BD3CAD9F1751FDE8C3 /* Margin.app */,
+				7255C5E45028DBABED97E128 /* libMarginKit.a */,
+				0E77DD546D625C11A095020A /* libMarginFFI.a */,
+				6FA60760637821D178185A7F /* MarginTests.xctest */,
+				A91F359DC81DBDBD335B47B9 /* MarginUITests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		38F6A03F1BFF5A7DF2C321E8 /* Generated */ = {
+			isa = PBXGroup;
+			children = (
+				D2680AF5B964AE847A6618D7 /* margin_ffi.swift */,
+			);
+			name = Generated;
+			path = build/gen;
+			sourceTree = "<group>";
+		};
+		518DA81DB9B99529C0C0AEBE = {
+			isa = PBXGroup;
+			children = (
+				AC681E5C16445843A81DB24C /* App */,
+				7E77067905F52F343F9BE198 /* Sources */,
+				887A6F90336FF23D95C3914B /* Resources */,
+				38F6A03F1BFF5A7DF2C321E8 /* Generated */,
+				D532C1E45514BCB3E3F67B85 /* MarginTests */,
+				072C4FDF3023D3CB603A301E /* MarginUITests */,
+				2F3A6B1E78F896718625FF06 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		887A6F90336FF23D95C3914B /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				59DAA59D477A91E75E0468AF /* Assets.xcassets */,
+				770C5B730A8FBE3C009C5372 /* Info.plist */,
+			);
+			path = Resources;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		43D0679FCAE2BC5C91DBBD93 /* MarginTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 98C9AA244EB5D34C1F849071 /* Build configuration list for PBXNativeTarget "MarginTests" */;
+			buildPhases = (
+				55C58DF6209548D747076DBB /* Sources */,
+				DDB6A611A490E90C73AA8C15 /* Frameworks */,
+				A172D99DD8A78E64D72DB455 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				7EAEDC911897EE211482BE80 /* PBXTargetDependency */,
+				C7CC5CAC1466283DB017FC69 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				D532C1E45514BCB3E3F67B85 /* MarginTests */,
+			);
+			name = MarginTests;
+			productName = MarginTests;
+			productReference = 6FA60760637821D178185A7F /* MarginTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		57DE546903F18E7286C2F9C3 /* MarginUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 16ABE656578E2698A6823122 /* Build configuration list for PBXNativeTarget "MarginUITests" */;
+			buildPhases = (
+				BB950841E03BA04164914AE8 /* Sources */,
+				6F8D9DB8423411D6CBF56A4A /* Frameworks */,
+				D485F65A0E83A3F1809B57F3 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				3FB5C4CEDF4B0D854AF15BBE /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				072C4FDF3023D3CB603A301E /* MarginUITests */,
+			);
+			name = MarginUITests;
+			productName = MarginUITests;
+			productReference = A91F359DC81DBDBD335B47B9 /* MarginUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
+		6C806A3EF691E1103EB76F86 /* MarginFFI */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 179BAF1FD6F4CE82C6683A62 /* Build configuration list for PBXNativeTarget "MarginFFI" */;
+			buildPhases = (
+				38AD3EF24D0868184EDC498A /* Build the Rust core */,
+				0BA1B878DFF6326D340C79D0 /* Sources */,
+				BCA56013436EF94A46170EFD /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = MarginFFI;
+			productName = MarginFFI;
+			productReference = 0E77DD546D625C11A095020A /* libMarginFFI.a */;
+			productType = "com.apple.product-type.library.static";
+		};
+		A95A5CE97C6D9394CF24F568 /* MarginKit */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 0821829AA5DE0EEE6E451011 /* Build configuration list for PBXNativeTarget "MarginKit" */;
+			buildPhases = (
+				0E363CEE4768EF7F45DD567F /* Sources */,
+				D60FD8395ABE6867AD10DEF7 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				C977105CC691735CD97BF6A8 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				7E77067905F52F343F9BE198 /* Sources */,
+			);
+			name = MarginKit;
+			productName = MarginKit;
+			productReference = 7255C5E45028DBABED97E128 /* libMarginKit.a */;
+			productType = "com.apple.product-type.library.static";
+		};
+		C49F4DE63E6C023493546D1B /* Margin */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 2AA0718EECCF6BD6912340FC /* Build configuration list for PBXNativeTarget "Margin" */;
+			buildPhases = (
+				25D9BA1528E55E2E0F1B2769 /* Sources */,
+				DB575B01C9EDB90A46216F71 /* Frameworks */,
+				0BC40DDAB69570E4FBE53FB5 /* Resources */,
+				A18836757FD2FE246F352FE0 /* Put the margin CLI in the app */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				28A9E90B62047A6697DE6E90 /* PBXTargetDependency */,
+				A44CDABF351B524F31F72FD5 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				AC681E5C16445843A81DB24C /* App */,
+			);
+			name = Margin;
+			productName = Margin;
+			productReference = 8B9E08BD3CAD9F1751FDE8C3 /* Margin.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		46F86FAA6BBF9AC94A7E4595 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 2630;
+				LastUpgradeCheck = 2630;
+				TargetAttributes = {
+					57DE546903F18E7286C2F9C3 = {
+						TestTargetID = C49F4DE63E6C023493546D1B;
+					};
+				};
+			};
+			buildConfigurationList = 7EF2517A8FE63F4681EC5EEA /* Build configuration list for PBXProject "Margin" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = 518DA81DB9B99529C0C0AEBE;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 2F3A6B1E78F896718625FF06 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				6C806A3EF691E1103EB76F86 /* MarginFFI */,
+				A95A5CE97C6D9394CF24F568 /* MarginKit */,
+				C49F4DE63E6C023493546D1B /* Margin */,
+				43D0679FCAE2BC5C91DBBD93 /* MarginTests */,
+				57DE546903F18E7286C2F9C3 /* MarginUITests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		0BC40DDAB69570E4FBE53FB5 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				7559CC8D141A93DBF5685EEB /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A172D99DD8A78E64D72DB455 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		D485F65A0E83A3F1809B57F3 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		38AD3EF24D0868184EDC498A /* Build the Rust core */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			alwaysOutOfDate = 1;
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Build the Rust core";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"$(PROJECT_DIR)/build/gen/margin_ffi.swift",
+				"$(PROJECT_DIR)/build/gen/margin_ffiFFI.h",
+				"$(PROJECT_DIR)/build/gen/margin_ffiFFI.modulemap",
+				"$(PROJECT_DIR)/build/rust/$(CONFIGURATION)/libmargin_ffi.a",
+				"$(PROJECT_DIR)/build/rust/$(CONFIGURATION)/margin",
+			);
+			shellPath = /bin/sh;
+			shellScript = "set -eu\n# The Rust core, as a static library, and the `margin` CLI, for each\n# architecture being built; then the Swift bindings to the library.\nexport PATH=\"$HOME/.cargo/bin:$PATH\"\nroot=\"$PROJECT_DIR/..\"\nout=\"$PROJECT_DIR/build/rust/$CONFIGURATION\"\nif [ \"$CONFIGURATION\" = Release ]; then flag=--release; dir=release; else flag=; dir=debug; fi\nlibs=\nclis=\nfor arch in $ARCHS; do\n    case $arch in arm64) target=aarch64-apple-darwin ;; *) target=x86_64-apple-darwin ;; esac\n    cargo build $flag --target \"$target\" -p margin-ffi --lib --manifest-path \"$root/Cargo.toml\"\n    cargo build $flag --target \"$target\" -p margin --bin margin --manifest-path \"$root/Cargo.toml\"\n    libs=\"$libs $root/target/$target/$dir/libmargin_ffi.a\"\n    clis=\"$clis $root/target/$target/$dir/margin\"\ndone\nmkdir -p \"$out\"\nlipo -create $libs -output \"$out/libmargin_ffi.a\"\nlipo -create $clis -output \"$out/margin\"\n# The bindings come from the library's metadata; any architecture will do.\n# The generator runs on this Mac only, and needn't be optimized.\ngen=\"$PROJECT_DIR/build/gen\"\nmkdir -p \"$gen\"\ncargo run -q -p margin-ffi --features cli --bin uniffi-bindgen --manifest-path \"$root/Cargo.toml\" -- \\\n    generate --library \"$root/target/$target/$dir/libmargin_ffi.dylib\" --language swift --out-dir \"$gen\"\n";
+		};
+		A18836757FD2FE246F352FE0 /* Put the margin CLI in the app */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			alwaysOutOfDate = 1;
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Put the margin CLI in the app";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			shellPath = /bin/sh;
+			shellScript = "set -eu\n# The CLI agents use; `margin open` hands documents to this app.\nhelpers=\"$TARGET_BUILD_DIR/$CONTENTS_FOLDER_PATH/Helpers\"\nmkdir -p \"$helpers\"\ncp \"$PROJECT_DIR/build/rust/$CONFIGURATION/margin\" \"$helpers/margin\"\ncodesign --force --options runtime --sign \"${EXPANDED_CODE_SIGN_IDENTITY:--}\" \"$helpers/margin\"\n";
+		};
+/* End PBXShellScriptBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		0BA1B878DFF6326D340C79D0 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				8E448CA162E570F1CFF76194 /* margin_ffi.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		0E363CEE4768EF7F45DD567F /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		25D9BA1528E55E2E0F1B2769 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		55C58DF6209548D747076DBB /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		BB950841E03BA04164914AE8 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		28A9E90B62047A6697DE6E90 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = A95A5CE97C6D9394CF24F568 /* MarginKit */;
+			targetProxy = 0AED92D2863A08E2529B378E /* PBXContainerItemProxy */;
+		};
+		3FB5C4CEDF4B0D854AF15BBE /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = C49F4DE63E6C023493546D1B /* Margin */;
+			targetProxy = 2093546535B2F74888F64BB1 /* PBXContainerItemProxy */;
+		};
+		7EAEDC911897EE211482BE80 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = A95A5CE97C6D9394CF24F568 /* MarginKit */;
+			targetProxy = 2C9BCFBBF0A03906A37C7EB0 /* PBXContainerItemProxy */;
+		};
+		A44CDABF351B524F31F72FD5 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 6C806A3EF691E1103EB76F86 /* MarginFFI */;
+			targetProxy = 5AB2766116A0CA88286BF819 /* PBXContainerItemProxy */;
+		};
+		C7CC5CAC1466283DB017FC69 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 6C806A3EF691E1103EB76F86 /* MarginFFI */;
+			targetProxy = 55A3EEC78B18B167D0A85B03 /* PBXContainerItemProxy */;
+		};
+		C977105CC691735CD97BF6A8 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 6C806A3EF691E1103EB76F86 /* MarginFFI */;
+			targetProxy = 0352547952CE8FBA68CBCF78 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		342728205C8570B27C9CB971 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				PRODUCT_NAME = MarginFFI;
+				PRODUCT_MODULE_NAME = margin_ffi;
+				SKIP_INSTALL = YES;
+			};
+			name = Release;
+		};
+		34E785CE103C6D25EAC510AD /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				PRODUCT_NAME = Margin;
+				PRODUCT_BUNDLE_IDENTIFIER = io.github.tibbe.Margin;
+				INFOPLIST_FILE = Resources/Info.plist;
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				COMBINE_HIDPI_IMAGES = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				OTHER_LDFLAGS = "$(inherited) $(PROJECT_DIR)/build/rust/$(CONFIGURATION)/libmargin_ffi.a";
+				OTHER_SWIFT_FLAGS = "$(inherited) -Xcc -fmodule-map-file=$(PROJECT_DIR)/build/gen/margin_ffiFFI.modulemap -default-isolation MainActor -enable-upcoming-feature NonisolatedNonsendingByDefault -enable-upcoming-feature InferIsolatedConformances -warnings-as-errors -Wwarning DeprecatedDeclaration";
+			};
+			name = Debug;
+		};
+		4B9ED656C26BBBF32E7A4A00 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				PRODUCT_NAME = MarginTests;
+				PRODUCT_BUNDLE_IDENTIFIER = io.github.tibbe.MarginTests;
+				GENERATE_INFOPLIST_FILE = YES;
+				OTHER_LDFLAGS = "$(inherited) $(PROJECT_DIR)/build/rust/$(CONFIGURATION)/libmargin_ffi.a";
+				OTHER_SWIFT_FLAGS = "$(inherited) -Xcc -fmodule-map-file=$(PROJECT_DIR)/build/gen/margin_ffiFFI.modulemap -enable-upcoming-feature NonisolatedNonsendingByDefault -enable-upcoming-feature InferIsolatedConformances -warnings-as-errors -Wwarning DeprecatedDeclaration";
+			};
+			name = Release;
+		};
+		4C95F91A6D5CD87BB5DB8FDD /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_STYLE = Manual;
+				COPY_PHASE_STRIP = NO;
+				DEAD_CODE_STRIPPING = YES;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				SDKROOT = macosx;
+				SWIFT_VERSION = 6.0;
+				OTHER_SWIFT_FLAGS = "$(inherited) -Xcc -fmodule-map-file=$(PROJECT_DIR)/build/gen/margin_ffiFFI.modulemap";
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+			};
+			name = Release;
+		};
+		6A5272BD0A3A39C6D623600B /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				PRODUCT_NAME = MarginUITests;
+				PRODUCT_BUNDLE_IDENTIFIER = io.github.tibbe.MarginUITests;
+				GENERATE_INFOPLIST_FILE = YES;
+				TEST_TARGET_NAME = Margin;
+				OTHER_SWIFT_FLAGS = "$(inherited) -Xcc -fmodule-map-file=$(PROJECT_DIR)/build/gen/margin_ffiFFI.modulemap -enable-upcoming-feature NonisolatedNonsendingByDefault -enable-upcoming-feature InferIsolatedConformances -warnings-as-errors -Wwarning DeprecatedDeclaration";
+			};
+			name = Debug;
+		};
+		7CFFF2D81947B1BC09E4E4CC /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				PRODUCT_NAME = MarginTests;
+				PRODUCT_BUNDLE_IDENTIFIER = io.github.tibbe.MarginTests;
+				GENERATE_INFOPLIST_FILE = YES;
+				OTHER_LDFLAGS = "$(inherited) $(PROJECT_DIR)/build/rust/$(CONFIGURATION)/libmargin_ffi.a";
+				OTHER_SWIFT_FLAGS = "$(inherited) -Xcc -fmodule-map-file=$(PROJECT_DIR)/build/gen/margin_ffiFFI.modulemap -enable-upcoming-feature NonisolatedNonsendingByDefault -enable-upcoming-feature InferIsolatedConformances -warnings-as-errors -Wwarning DeprecatedDeclaration";
+			};
+			name = Debug;
+		};
+		9317BE158EC0B056AD19AF00 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				PRODUCT_NAME = MarginKit;
+				SKIP_INSTALL = YES;
+				OTHER_SWIFT_FLAGS = "$(inherited) -Xcc -fmodule-map-file=$(PROJECT_DIR)/build/gen/margin_ffiFFI.modulemap -default-isolation MainActor -enable-upcoming-feature NonisolatedNonsendingByDefault -enable-upcoming-feature InferIsolatedConformances -warnings-as-errors -Wwarning DeprecatedDeclaration";
+			};
+			name = Release;
+		};
+		9559B86013B2D83E10CF15D6 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				PRODUCT_NAME = MarginUITests;
+				PRODUCT_BUNDLE_IDENTIFIER = io.github.tibbe.MarginUITests;
+				GENERATE_INFOPLIST_FILE = YES;
+				TEST_TARGET_NAME = Margin;
+				OTHER_SWIFT_FLAGS = "$(inherited) -Xcc -fmodule-map-file=$(PROJECT_DIR)/build/gen/margin_ffiFFI.modulemap -enable-upcoming-feature NonisolatedNonsendingByDefault -enable-upcoming-feature InferIsolatedConformances -warnings-as-errors -Wwarning DeprecatedDeclaration";
+			};
+			name = Release;
+		};
+		969595A508627F35A110362C /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_STYLE = Manual;
+				COPY_PHASE_STRIP = NO;
+				DEAD_CODE_STRIPPING = YES;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				SDKROOT = macosx;
+				SWIFT_VERSION = 6.0;
+				OTHER_SWIFT_FLAGS = "$(inherited) -Xcc -fmodule-map-file=$(PROJECT_DIR)/build/gen/margin_ffiFFI.modulemap";
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_TESTABILITY = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				ONLY_ACTIVE_ARCH = YES;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		BFC223B90F98165076A31719 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				PRODUCT_NAME = MarginKit;
+				SKIP_INSTALL = YES;
+				OTHER_SWIFT_FLAGS = "$(inherited) -Xcc -fmodule-map-file=$(PROJECT_DIR)/build/gen/margin_ffiFFI.modulemap -default-isolation MainActor -enable-upcoming-feature NonisolatedNonsendingByDefault -enable-upcoming-feature InferIsolatedConformances -warnings-as-errors -Wwarning DeprecatedDeclaration";
+			};
+			name = Debug;
+		};
+		DD7D92A7AAEC52AF1175D5C8 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				PRODUCT_NAME = Margin;
+				PRODUCT_BUNDLE_IDENTIFIER = io.github.tibbe.Margin;
+				INFOPLIST_FILE = Resources/Info.plist;
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				COMBINE_HIDPI_IMAGES = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				OTHER_LDFLAGS = "$(inherited) $(PROJECT_DIR)/build/rust/$(CONFIGURATION)/libmargin_ffi.a";
+				OTHER_SWIFT_FLAGS = "$(inherited) -Xcc -fmodule-map-file=$(PROJECT_DIR)/build/gen/margin_ffiFFI.modulemap -default-isolation MainActor -enable-upcoming-feature NonisolatedNonsendingByDefault -enable-upcoming-feature InferIsolatedConformances -warnings-as-errors -Wwarning DeprecatedDeclaration";
+			};
+			name = Release;
+		};
+		E5BB58D89BF38363FC011326 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				PRODUCT_NAME = MarginFFI;
+				PRODUCT_MODULE_NAME = margin_ffi;
+				SKIP_INSTALL = YES;
+			};
+			name = Debug;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		0821829AA5DE0EEE6E451011 /* Build configuration list for PBXNativeTarget "MarginKit" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				BFC223B90F98165076A31719 /* Debug */,
+				9317BE158EC0B056AD19AF00 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		16ABE656578E2698A6823122 /* Build configuration list for PBXNativeTarget "MarginUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				6A5272BD0A3A39C6D623600B /* Debug */,
+				9559B86013B2D83E10CF15D6 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		179BAF1FD6F4CE82C6683A62 /* Build configuration list for PBXNativeTarget "MarginFFI" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				E5BB58D89BF38363FC011326 /* Debug */,
+				342728205C8570B27C9CB971 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		2AA0718EECCF6BD6912340FC /* Build configuration list for PBXNativeTarget "Margin" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				34E785CE103C6D25EAC510AD /* Debug */,
+				DD7D92A7AAEC52AF1175D5C8 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		7EF2517A8FE63F4681EC5EEA /* Build configuration list for PBXProject "Margin" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				969595A508627F35A110362C /* Debug */,
+				4C95F91A6D5CD87BB5DB8FDD /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		98C9AA244EB5D34C1F849071 /* Build configuration list for PBXNativeTarget "MarginTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				7CFFF2D81947B1BC09E4E4CC /* Debug */,
+				4B9ED656C26BBBF32E7A4A00 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 46F86FAA6BBF9AC94A7E4595 /* Project object */;
+}
