@@ -403,6 +403,9 @@ final class DocTextView: NSTextView, NSTextStorageDelegate, NSTextViewDelegate, 
             textContainer?.containerSize = NSSize(width: g.docWidth, height: CGFloat.greatestFiniteMagnitude)
             invalidateTextContainerOrigin()
             window?.invalidateCursorRects(for: self)
+            // The text moved under the insertion point, which AppKit
+            // places only when the selection changes.
+            updateInsertionPointStateAndRestartTimer(window?.firstResponder === self)
             needsDisplay = true
             onLayout?()
         }

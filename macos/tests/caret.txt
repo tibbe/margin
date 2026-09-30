@@ -1,0 +1,15 @@
+# The caret is drawn where the cursor is after a comment draft is
+# cancelled, though the text moves back as the gutter empties. The caret
+# is drawn only in the active app, so the script brings Margin forward.
+reset A paragraph long enough to wrap differently when the text column narrows for the comment gutter beside it, so the caret would land on other text.\n
+save
+size 1200 900
+sh osascript -e "tell application \"System Events\" to set frontmost of (first process whose unix id is $PPID) to true"
+wait 300
+select wrap
+key cmd-opt-m
+wait 200
+key escape
+wait 300
+selection
+caret

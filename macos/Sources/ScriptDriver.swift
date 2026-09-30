@@ -40,7 +40,7 @@ import AppKit
 /// menu TITLE | menu A > B   validate a menu item; print enabled and checked
 /// appearance light|dark   the app's appearance, whatever the system's
 /// size W H | wait MS | shot PATH | dump | comments | banner | focus
-/// selection | undo-name | sh CMD | quit
+/// selection | caret | undo-name | sh CMD | quit
 ///                           sh runs CMD in the document's folder, with the
 ///                           `margin` CLI on the PATH
 /// agent                     print the agent state and the toolbar's show of it
@@ -431,6 +431,17 @@ enum ScriptDriver {
         case "selection":
             let r = view.selectedRange()
             print("selection \(r.location) \(r.length)")
+        case "caret":
+            // Whether the drawn insertion point is where the cursor is.
+            w.page.layoutSubtreeIfNeeded()
+            view.displayIfNeeded()
+            guard let ind = view.subviews.first(where: { $0 is NSTextInsertionIndicator }), !ind.isHidden else {
+                print("caret hidden")
+                break
+            }
+            let at = view.convert(win.convertFromScreen(view.firstRect(forCharacterRange: NSRange(location: view.cursor, length: 0), actualRange: nil)), from: nil)
+            let dx = ind.frame.midX - at.midX, dy = ind.frame.midY - at.midY
+            print(abs(dx) < 2 && abs(dy) < 2 ? "caret at cursor" : "caret off by \(Int(dx)), \(Int(dy))")
         case "comments":
             for it in w.layer.items {
                 let t = it.thread
