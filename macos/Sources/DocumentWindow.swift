@@ -780,6 +780,8 @@ final class DocumentWindow: NSWindowController, NSWindowDelegate, NSToolbarDeleg
         storeWatcher?.cancel()
         saveTimer?.invalidate()
         agentTimer?.invalidate()
+        // Waiters stop once no window shows the document.
+        agents = nil
         holdTermination(false)
         onClose?(self)
     }

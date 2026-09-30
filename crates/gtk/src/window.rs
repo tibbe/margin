@@ -561,6 +561,8 @@ impl DocWindow {
                 if let Some(id) = w.agent_timer.take() {
                     id.remove();
                 }
+                // Waiters stop once no window shows the document.
+                w.agents.replace(None);
                 WINDOWS.with(|ws| ws.borrow_mut().retain(|x| !Rc::ptr_eq(x, &w)));
             }
             glib::Propagation::Proceed

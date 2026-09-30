@@ -5,13 +5,39 @@ mod macos;
 
 use clap::Parser;
 use margin_core::comments;
+use margin_core::comments::handoff;
 use std::path::PathBuf;
 use std::process::ExitCode;
+use std::time::{Duration, Instant};
+
+/// How long `margin open` gives the editor to show the files: the default
+/// wait for an Apple event reply, such as the one delivering them on macOS.
+/// It only bounds a launch that failed; a healthy one returns sooner.
+const SHOW_TIMEOUT: Duration = Duration::from_secs(60);
+
+/// Waits until an editor shows each of the files, so that `margin wait`
+/// right after `margin open` finds them shown.
+fn await_shown(files: &[PathBuf]) -> anyhow::Result<()> {
+    let start = Instant::now();
+    for f in files {
+        while handoff::viewers(f)? == 0 {
+            if start.elapsed() > SHOW_TIMEOUT {
+                anyhow::bail!(
+                    "Margin didn't open {} within {} seconds",
+                    f.display(),
+                    SHOW_TIMEOUT.as_secs()
+                );
+            }
+            std::thread::sleep(Duration::from_millis(100));
+        }
+    }
+    Ok(())
+}
 
 /// Opens files in the editor. Unless asked to stay in the foreground, the
-/// editor runs detached so that `margin open plan.md` returns at once, which
-/// is what an agent's shell tool needs. An already running editor opens the
-/// files itself.
+/// editor runs detached so that `margin open plan.md` returns as soon as the
+/// editor shows the files, which is what an agent's shell tool needs. An
+/// already running editor opens the files itself.
 fn open(files: Vec<PathBuf>, foreground: bool) -> anyhow::Result<i32> {
     let files: Vec<PathBuf> = files
         .into_iter()
@@ -42,6 +68,7 @@ fn launch(files: Vec<PathBuf>, foreground: bool) -> anyhow::Result<i32> {
         .stderr(std::process::Stdio::null())
         .process_group(0)
         .spawn()?;
+    await_shown(&files)?;
     Ok(0)
 }
 
@@ -68,6 +95,9 @@ fn launch(files: Vec<PathBuf>, foreground: bool) -> anyhow::Result<i32> {
     let status = cmd.args(&files).status()?;
     if !status.success() {
         anyhow::bail!("could not start Margin.app; is it installed?");
+    }
+    if !foreground {
+        await_shown(&files)?;
     }
     Ok(0)
 }

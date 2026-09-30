@@ -306,8 +306,10 @@ calls the writer the user. A resolved thread also has `resolved_at`.
 The commands:
 
 - `margin FILE…` (or `margin open FILE…`) opens documents in the editor and
-  returns at once, after reporting files it can't open. `--foreground` stays
-  attached until the editor quits.
+  returns as soon as the editor shows them, after reporting files it can't
+  open. It fails if the editor hasn't shown them within 60 seconds, the
+  default wait for an Apple event reply. `--foreground` stays attached until
+  the editor quits.
 - `margin comments [FILE…]` lists open threads; `--resolved` adds resolved
   ones.
 - `margin thread FILE ID` shows one thread, open or resolved, in full. The
@@ -318,6 +320,11 @@ The commands:
   documents' open threads as `comments --json` does. An agent that runs
   commands in the background works on while it waits, and hears when the
   command exits.
+- `margin wait` also exits when no editor window shows any of its
+  documents, whether none did when it started or the writer closed them
+  or quit, since no comments can come then. It says so and what to do
+  next: open the documents first, or stop waiting. With `--json` it prints
+  `[]`, and the explanation goes to stderr.
 - `margin reply FILE ID MESSAGE [--resolve]`, `margin resolve FILE ID
   [MESSAGE]`, `margin reopen FILE ID`, `margin delete FILE ID`.
 - `margin add FILE --quote TEXT MESSAGE` starts a thread on TEXT, which must

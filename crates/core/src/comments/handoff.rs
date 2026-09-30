@@ -7,15 +7,21 @@
 //! count; a waiter returns once the count passes the one it started at.
 //! Waiters that started before the last send are on their way out, and
 //! don't count as waiting.
+//!
+//! An editor showing the document holds a [`DocAgents`], which keeps a
+//! viewer record there the same way. A waiter whose documents no editor
+//! shows has nothing to wait for.
 
 use super::store::{Store, data_dir};
 use anyhow::{Context, Result};
 use std::fs::{self, File};
 use std::io::{ErrorKind, Write};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 
 const SENT: &str = "sent";
-const RECORD: &str = "waiter";
+const WAITER: &str = "waiter";
+const VIEWER: &str = "viewer";
 
 /// The directory holding a document's waiters and send count.
 fn dir(doc: &Path) -> Result<PathBuf> {
@@ -47,6 +53,45 @@ fn replace(path: &Path, contents: &str, keep: impl FnOnce(&File) -> Result<()>) 
     Ok(f)
 }
 
+/// A record in `dir` holding `contents`, locked for as long as the
+/// returned file is open, so that it outlives its process only unlocked.
+fn lock_record(dir: &Path, name: &str, kind: &str, contents: &str) -> Result<(PathBuf, File)> {
+    fs::create_dir_all(dir).with_context(|| format!("creating {}", dir.display()))?;
+    let record = dir.join(format!("{name}.{kind}"));
+    // Locked before it appears under its name, so no reader takes it for a
+    // dead process's.
+    let lock = replace(&record, contents, |f| {
+        f.lock().with_context(|| format!("locking {kind} record"))
+    })?;
+    Ok((record, lock))
+}
+
+/// The records of one kind in `dir` whose processes are alive. Removes the
+/// records of processes that died.
+fn live_records(dir: &Path, kind: &str) -> Result<Vec<PathBuf>> {
+    let entries = match fs::read_dir(dir) {
+        Ok(e) => e,
+        Err(e) if e.kind() == ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(e) => return Err(e).with_context(|| format!("reading {}", dir.display())),
+    };
+    let mut live = Vec::new();
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.extension().is_none_or(|e| e != kind) {
+            continue;
+        }
+        let Ok(f) = File::open(&path) else { continue };
+        match f.try_lock_shared() {
+            Ok(()) => {
+                // Nobody holds it: its process is gone.
+                let _ = fs::remove_file(&path);
+            }
+            Err(_) => live.push(path),
+        }
+    }
+    Ok(live)
+}
+
 /// An agent waiting on one document, for as long as this value lives.
 pub struct Waiter {
     doc: PathBuf,
@@ -59,14 +104,13 @@ pub struct Waiter {
 impl Waiter {
     pub fn start(doc: &Path) -> Result<Waiter> {
         let dir = dir(doc)?;
-        fs::create_dir_all(&dir).with_context(|| format!("creating {}", dir.display()))?;
         let seen = sent_count(&dir);
-        let record = dir.join(format!("{}.{RECORD}", std::process::id()));
-        // Locked before it appears under its name, so no reader takes it
-        // for a dead waiter's.
-        let lock = replace(&record, &seen.to_string(), |f| {
-            f.lock().context("locking waiter record")
-        })?;
+        let (record, lock) = lock_record(
+            &dir,
+            &std::process::id().to_string(),
+            WAITER,
+            &seen.to_string(),
+        )?;
         Ok(Waiter {
             doc: Store::for_doc(doc)?.doc,
             dir,
@@ -85,6 +129,12 @@ impl Waiter {
     pub fn sent(&self) -> bool {
         sent_count(&self.dir) > self.seen
     }
+
+    /// Whether an editor shows the document, so that it can still send.
+    pub fn shown(&self) -> bool {
+        // Unsure counts as shown: a waiter gives up only when it knows.
+        !matches!(live_records(&self.dir, VIEWER), Ok(v) if v.is_empty())
+    }
 }
 
 impl Drop for Waiter {
@@ -97,35 +147,53 @@ impl Drop for Waiter {
 /// the records of waiters that died.
 pub fn waiting(doc: &Path) -> Result<usize> {
     let dir = dir(doc)?;
-    let entries = match fs::read_dir(&dir) {
-        Ok(e) => e,
-        Err(e) if e.kind() == ErrorKind::NotFound => return Ok(0),
-        Err(e) => return Err(e).with_context(|| format!("reading {}", dir.display())),
-    };
     let sent = sent_count(&dir);
-    let mut n = 0;
-    for entry in entries.flatten() {
-        let path = entry.path();
-        if path.extension().is_none_or(|e| e != RECORD) {
-            continue;
-        }
-        let Ok(f) = File::open(&path) else { continue };
-        match f.try_lock_shared() {
-            Ok(()) => {
-                // Nobody holds it: the waiter is gone.
-                let _ = fs::remove_file(&path);
-            }
-            Err(_) => {
-                let seen: Option<u64> = fs::read_to_string(&path)
-                    .ok()
-                    .and_then(|s| s.trim().parse().ok());
-                if seen == Some(sent) {
-                    n += 1;
-                }
-            }
-        }
+    Ok(live_records(&dir, WAITER)?
+        .iter()
+        .filter(|path| {
+            let seen: Option<u64> = fs::read_to_string(path)
+                .ok()
+                .and_then(|s| s.trim().parse().ok());
+            seen == Some(sent)
+        })
+        .count())
+}
+
+/// How many editor windows show the document. Removes the records of
+/// editors that died.
+pub fn viewers(doc: &Path) -> Result<usize> {
+    Ok(live_records(&dir(doc)?, VIEWER)?.len())
+}
+
+/// An editor window showing one document, for as long as this value lives.
+#[derive(Debug)]
+struct Viewer {
+    record: PathBuf,
+    _lock: File,
+}
+
+impl Viewer {
+    fn start(doc: &Path) -> Result<Viewer> {
+        // A process can show a document in more than one window, and
+        // replaces a window's viewer before dropping the old one.
+        static NEXT: AtomicU64 = AtomicU64::new(0);
+        let name = format!(
+            "{}-{}",
+            std::process::id(),
+            NEXT.fetch_add(1, Ordering::Relaxed)
+        );
+        let (record, lock) = lock_record(&dir(doc)?, &name, VIEWER, "")?;
+        Ok(Viewer {
+            record,
+            _lock: lock,
+        })
     }
-    Ok(n)
+}
+
+impl Drop for Viewer {
+    fn drop(&mut self) {
+        let _ = fs::remove_file(&self.record);
+    }
 }
 
 /// Sends the document's comments to the agents waiting on it, returning
@@ -195,11 +263,15 @@ impl AgentTracker {
     }
 }
 
-/// The agents on one open document, as its window follows them.
-#[derive(Clone, Debug)]
+/// The agents on one open document, as its window follows them. While it
+/// lives, waiters count the document as shown.
+#[derive(Debug)]
 pub struct DocAgents {
     doc: PathBuf,
     tracker: AgentTracker,
+    /// None when the record couldn't be written; waiters then give up on
+    /// the document while the window still shows it.
+    _viewer: Option<Viewer>,
 }
 
 impl DocAgents {
@@ -207,6 +279,7 @@ impl DocAgents {
         DocAgents {
             doc: doc.to_path_buf(),
             tracker: AgentTracker::default(),
+            _viewer: Viewer::start(doc).ok(),
         }
     }
 
@@ -283,6 +356,36 @@ mod tests {
         assert_eq!(waiting(&plan).unwrap(), 1);
         assert!(!dir.join("123.waiter").exists());
         assert!(record.exists());
+        fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn a_document_is_shown_while_a_window_follows_its_agents() {
+        let root =
+            std::env::temp_dir().join(format!("margin-handoff-shown-{}", std::process::id()));
+        fs::create_dir_all(&root).unwrap();
+        let _env = crate::comments::use_data_dir(&root.join("data"));
+        let plan = root.join("plan.md");
+        let other = root.join("other.md");
+        fs::write(&plan, "plan\n").unwrap();
+        fs::write(&other, "other\n").unwrap();
+
+        let w = Waiter::start(&plan).unwrap();
+        assert!(!w.shown());
+        let a = DocAgents::new(&plan);
+        let _b = DocAgents::new(&other);
+        assert!(w.shown());
+        assert_eq!(viewers(&plan).unwrap(), 1);
+        // A second window, or a window replacing its own, adds a viewer.
+        let again = DocAgents::new(&plan);
+        assert_eq!(viewers(&plan).unwrap(), 2);
+        drop(a);
+        assert!(w.shown());
+        drop(again);
+        assert!(!w.shown());
+        assert_eq!(viewers(&plan).unwrap(), 0);
+        // Viewers aren't waiters.
+        assert_eq!(waiting(&plan).unwrap(), 1);
         fs::remove_dir_all(&root).unwrap();
     }
 

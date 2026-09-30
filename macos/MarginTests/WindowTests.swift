@@ -163,4 +163,26 @@ final class WindowTests: XCTestCase {
         h.wait(0.3)
         XCTAssertEqual(agent(), "none | send disabled | count 1 open comment")
     }
+
+    /// `margin wait` stops once no window shows its document, since no
+    /// comments can come then.
+    @MainActor
+    func testClosingTheDocumentEndsTheWait() throws {
+        let h = try Harness("Retry three times.\n")
+        defer { h.close() }
+        func exited() -> Bool { h.sh("kill -0 $(cat wait.pid) 2>/dev/null || echo exited") == "exited\n" }
+        h.sh("\(Harness.cli) wait doc.md > wait.out 2>&1 & echo $! > wait.pid")
+        h.wait(0.7)
+        XCTAssertFalse(exited())
+        h.win.close()
+        h.wait(until: exited, "margin wait to exit")
+        XCTAssertEqual(
+            h.sh("sed -E 's|`/[^`]*/|`|g' wait.out"),
+            "`doc.md` is no longer open in Margin, so no comments will come. "
+                + "Stop waiting: the writer will ask if they want another review.\n")
+        XCTAssertEqual(
+            h.sh("\(Harness.cli) wait doc.md | sed -E 's|`/[^`]*/|`|g'"),
+            "`doc.md` is not open in Margin, so no comments will come. "
+                + "If the writer wants to review it, run `margin open doc.md`, then `margin wait doc.md`.\n")
+    }
 }

@@ -45,7 +45,8 @@ pub struct Cli {
 
 #[derive(Subcommand, Debug)]
 pub enum Command {
-    /// Open documents in the editor (what `margin FILE…` does).
+    /// Open documents in the editor (what `margin FILE…` does). Returns
+    /// once the editor shows them.
     Open { files: Vec<PathBuf> },
 
     /// List comment threads. Without files: documents under the current
@@ -104,7 +105,9 @@ pub enum Command {
     Delete { file: PathBuf, id: u64 },
 
     /// Wait until the writer sends the comments on one of the documents
-    /// (Send to Agent in the editor), then print them and exit. Run it in
+    /// (Send to Agent in the editor), then print them and exit. Also exits
+    /// when the editor doesn't show any of the documents, since then no
+    /// comments can come. Either way, it prints what to do next. Run it in
     /// the background if you can, to keep working while you wait.
     Wait {
         #[arg(required = true)]
@@ -338,6 +341,32 @@ fn load_many(files: &[PathBuf]) -> Result<Vec<(PathBuf, Comments, String)>> {
         .collect()
 }
 
+/// Why `margin wait` stops without a send: no editor shows its documents,
+/// since it started or, when `closed`, any more.
+fn nothing_to_wait_for(docs: &[&Path], args: &str, closed: bool) -> String {
+    let names = docs
+        .iter()
+        .map(|d| format!("`{}`", display_path(d)))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let (is, it) = if docs.len() == 1 {
+        ("is", "it")
+    } else {
+        ("are", "them")
+    };
+    if closed {
+        format!(
+            "{names} {is} no longer open in Margin, so no comments will come. \
+             Stop waiting: the writer will ask if they want another review."
+        )
+    } else {
+        format!(
+            "{names} {is} not open in Margin, so no comments will come. \
+             If the writer wants to review {it}, run `margin open {args}`, then `margin wait {args}`."
+        )
+    }
+}
+
 fn print(s: &str) {
     let mut out = std::io::stdout().lock();
     let _ = out.write_all(s.as_bytes());
@@ -456,11 +485,32 @@ pub fn run(cmd: Command) -> Result<i32> {
                     Ok(w)
                 })
                 .collect::<Result<Vec<_>>>()?;
+            let args: Vec<String> = files
+                .iter()
+                .map(|f| shell_word(&f.display().to_string()))
+                .collect();
+            let args = args.join(" ");
+            let mut shown_before = false;
             let sent = loop {
+                let shown = waiters.iter().any(Waiter::shown);
+                // Looked at after `shown`: a window sends before it closes,
+                // so a closed window's last send shows up here.
                 let sent: Vec<&Waiter> = waiters.iter().filter(|w| w.sent()).collect();
                 if !sent.is_empty() {
                     break sent;
                 }
+                if !shown {
+                    let docs: Vec<&Path> = waiters.iter().map(Waiter::doc).collect();
+                    let why = nothing_to_wait_for(&docs, &args, shown_before);
+                    if json {
+                        print("[]");
+                        eprintln!("{why}");
+                    } else {
+                        print(&why);
+                    }
+                    return Ok(0);
+                }
+                shown_before = true;
                 std::thread::sleep(std::time::Duration::from_millis(250));
             };
             let docs = load_many(
@@ -479,13 +529,8 @@ pub fn run(cmd: Command) -> Result<i32> {
                     out.push_str(&for_agent(doc, text, &open));
                     out.push('\n');
                 }
-                let args: Vec<String> = files
-                    .iter()
-                    .map(|f| shell_word(&f.display().to_string()))
-                    .collect();
                 out.push_str(&format!(
-                    "Once you have answered them, run `margin wait {}` again for the next round.",
-                    args.join(" ")
+                    "Once you have answered them, run `margin wait {args}` again for the next round."
                 ));
                 print(&out);
             }
