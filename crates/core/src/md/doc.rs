@@ -887,8 +887,8 @@ impl Builder<'_> {
             let is_marker = !rest.is_empty()
                 && (rest == "-" || rest == "*" || rest == "+"
                     || (rest.len() >= 2
-                        && rest[..rest.len() - 1].bytes().all(|c| c.is_ascii_digit())
-                        && rest.ends_with(['.', ')'])));
+                        && rest.ends_with(['.', ')'])
+                        && rest[..rest.len() - 1].bytes().all(|c| c.is_ascii_digit())));
             if is_marker && !has_task {
                 self.items[i].bare = true;
                 self.bare_lines.push(line);
@@ -1713,6 +1713,9 @@ mod tests {
         assert!(!doc.items[0].bare);
         let doc = parse("# \n");
         assert_eq!(doc.lines[0].kind, LineKind::Heading(1));
+        for src in ["- Open…\n", "1. café\n"] {
+            assert!(!parse(src).items[0].bare, "{src:?}");
+        }
     }
 
     #[test]
