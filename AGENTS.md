@@ -23,7 +23,3 @@ Keep the specs in step with user-visible behavior changes. Keep `margin --help` 
 - `crates/gtk`: the Linux editor.
 - `crates/ffi`: the core for Swift, through UniFFI.
 - `macos/`: the macOS editor.
-
-## Checks
-
-Warnings count as failures.
