@@ -298,7 +298,7 @@ fn threads_text(docs: &[(PathBuf, Comments, String)], include_resolved: bool) ->
 }
 
 fn threads_json(docs: &[(PathBuf, Comments, String)], include_resolved: bool) -> Result<String> {
-    let all: Vec<JsonThread> = docs
+    let all: Vec<JsonThread<'_>> = docs
         .iter()
         .flat_map(|(doc, c, text)| {
             c.threads

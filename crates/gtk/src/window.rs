@@ -1203,10 +1203,10 @@ impl DocWindow {
     }
 
     fn discard_draft(&self) {
-        if let Some(store) = self.layer.store() {
-            if let Err(e) = store.remove() {
-                self.toast(&format!("Could not remove draft comments: {e:#}"));
-            }
+        if let Some(store) = self.layer.store()
+            && let Err(e) = store.remove()
+        {
+            self.toast(&format!("Could not remove draft comments: {e:#}"));
         }
         for m in self.monitors.take() {
             m.cancel();

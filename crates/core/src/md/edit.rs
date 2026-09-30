@@ -6,8 +6,10 @@
 //! letter of a bold word removes its `**` too. Each command returns a
 //! [`Plan`] of minimal source changes; untouched text is never rewritten.
 
-// Deletions are lists of byte ranges, often of one range.
-#![allow(clippy::single_range_in_vec_init)]
+#![allow(
+    clippy::single_range_in_vec_init,
+    reason = "deletions are lists of byte ranges, often of one range"
+)]
 
 use super::doc::{Container, Doc, InlineKind, LineKind};
 use std::ops::Range;

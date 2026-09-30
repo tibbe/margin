@@ -549,7 +549,7 @@ fn after_paint(widget: &gtk::Widget, f: impl FnOnce() + 'static) {
     PENDING_SHOTS.with(|p| p.set(p.get() + 1));
     let handler: Rc<std::cell::RefCell<Option<glib::SignalHandlerId>>> = Rc::default();
     let h = handler.clone();
-    let f = std::cell::Cell::new(Some(f));
+    let f = Cell::new(Some(f));
     let id = clock.connect_after_paint(move |c| {
         if let Some(id) = h.borrow_mut().take() {
             c.disconnect(id);

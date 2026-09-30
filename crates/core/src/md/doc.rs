@@ -147,7 +147,7 @@ impl CodeBlock {
     /// Lines holding code, excluding fences. May be empty.
     pub fn content_lines(&self) -> Range<usize> {
         let first = self.open_line.map_or(self.first_line, |l| l + 1);
-        let last = self.close_line.map_or(self.last_line + 1, |l| l);
+        let last = self.close_line.unwrap_or(self.last_line + 1);
         first..last.max(first)
     }
 }
@@ -427,7 +427,7 @@ impl Builder<'_> {
         }
     }
 
-    fn event(&mut self, event: Event, range: Range<usize>) {
+    fn event(&mut self, event: Event<'_>, range: Range<usize>) {
         match event {
             Event::Start(tag) => self.start(tag, range),
             Event::End(tag) => self.end(tag, range),
@@ -518,7 +518,7 @@ impl Builder<'_> {
         }
     }
 
-    fn start(&mut self, tag: Tag, range: Range<usize>) {
+    fn start(&mut self, tag: Tag<'_>, range: Range<usize>) {
         let inline_kind = match &tag {
             Tag::Emphasis => Some(InlineKind::Emphasis),
             Tag::Strong => Some(InlineKind::Strong),
@@ -1760,7 +1760,7 @@ mod tests {
         assert_eq!(t.delimiter_line, 1);
         assert_eq!(t.aligns, [Align::Left, Align::Right, Align::Center]);
         let text = |r: &Range<usize>| &src[r.clone()];
-        let rows: Vec<(usize, Vec<(&str, &str)>, &str)> = t
+        let rows: Vec<_> = t
             .rows
             .iter()
             .map(|r| {
@@ -1769,7 +1769,7 @@ mod tests {
                     r.cells
                         .iter()
                         .map(|c| (text(&c.lead), text(&c.content)))
-                        .collect(),
+                        .collect::<Vec<_>>(),
                     text(&r.trail),
                 )
             })

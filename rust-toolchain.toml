@@ -1,0 +1,8 @@
+# Everyone builds with the same Rust, so a new release's lints show up in
+# a deliberate bump, not in unrelated work.
+[toolchain]
+channel = "1.98.1"
+profile = "minimal"
+components = ["clippy", "rustfmt", "rust-analyzer", "rust-src"]
+# `macos/build.sh` builds a universal app.
+targets = ["aarch64-apple-darwin", "x86_64-apple-darwin"]

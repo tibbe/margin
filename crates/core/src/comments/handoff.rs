@@ -235,12 +235,9 @@ mod tests {
 
     #[test]
     fn a_send_reaches_the_waiters_of_its_document_only() {
-        let _env = crate::comments::DATA_DIR_LOCK
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
         let root = std::env::temp_dir().join(format!("margin-handoff-{}", std::process::id()));
         fs::create_dir_all(&root).unwrap();
-        unsafe { std::env::set_var("MARGIN_DATA_DIR", root.join("data")) };
+        let _env = crate::comments::use_data_dir(&root.join("data"));
         let plan = root.join("plan.md");
         let other = root.join("other.md");
         fs::write(&plan, "plan\n").unwrap();
@@ -270,12 +267,9 @@ mod tests {
 
     #[test]
     fn a_dead_waiters_record_is_dropped() {
-        let _env = crate::comments::DATA_DIR_LOCK
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
         let root = std::env::temp_dir().join(format!("margin-handoff-dead-{}", std::process::id()));
         fs::create_dir_all(&root).unwrap();
-        unsafe { std::env::set_var("MARGIN_DATA_DIR", root.join("data")) };
+        let _env = crate::comments::use_data_dir(&root.join("data"));
         let plan = root.join("plan.md");
         fs::write(&plan, "plan\n").unwrap();
         let w = Waiter::start(&plan).unwrap();

@@ -1,6 +1,6 @@
 //! Margin's core for the macOS editor, through UniFFI. Positions are UTF-16
 //! offsets, as `NSString` counts; the core works in UTF-8 bytes, so every
-//! position crosses [`Utf16Index`].
+//! position crosses `Utf16Index`.
 
 use margin_core::comments::anchor::floor_char_boundary;
 use margin_core::comments::{
