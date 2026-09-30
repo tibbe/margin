@@ -9,6 +9,7 @@ use super::view::DocView;
 use margin_core::comments::activity::{self, Change, Kind};
 use margin_core::comments::handoff::{AgentState, DocAgents};
 use margin_core::comments::{canonical_doc_path, data_dir, read_doc, Store};
+use margin_core::file_sync::{FileSync, Loaded, Reconcile, Save};
 use margin_core::md::edit::{self, BlockType};
 use margin_core::md::InlineKind;
 use anyhow::Result;
@@ -61,33 +62,16 @@ pub struct DocWindow {
     agents: RefCell<Option<DocAgents>>,
     agent_state: Cell<AgentState>,
     agent_timer: RefCell<Option<glib::SourceId>>,
-    /// The file's contents as we last read or wrote them (newlines as `\n`).
-    last_saved: RefCell<String>,
-    crlf: Cell<bool>,
+    /// The text and its file: what to save, and outside edits to take in.
+    sync: RefCell<FileSync>,
     save_timer: RefCell<Option<glib::SourceId>>,
     disk_timer: RefCell<Option<glib::SourceId>>,
     store_timer: RefCell<Option<glib::SourceId>>,
-    conflict_pending: Cell<bool>,
     monitors: RefCell<Vec<gio::FileMonitor>>,
     loading: Cell<bool>,
     /// Agent activity notified since the person last looked.
     unseen: RefCell<Vec<Change>>,
     this: RefCell<Weak<DocWindow>>,
-}
-
-/// The text as the editor holds it: `\n` newlines and a final newline.
-/// Returns whether the file used CRLF, to write it back the same way.
-fn normalize_newlines(text: String) -> (String, bool) {
-    let (mut text, crlf) = if text.contains('\r') {
-        let crlf = text.contains("\r\n");
-        (text.replace("\r\n", "\n").replace('\r', "\n"), crlf)
-    } else {
-        (text, false)
-    };
-    if !text.is_empty() && !text.ends_with('\n') {
-        text.push('\n');
-    }
-    (text, crlf)
 }
 
 fn home_relative(p: &Path) -> String {
@@ -158,7 +142,8 @@ pub fn open(app: &adw::Application, path: &Path, look: Look) -> Result<Rc<DocWin
         w.window.present();
         return Ok(w);
     }
-    let (text, crlf) = normalize_newlines(read_doc(&path)?);
+    let loaded = Loaded::new(read_doc(&path)?);
+    let text = loaded.text().to_string();
 
     let buffer = DocBuffer::new(look);
     buffer.set_wrap_paragraphs(super::settings::get().wrap_paragraphs);
@@ -239,12 +224,10 @@ pub fn open(app: &adw::Application, path: &Path, look: Look) -> Result<Rc<DocWin
         agents: RefCell::new(None),
         agent_state: Cell::new(AgentState::None),
         agent_timer: RefCell::new(None),
-        last_saved: RefCell::new(text.clone()),
-        crlf: Cell::new(crlf),
+        sync: RefCell::new(FileSync::new(&text, loaded.crlf())),
         save_timer: RefCell::new(None),
         disk_timer: RefCell::new(None),
         store_timer: RefCell::new(None),
-        conflict_pending: Cell::new(false),
         monitors: RefCell::new(Vec::new()),
         loading: Cell::new(true),
         unseen: RefCell::new(Vec::new()),
@@ -324,7 +307,7 @@ impl DocWindow {
     }
 
     fn dirty(&self) -> bool {
-        self.buffer.text_string() != *self.last_saved.borrow()
+        !self.sync.borrow().has(&self.buffer.text_string())
     }
 
     pub fn display_name(&self) -> String {
@@ -499,6 +482,7 @@ impl DocWindow {
             if let Some(w) = weak.upgrade()
                 && !w.loading.get()
             {
+                w.sync.borrow_mut().edited();
                 w.update_title();
                 w.schedule_save();
             }
@@ -659,50 +643,44 @@ impl DocWindow {
         if let Some(id) = self.save_timer.take() {
             id.remove();
         }
-        if self.conflict_pending.get() {
-            return false;
-        }
-        // A file monitor event may still be waiting for its debounce timer.
-        // Check the disk here before an autosave can overwrite outside edits.
-        // One retry lets a clean merge finish saving during this call.
-        for attempt in 0..2 {
-            let text = self.buffer.text_string();
-            let (disk, crlf) = match read_doc(&self.path()) {
-                Ok(raw) => normalize_newlines(raw),
+        // The file is read first: an outside edit may still be waiting for
+        // the file monitor's debounce. One retry lets taking it in finish
+        // saving during this call.
+        for _ in 0..2 {
+            let disk = match read_doc(&self.path()) {
+                Ok(raw) => Loaded::new(raw),
                 Err(e) => {
                     self.toast(&format!("Could not check document before saving: {e:#}"));
                     return false;
                 }
             };
-            if disk != *self.last_saved.borrow() {
-                self.apply_disk_change(disk, crlf);
-                if attempt == 0 && !self.conflict_pending.get() {
-                    continue;
+            let text = self.buffer.text_string();
+            let step = self.sync.borrow_mut().save(&text, disk);
+            match step {
+                Save::Done => return true,
+                Save::Blocked => return false,
+                Save::Changed(r) => {
+                    if !self.take_in(r) {
+                        return false;
+                    }
                 }
-                return false;
+                Save::Write(out) => {
+                    return match atomic_write(&self.path(), out.as_bytes()) {
+                        Ok(()) => {
+                            self.sync.borrow_mut().wrote(&text);
+                            self.buffer.set_modified(false);
+                            self.update_title();
+                            self.layer.persist_anchors();
+                            true
+                        }
+                        Err(e) => {
+                            self.sync.borrow_mut().failed();
+                            self.toast(&format!("Could not save: {e}"));
+                            false
+                        }
+                    };
+                }
             }
-            self.crlf.set(crlf);
-            if text == *self.last_saved.borrow() {
-                return true;
-            }
-            let out = if self.crlf.get() {
-                text.replace('\n', "\r\n")
-            } else {
-                text.clone()
-            };
-            return match atomic_write(&self.path(), out.as_bytes()) {
-                Ok(()) => {
-                    self.last_saved.replace(text);
-                    self.buffer.set_modified(false);
-                    self.update_title();
-                    self.layer.persist_anchors();
-                    true
-                }
-                Err(e) => {
-                    self.toast(&format!("Could not save: {e}"));
-                    false
-                }
-            };
         }
         false
     }
@@ -758,45 +736,36 @@ impl DocWindow {
 
     /// Picks up edits made to the file by someone else.
     fn check_disk(&self) {
-        if self.conflict_pending.get() {
-            return;
+        let Ok(raw) = read_doc(&self.path()) else { return };
+        let ours = self.buffer.text_string();
+        let change = self.sync.borrow_mut().disk_changed(&ours, Loaded::new(raw));
+        if let Some(r) = change {
+            self.take_in(r);
         }
-        let Ok(text) = read_doc(&self.path()) else { return };
-        let (disk, crlf) = normalize_newlines(text);
-        self.apply_disk_change(disk, crlf);
     }
 
-    fn apply_disk_change(&self, disk: String, crlf: bool) {
-        if disk == *self.last_saved.borrow() {
-            self.crlf.set(crlf);
-            return;
+    /// Shows what taking in a change to the file takes; false for a
+    /// conflict, which waits for the person's answer.
+    fn take_in(&self, r: Reconcile) -> bool {
+        match r {
+            Reconcile::CaughtUp => self.update_title(),
+            Reconcile::Load(text) => {
+                self.buffer.apply_external(&text);
+                self.after_external_change();
+                self.toast("Updated from disk");
+            }
+            Reconcile::Merge(text) => {
+                self.buffer.apply_external(&text);
+                self.after_external_change();
+                self.schedule_save();
+                self.toast("Merged changes from disk");
+            }
+            Reconcile::Conflict => {
+                self.ask_conflict();
+                return false;
+            }
         }
-        let ours = self.buffer.text_string();
-        let base = self.last_saved.borrow().clone();
-        self.crlf.set(crlf);
-        if ours == disk {
-            self.last_saved.replace(disk);
-            self.update_title();
-            return;
-        }
-        if ours == base {
-            self.buffer.apply_external(&disk);
-            self.last_saved.replace(disk);
-            self.after_external_change();
-            self.toast("Updated from disk");
-            return;
-        }
-        let merge = similar::TextMerge::from_lines(&base, &ours, &disk);
-        if !merge.is_conflicted() {
-            let merged = merge.to_string();
-            self.buffer.apply_external(&merged);
-            self.last_saved.replace(disk);
-            self.after_external_change();
-            self.schedule_save();
-            self.toast("Merged changes from disk");
-            return;
-        }
-        self.ask_conflict(disk);
+        true
     }
 
     fn after_external_change(&self) {
@@ -805,11 +774,7 @@ impl DocWindow {
         self.layer.queue_relayout();
     }
 
-    fn ask_conflict(&self, disk: String) {
-        self.conflict_pending.set(true);
-        if let Some(id) = self.save_timer.take() {
-            id.remove();
-        }
+    fn ask_conflict(&self) {
         let name = self.display_name();
         let dialog = adw::AlertDialog::new(
             Some("Document Changed on Disk"),
@@ -824,15 +789,18 @@ impl DocWindow {
         let weak = self.weak();
         dialog.connect_response(None, move |_, resp| {
             let Some(w) = weak.upgrade() else { return };
-            w.conflict_pending.set(false);
             if resp == "disk" {
-                w.buffer.apply_external(&disk);
-                w.last_saved.replace(disk.clone());
-                w.after_external_change();
-                w.check_disk();
+                let theirs = w.sync.borrow_mut().load_theirs();
+                if let Some(disk) = theirs {
+                    w.buffer.apply_external(&disk);
+                    w.after_external_change();
+                    w.check_disk();
+                }
             } else {
-                w.last_saved.replace(disk.clone());
-                w.save();
+                let kept = w.sync.borrow_mut().keep_mine();
+                if kept {
+                    w.save();
+                }
             }
         });
         dialog.present(Some(&self.window));
@@ -1122,7 +1090,7 @@ impl DocWindow {
             return Ok(());
         }
         let text = self.buffer.text_string();
-        let out = if self.crlf.get() { text.replace('\n', "\r\n") } else { text.clone() };
+        let out = self.sync.borrow().file_text(&text);
         atomic_write(&new, out.as_bytes())?;
         let new = canonical_doc_path(&new)?;
         let old = self.path();
@@ -1153,7 +1121,7 @@ impl DocWindow {
         }
         self.path.replace(new);
         self.draft.set(false);
-        self.last_saved.replace(text);
+        self.sync.borrow_mut().wrote(&text);
         self.layer.attach(new_store);
         self.watch();
         self.follow_agents();
@@ -1172,7 +1140,8 @@ impl DocWindow {
         }
         let _ = fs::remove_file(self.path());
         // Nothing left to save.
-        self.last_saved.replace(self.buffer.text_string());
+        let text = self.buffer.text_string();
+        self.sync.borrow_mut().wrote(&text);
     }
 
     /// Asks what to do with changes that are in no file yet, as Omawrite

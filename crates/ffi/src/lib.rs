@@ -4,6 +4,7 @@
 
 use margin_core::comments::anchor::floor_char_boundary;
 use margin_core::comments::{self, activity, export, handoff, Anchor, Author, Comments, Message, Place, Status, Store, Thread};
+use margin_core::file_sync::{self, Loaded};
 use margin_core::md::edit::{self, BlockType, Plan};
 use margin_core::md::{self, search, Container, Doc, InlineKind, LineKind, Style};
 use std::ops::Range;
@@ -776,38 +777,21 @@ pub struct LoadedText {
     pub crlf: bool,
 }
 
-/// The text as the editor holds it: `\n` newlines and a final newline.
-#[uniffi::export]
-pub fn normalize_newlines(text: String) -> LoadedText {
-    let (mut text, crlf) = if text.contains('\r') {
-        let crlf = text.contains("\r\n");
-        (text.replace("\r\n", "\n").replace('\r', "\n"), crlf)
-    } else {
-        (text, false)
-    };
-    if !text.is_empty() && !text.ends_with('\n') {
-        text.push('\n');
-    }
-    LoadedText { text, crlf }
+fn read_loaded(path: &str) -> Result<Loaded> {
+    Ok(Loaded::new(comments::read_doc(Path::new(path))?))
 }
 
 /// Reads a document as UTF-8, normalized; a missing file reads as empty.
 #[uniffi::export]
 pub fn read_document(path: String) -> Result<LoadedText> {
-    Ok(normalize_newlines(comments::read_doc(Path::new(&path))?))
+    let l = read_loaded(&path)?;
+    Ok(LoadedText { crlf: l.crlf(), text: l.into_text() })
 }
 
 /// Absolute, symlink-free path of a document that may not exist yet.
 #[uniffi::export]
 pub fn canonical_path(path: String) -> Result<String> {
     Ok(comments::canonical_doc_path(Path::new(&path))?.display().to_string())
-}
-
-/// Three-way merge by lines; `None` when the changes overlap.
-#[uniffi::export]
-pub fn merge_texts(base: String, ours: String, theirs: String) -> Option<String> {
-    let merge = similar::TextMerge::from_lines(&base, &ours, &theirs);
-    (!merge.is_conflicted()).then(|| merge.to_string())
 }
 
 /// Minimal replacements turning `old` into `new`, as UTF-16 ranges of
@@ -824,6 +808,128 @@ pub fn text_changes(old: String, new: String) -> Vec<Replacement> {
             text: c.text,
         })
         .collect()
+}
+
+/// What taking in a change to the file takes (see
+/// `margin_core::file_sync::Reconcile`).
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Enum)]
+pub enum FileChange {
+    /// The file has our text now: nothing to show.
+    CaughtUp,
+    /// We had no edits: show the file's text.
+    Load { text: String },
+    /// Both changed, on different lines: show the merge, and save it.
+    Merge { text: String },
+    /// Both changed the same lines: ask which to keep, then `keep_mine` or
+    /// `load_theirs`.
+    Conflict,
+}
+
+impl From<file_sync::Reconcile> for FileChange {
+    fn from(r: file_sync::Reconcile) -> Self {
+        match r {
+            file_sync::Reconcile::CaughtUp => FileChange::CaughtUp,
+            file_sync::Reconcile::Load(text) => FileChange::Load { text },
+            file_sync::Reconcile::Merge(text) => FileChange::Merge { text },
+            file_sync::Reconcile::Conflict => FileChange::Conflict,
+        }
+    }
+}
+
+/// A save's next step.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Enum)]
+pub enum SaveStep {
+    /// The file has our text.
+    Done,
+    /// Write this to the file (in its newlines), then `wrote`.
+    Write { text: String },
+    /// The file changed first: do what this says, then (unless it is a
+    /// conflict) save again.
+    Changed { change: FileChange },
+    /// A conflict waits for the person's answer.
+    Blocked,
+}
+
+/// One document's text and its file: what to save, and outside edits to
+/// take in (see `margin_core::file_sync`). It reads the file itself, so
+/// what it compares is normalized; the editor writes it.
+#[derive(uniffi::Object)]
+pub struct FileSync {
+    inner: Mutex<file_sync::FileSync>,
+}
+
+#[uniffi::export]
+impl FileSync {
+    /// For a document opened as `opened` (from `read_document`).
+    #[uniffi::constructor]
+    pub fn new(opened: LoadedText) -> Arc<Self> {
+        Arc::new(FileSync { inner: Mutex::new(file_sync::FileSync::new(&opened.text, opened.crlf)) })
+    }
+
+    /// The text was edited.
+    pub fn edited(&self) {
+        self.inner.lock().unwrap().edited();
+    }
+
+    /// Whether the text may differ from the file: a save is due, or waits
+    /// on a conflict.
+    pub fn needs_save(&self) -> bool {
+        self.inner.lock().unwrap().needs_save()
+    }
+
+    /// Whether the last save could not read or write the file.
+    pub fn save_failed(&self) -> bool {
+        self.inner.lock().unwrap().save_failed()
+    }
+
+    pub fn in_conflict(&self) -> bool {
+        self.inner.lock().unwrap().in_conflict()
+    }
+
+    /// `ours` in the file's newlines, to write elsewhere (Save As).
+    pub fn file_text(&self, ours: String) -> String {
+        self.inner.lock().unwrap().file_text(&ours)
+    }
+
+    /// The file at `path` may have changed, with `ours` in the editor.
+    /// `None` when there is nothing to take in.
+    pub fn disk_changed(&self, ours: String, path: String) -> Result<Option<FileChange>> {
+        let disk = read_loaded(&path)?;
+        Ok(self.inner.lock().unwrap().disk_changed(&ours, disk).map(Into::into))
+    }
+
+    /// Saving `ours` to the file at `path`, which is read first.
+    pub fn save(&self, ours: String, path: String) -> Result<SaveStep> {
+        let disk = read_loaded(&path)?;
+        Ok(match self.inner.lock().unwrap().save(&ours, disk) {
+            file_sync::Save::Done => SaveStep::Done,
+            file_sync::Save::Write(text) => SaveStep::Write { text },
+            file_sync::Save::Changed(r) => SaveStep::Changed { change: r.into() },
+            file_sync::Save::Blocked => SaveStep::Blocked,
+        })
+    }
+
+    /// The file now has `ours`.
+    pub fn wrote(&self, ours: String) {
+        self.inner.lock().unwrap().wrote(&ours);
+    }
+
+    /// Saving could not read or write the file.
+    pub fn failed(&self) {
+        self.inner.lock().unwrap().failed();
+    }
+
+    /// The person's answer to a conflict: keep their text, which then
+    /// needs saving. False if no conflict waits.
+    pub fn keep_mine(&self) -> bool {
+        self.inner.lock().unwrap().keep_mine()
+    }
+
+    /// The person's answer to a conflict: load the file's text, which this
+    /// returns to show. `None` if no conflict waits.
+    pub fn load_theirs(&self) -> Option<String> {
+        self.inner.lock().unwrap().load_theirs()
+    }
 }
 
 #[uniffi::export]

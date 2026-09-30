@@ -18,5 +18,4 @@ path = "uniffi-bindgen.rs"
 margin-core.workspace = true
 anyhow.workspace = true
 chrono.workspace = true
-similar.workspace = true
 uniffi = { version = "0.32", features = ["cli"] }

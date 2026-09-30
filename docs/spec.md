@@ -329,8 +329,9 @@ The commands:
 ## Platforms
 
 Every editor shares the core: Markdown analysis, editing rules, find, the
-comment store and anchoring, and the CLI. Each platform provides the UI and
-system integration, and routes every edit through the core.
+comment store and anchoring, keeping the text and its file in step
+(autosave, outside edits, conflicts), and the CLI. Each platform provides
+the UI and system integration, and routes every edit through the core.
 
 - Each editor uses its platform's own pieces wherever one exists: menus,
   window chrome, dialogs, file pickers, the print dialog, system colors and

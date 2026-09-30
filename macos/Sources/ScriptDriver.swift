@@ -36,6 +36,7 @@ import AppKit
 /// replace-all FIND|WITH    Find and Replace, then Replace All
 /// reset TEXT              replace the document (not undoable), cursor at end
 /// save | external TEXT | rename NAME   save; change the file as an agent; rename
+/// sheet [BUTTON]            print the buttons of the window's sheet, or press one
 /// path | title | stored | windows      print file, title, stored threads, windows
 /// menu TITLE | menu A > B   validate a menu item; print enabled and checked
 /// appearance light|dark   the app's appearance, whatever the system's
@@ -233,6 +234,23 @@ enum ScriptDriver {
             }
             if p.count == 2, let it = w.layer.items.first(where: { $0.thread.id == UInt64(p[0]) ?? 0 }), let b = find(it.card, p[1]) {
                 click(b, at: NSPoint(x: b.bounds.midX, y: b.bounds.midY))
+            } else {
+                print("script: no button \(arg)")
+            }
+        case "sheet":
+            // The window's sheet (an alert): print its buttons, or press ARG.
+            guard let sheet = win.attachedSheet, let content = sheet.contentView else {
+                print("sheet none")
+                break
+            }
+            func buttons(_ v: NSView) -> [NSButton] {
+                v.subviews.flatMap { s in (s as? NSButton).map { [$0] } ?? buttons(s) }
+            }
+            let all = buttons(content).filter { !$0.isHiddenOrHasHiddenAncestor }
+            if arg.isEmpty {
+                print("sheet \(all.map(\.title).joined(separator: " | "))")
+            } else if let b = all.first(where: { $0.title == arg }) {
+                b.performClick(nil)
             } else {
                 print("script: no button \(arg)")
             }

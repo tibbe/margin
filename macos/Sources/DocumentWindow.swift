@@ -34,20 +34,16 @@ final class DocumentWindow: NSWindowController, NSWindowDelegate, NSToolbarDeleg
     private(set) var agentState = AgentState.none
     private var agentTimer: Timer?
     private var sendItem: NSToolbarItem?
-    /// The file's contents as last read or written (newlines as `\n`).
-    private var lastSaved = ""
-    private var crlf = false
+    /// The text and its file: what to save, and outside edits to take in.
+    private let sync: FileSync
     private var saveTimer: Timer?
     private var diskTimer: Timer?
     private var storeTimer: Timer?
     private var fileWatcher: FileWatcher?
     private var storeWatcher: FileWatcher?
-    private var conflictPending = false
-    /// The last save failed: the only time a saved document is "edited".
-    private var saveFailed = false
     /// The text when the window opened, for Revert to Last Opened.
     private var openedText = ""
-    /// A save is pending, so the system must not kill the app unasked.
+    /// Sudden termination is off, as a save is due (see `holdTermination`).
     private var holdsTermination = false
     /// The comment store's file as last read, to skip reloads for other
     /// documents' stores.
@@ -61,6 +57,7 @@ final class DocumentWindow: NSWindowController, NSWindowDelegate, NSToolbarDeleg
     init(path: String, text: LoadedText) {
         self.path = path
         isDraft = isDraftPath(path)
+        sync = FileSync(opened: text)
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1240, height: 860),
                               styleMask: [.titled, .closable, .miniaturizable, .resizable],
                               backing: .buffered, defer: false)
@@ -77,9 +74,7 @@ final class DocumentWindow: NSWindowController, NSWindowDelegate, NSToolbarDeleg
         window.tabbingIdentifier = "document"
         super.init(window: window)
         window.delegate = self
-        lastSaved = text.text
         openedText = text.text
-        crlf = text.crlf
         buildContent()
         textView.reflowsParagraphs = Prefs.reflowsParagraphs
         textView.setContents(text.text)
@@ -212,10 +207,6 @@ final class DocumentWindow: NSWindowController, NSWindowDelegate, NSToolbarDeleg
         isDraft ? "Untitled" : (path as NSString).lastPathComponent
     }
 
-    /// Edited since last saved or loaded. A flag rather than a comparison
-    /// with `lastSaved`, which would cost a pass over the text per key.
-    private var dirty = false
-
     private func homeRelative(_ p: String) -> String {
         let home = NSHomeDirectory()
         return p.hasPrefix(home + "/") ? "~" + p.dropFirst(home.count) : (p == home ? "~" : p)
@@ -228,7 +219,7 @@ final class DocumentWindow: NSWindowController, NSWindowDelegate, NSToolbarDeleg
         window.representedURL = isDraft ? nil : URL(fileURLWithPath: path)
         // Documents save themselves: they are only "edited" when that
         // failed, or while untitled.
-        window.isDocumentEdited = isDraft ? !textView.string.isEmpty : saveFailed
+        window.isDocumentEdited = isDraft ? !textView.string.isEmpty : sync.saveFailed()
         showAgent()
     }
 
@@ -286,12 +277,14 @@ final class DocumentWindow: NSWindowController, NSWindowDelegate, NSToolbarDeleg
     // MARK: - Saving
 
     private func textChanged() {
-        dirty = true
+        sync.edited()
         updateTitle()
         scheduleSave()
         if findBar.isOpen { findBar.refresh(goingToMatchAtOrAfterCursor: false) }
     }
 
+    /// Keeps the system from killing the app unasked while `hold`: while a
+    /// save is due.
     private func holdTermination(_ hold: Bool) {
         if hold == holdsTermination { return }
         holdsTermination = hold
@@ -303,18 +296,19 @@ final class DocumentWindow: NSWindowController, NSWindowDelegate, NSToolbarDeleg
     }
 
     private func scheduleSave() {
-        holdTermination(true)
+        holdTermination(sync.needsSave())
         saveTimer?.invalidate()
         saveTimer = Timer.scheduledTimer(withTimeInterval: 0.7, repeats: false) { [weak self] _ in
             self?.save()
         }
     }
 
-    /// Replaces the file's contents, coordinated with other file
-    /// presenters (sync clients, other editors). Replacing the item keeps
-    /// its metadata: permissions, Finder tags, extended attributes.
+    /// Replaces the file's contents with `text` (in the file's newlines),
+    /// coordinated with other file presenters (sync clients, other
+    /// editors). Replacing the item keeps its metadata: permissions, Finder
+    /// tags, extended attributes.
     private func write(_ text: String, to path: String) throws {
-        let data = Data((crlf ? text.replacingOccurrences(of: "\n", with: "\r\n") : text).utf8)
+        let data = Data(text.utf8)
         let url = URL(fileURLWithPath: path)
         let fm = FileManager.default
         var coordinationError: NSError?
@@ -343,35 +337,31 @@ final class DocumentWindow: NSWindowController, NSWindowDelegate, NSToolbarDeleg
     func save() -> Bool {
         saveTimer?.invalidate()
         saveTimer = nil
-        if conflictPending { return false }
-        // The file watcher may still be waiting to deliver an outside edit.
-        // One retry lets a clean merge finish saving during this call.
-        for attempt in 0..<2 {
+        defer {
+            holdTermination(sync.needsSave())
+            updateTitle()
+        }
+        // The file is read first: the file watcher may not have delivered
+        // an outside edit yet. One retry lets taking it in finish saving
+        // during this call.
+        for _ in 0..<2 {
             let text = textView.string
             do {
-                let disk = try readDocument(path: path)
-                if disk.text != lastSaved {
-                    applyDiskChange(disk)
-                    if attempt == 0 && !conflictPending { continue }
+                switch try sync.save(ours: text, path: path) {
+                case .done:
+                    return true
+                case .blocked:
                     return false
-                }
-                crlf = disk.crlf
-                if text == lastSaved {
-                    if dirty || saveFailed { dirty = false; saveFailed = false; updateTitle() }
-                    holdTermination(false)
+                case .changed(let change):
+                    if !takeIn(change) { return false }
+                case .write(let out):
+                    try write(out, to: path)
+                    sync.wrote(ours: text)
+                    layer.persistAnchors()
                     return true
                 }
-                try write(text, to: path)
-                lastSaved = text
-                dirty = false
-                saveFailed = false
-                holdTermination(false)
-                updateTitle()
-                layer.persistAnchors()
-                return true
             } catch {
-                saveFailed = true
-                updateTitle()
+                sync.failed()
                 banner.show("Could not save: \(error.localizedDescription)", undo: nil)
                 return false
             }
@@ -420,42 +410,32 @@ final class DocumentWindow: NSWindowController, NSWindowDelegate, NSToolbarDeleg
 
     /// Picks up edits made to the file by someone else.
     private func checkDisk() {
-        guard !conflictPending, let loaded = try? readDocument(path: path) else { return }
-        applyDiskChange(loaded)
+        guard let change = try? sync.diskChanged(ours: textView.string, path: path) else { return }
+        takeIn(change)
+        holdTermination(sync.needsSave())
     }
 
-    private func applyDiskChange(_ loaded: LoadedText) {
-        let disk = loaded.text
-        if disk == lastSaved {
-            crlf = loaded.crlf
-            return
-        }
-        let ours = textView.string
-        let base = lastSaved
-        crlf = loaded.crlf
-        if ours == disk {
-            lastSaved = disk
-            dirty = false
+    /// Shows what taking in a change to the file takes; false for a
+    /// conflict, which waits for the person's answer.
+    @discardableResult
+    private func takeIn(_ change: FileChange) -> Bool {
+        switch change {
+        case .caughtUp:
             updateTitle()
-            return
-        }
-        if ours == base {
-            textView.applyExternal(disk)
-            lastSaved = disk
-            dirty = false
+        case .load(let text):
+            textView.applyExternal(text)
             afterExternalChange()
             banner.show("Updated from disk", undo: nil)
-            return
-        }
-        if let merged = mergeTexts(base: base, ours: ours, theirs: disk) {
-            textView.applyExternal(merged)
-            lastSaved = disk
+        case .merge(let text):
+            textView.applyExternal(text)
             afterExternalChange()
             scheduleSave()
             banner.show("Merged changes from disk", undo: nil)
-            return
+        case .conflict:
+            askConflict()
+            return false
         }
-        askConflict(disk)
+        return true
     }
 
     private func afterExternalChange() {
@@ -464,11 +444,13 @@ final class DocumentWindow: NSWindowController, NSWindowDelegate, NSToolbarDeleg
         layer.queueRelayout()
     }
 
-    private func askConflict(_ disk: String) {
-        guard let window, window.attachedSheet == nil else { return }
-        conflictPending = true
-        saveTimer?.invalidate()
-        saveTimer = nil
+    private func askConflict() {
+        guard let window, sync.inConflict() else { return }
+        if window.attachedSheet != nil {
+            // Asked once the sheet showing now (Rename, Save As…) is gone.
+            NotificationCenter.default.addObserver(self, selector: #selector(sheetEnded), name: NSWindow.didEndSheetNotification, object: window)
+            return
+        }
         let alert = NSAlert()
         alert.messageText = "Document Changed on Disk"
         alert.informativeText = "\(displayName) was changed by another program while you had unsaved edits, and the changes overlap."
@@ -477,17 +459,21 @@ final class DocumentWindow: NSWindowController, NSWindowDelegate, NSToolbarDeleg
         load.hasDestructiveAction = true
         alert.beginSheetModal(for: window) { [weak self] response in
             guard let self else { return }
-            self.conflictPending = false
-            self.lastSaved = disk
             if response == .alertSecondButtonReturn {
-                self.textView.applyExternal(disk)
-                self.dirty = false
+                guard let theirs = self.sync.loadTheirs() else { return }
+                self.textView.applyExternal(theirs)
                 self.afterExternalChange()
                 self.checkDisk()
-            } else {
+            } else if self.sync.keepMine() {
                 self.save()
             }
         }
+    }
+
+    @objc private func sheetEnded(_ note: Notification) {
+        NotificationCenter.default.removeObserver(self, name: NSWindow.didEndSheetNotification, object: window)
+        // After the sheet is gone.
+        DispatchQueue.main.async { [weak self] in self?.askConflict() }
     }
 
     // MARK: - Links
@@ -657,7 +643,7 @@ final class DocumentWindow: NSWindowController, NSWindowDelegate, NSToolbarDeleg
             }
             if let e = coordinationError ?? moveError { throw e }
         } else {
-            try write(text, to: target)
+            try write(sync.fileText(ours: text), to: target)
         }
         let canonical = try canonicalPath(path: target)
         try layer.store?.moveTo(newDocument: canonical, text: text, removeOld: wasDraft || moving)
@@ -666,9 +652,7 @@ final class DocumentWindow: NSWindowController, NSWindowDelegate, NSToolbarDeleg
         storeWatcher?.cancel()
         path = canonical
         isDraft = false
-        lastSaved = text
-        dirty = false
-        saveFailed = false
+        sync.wrote(ours: text)
         layer.attach(try? CommentStore(document: canonical))
         watch()
         followAgents()
@@ -682,7 +666,8 @@ final class DocumentWindow: NSWindowController, NSWindowDelegate, NSToolbarDeleg
     private func discardDraft() {
         try? layer.store?.remove()
         try? FileManager.default.removeItem(atPath: path)
-        lastSaved = textView.string
+        // Nothing left to save.
+        sync.wrote(ours: textView.string)
     }
 
     /// Whether closing now would lose text that is in no file.

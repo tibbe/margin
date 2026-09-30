@@ -1,0 +1,49 @@
+# Outside edits: an agent changes the file while the document is open.
+# Theirs alone loads; edits on other lines merge; overlapping edits ask,
+# and nothing is written until the person answers.
+reset One.\n\nTwo.\n\nThree.\n
+save
+external One.\n\nTwo, by an agent.\n\nThree.\n
+wait-banner Updated from disk
+dump
+# Ours on one line, theirs on another: merged, then saved.
+find One
+type  more
+external One.\n\nTwo, by an agent.\n\nThree, again.\n
+wait-banner Merged changes from disk
+save
+sh cat doc.md
+# Both on the same line: a conflict, and saving waits for the answer.
+find Three, again
+type !
+external One.\n\nTwo, by an agent.\n\nThree, again?\n
+wait 400
+sheet
+save
+sh cat doc.md
+title
+sheet Keep My Version
+wait 100
+sh cat doc.md
+# Again, loading theirs this time.
+find Two, by an agent
+type !
+external One more.\n\nTwo, by an agent?\n\nThree, again!\n
+wait 400
+sheet Load Disk Version
+wait 100
+dump
+sh cat doc.md
+# A conflict while another sheet shows is asked once that sheet is gone.
+find One more
+type !
+action marginRename:
+external One more?\n\nTwo, by an agent?\n\nThree, again!\n
+wait 400
+sheet
+sheet Cancel
+wait 300
+sheet
+sheet Keep My Version
+wait 100
+sh cat doc.md

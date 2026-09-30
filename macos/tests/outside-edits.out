@@ -1,0 +1,41 @@
+One.
+
+Two, by an agent.
+
+Three.
+--- end
+One more.
+
+Two, by an agent.
+
+Three, again.
+sheet Keep My Version | Load Disk Version
+One.
+
+Two, by an agent.
+
+Three, again?
+title doc.md | subtitle | edited false
+One more.
+
+Two, by an agent.
+
+Three, again!.
+One more.
+
+Two, by an agent?
+
+Three, again!
+--- end
+One more.
+
+Two, by an agent?
+
+Three, again!
+sheet Cancel | Rename
+sheet Keep My Version | Load Disk Version
+One more!.
+
+Two, by an agent?
+
+Three, again!

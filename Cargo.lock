@@ -892,7 +892,6 @@ dependencies = [
  "anyhow",
  "chrono",
  "margin-core",
- "similar",
  "uniffi",
 ]
 
@@ -908,7 +907,6 @@ dependencies = [
  "pangocairo",
  "serde",
  "serde_json",
- "similar",
 ]
 
 [[package]]
