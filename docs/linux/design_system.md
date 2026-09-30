@@ -227,5 +227,5 @@ editor categories, `text/markdown` MIME types) and a scalable icon under
 
 The UI is tested on a Broadway display with `MARGIN_SCRIPT`, taking
 screenshots with the script's `shot` step. Anything a mouse does is tested
-with real clicks through `tools/run-ui-script.sh`. See the README's
-Development section.
+with real clicks through `tools/run-ui-script.sh`. See
+`crates/gtk/AGENTS.md`.
