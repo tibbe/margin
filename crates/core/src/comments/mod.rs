@@ -6,6 +6,7 @@ pub mod export;
 pub mod handoff;
 pub mod store;
 
+pub use anchor::{Anchor, Place};
 pub use store::*;
 
 /// Held by tests that point `MARGIN_DATA_DIR` somewhere, since tests run in

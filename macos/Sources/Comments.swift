@@ -1,22 +1,48 @@
 import AppKit
 
+extension AnchorPlace {
+    /// Where the text starts, or was.
+    var start: Int {
+        switch self {
+        case .on(let start, _): Int(start)
+        case .detached(let at): Int(at)
+        }
+    }
+
+    /// The text's range; nil for deleted text.
+    var range: NSRange? {
+        guard case .on(let start, let end) = self, start < end else { return nil }
+        return NSRange(location: Int(start), length: Int(end - start))
+    }
+
+    var isDetached: Bool { range == nil }
+}
+
+extension CommentThread {
+    var resolved: Bool { resolvedAtMs != nil }
+}
+
 /// A thread in the gutter, anchored to text in the editor. Anchors follow
 /// edits as the GTK editor's text marks do: text inserted at the start is
 /// excluded, text inserted at the end too.
 final class ThreadItem {
+    /// As the store last had it.
     var thread: CommentThread
-    var start: Int
-    var end: Int
+    /// Where its text is now.
+    var place: AnchorPlace
     let card: ThreadCard
 
     init(thread: CommentThread, card: ThreadCard) {
         self.thread = thread
-        start = Int(thread.start)
-        end = Int(thread.end)
+        place = thread.place
         self.card = card
     }
 
-    var detached: Bool { thread.detached || start >= end }
+    /// Where its text starts, or was.
+    var start: Int { place.start }
+    /// Its text's range; nil once the text was deleted.
+    var range: NSRange? { place.range }
+    var detached: Bool { place.isDetached }
 }
 
 private struct Draft {
@@ -96,8 +122,13 @@ final class CommentLayer {
             return stickRight ? loc + newLen : loc
         }
         for it in items {
-            it.start = map(it.start, stickRight: true)
-            it.end = map(it.end, stickRight: false)
+            guard let r = it.range else {
+                it.place = .detached(at: UInt32(map(it.start, stickRight: true)))
+                continue
+            }
+            let (s, e) = (map(r.location, stickRight: true), map(NSMaxRange(r), stickRight: false))
+            // All of its text deleted: detached where it was.
+            it.place = s < e ? .on(start: UInt32(s), end: UInt32(e)) : .detached(at: UInt32(s))
         }
         if var d = draft {
             d.start = map(d.start, stickRight: true)
@@ -107,18 +138,14 @@ final class CommentLayer {
     }
 
     private func anchors() -> [ThreadAnchor] {
-        items.map { ThreadAnchor(id: $0.thread.id, start: UInt32(max(0, $0.start)), end: UInt32(max(0, $0.end)), detached: $0.detached) }
+        items.map { ThreadAnchor(id: $0.thread.id, place: $0.place) }
     }
 
     /// Open threads, anchored where their text is now.
     func openThreads() -> [CommentThread] {
-        let s = view.string as NSString
-        return items.filter { !$0.thread.resolved }.map { it in
+        items.filter { !$0.thread.resolved }.map { it in
             var t = it.thread
-            t.start = UInt32(it.start)
-            t.end = UInt32(it.detached ? it.start : it.end)
-            t.detached = it.detached
-            if !it.detached { t.quote = s.substring(with: NSRange(location: it.start, length: it.end - it.start)) }
+            t.place = it.place
             return t
         }
     }
@@ -188,14 +215,11 @@ final class CommentLayer {
         for t in threads {
             keep.insert(t.id)
             if let it = items.first(where: { $0.thread.id == t.id }) {
-                let changed = it.thread.resolved != t.resolved || it.thread.messages != t.messages || it.thread.detached != t.detached
+                let changed = it.thread.resolved != t.resolved || it.thread.messages != t.messages || it.thread.place.isDetached != t.place.isDetached
                 if changed {
-                    let keepAnchor = !t.detached && !it.thread.detached
+                    let keepAnchor = !t.place.isDetached && !it.thread.place.isDetached
                     it.thread = t
-                    if !keepAnchor {
-                        it.start = Int(t.start)
-                        it.end = Int(t.end)
-                    }
+                    if !keepAnchor { it.place = t.place }
                     it.card.update(t)
                 }
             } else {
@@ -285,6 +309,12 @@ final class CommentLayer {
     private func postDraft(_ body: String) {
         beforeAdd?()
         guard let d = draft else { return }
+        // Its text was deleted meanwhile, leaving nothing to comment on;
+        // the draft stays, so its words aren't lost.
+        guard d.start < d.end else {
+            toast?("The text you were commenting on was deleted", nil)
+            return
+        }
         removeDraft()
         let state = update(.add(start: UInt32(d.start), end: UInt32(max(d.start, d.end)), body: body))
         if let id = state?.added {
@@ -349,9 +379,7 @@ final class CommentLayer {
         guard let it = items.first(where: { $0.thread.id == id }) else { return }
         // Undo puts the thread back against the text as it is then.
         var old = it.thread
-        old.start = UInt32(it.start)
-        old.end = UInt32(it.detached ? it.start : it.end)
-        old.detached = it.detached
+        old.place = it.place
         guard update(.delete(id: id)) != nil else { return }
         if active == id { active = nil }
         undoable("Delete Comment", banner: "Comment deleted") { $0.restore(old) }
@@ -424,8 +452,9 @@ final class CommentLayer {
         sync()
         guard let id, let it = items.first(where: { $0.thread.id == id }) else { return }
         if scroll {
-            view.scrollRangeToVisible(NSRange(location: it.start, length: max(0, it.end - it.start)))
-            view.setSelectedRange(NSRange(location: it.detached ? it.start : it.end, length: 0))
+            let r = it.range ?? NSRange(location: it.start, length: 0)
+            view.scrollRangeToVisible(r)
+            view.setSelectedRange(NSRange(location: NSMaxRange(r), length: 0))
             active = id
             sync()
         }
@@ -492,8 +521,9 @@ final class CommentLayer {
         if view.selection != nil || draft != nil { return }
         let c = view.cursor
         let hit = items
-            .filter { visible($0.thread) && !$0.detached && $0.start <= c && c <= $0.end }
-            .min { ($0.end - $0.start, $0.thread.id) < ($1.end - $1.start, $1.thread.id) }
+            .compactMap { it in it.range.map { (it, $0) } }
+            .filter { it, r in visible(it.thread) && r.location <= c && c <= NSMaxRange(r) }
+            .min { ($0.1.length, $0.0.thread.id) < ($1.1.length, $1.0.thread.id) }?.0
         if let hit {
             if active != hit.thread.id { activate(hit.thread.id, scroll: false) }
         } else if let a = active, !(items.first { $0.thread.id == a }?.card.hasFocus ?? false) {
@@ -533,11 +563,11 @@ final class CommentLayer {
                 lm.addTemporaryAttribute(.backgroundColor, value: c, forCharacterRange: r)
             }
         }
-        for it in items where visible(it.thread) && !it.detached && it.thread.id != active {
-            mark(it.start, it.end, Theme.commentHighlightColor(active: false, dark: dark))
+        for it in items where visible(it.thread) && it.thread.id != active {
+            if let r = it.range { mark(r.location, NSMaxRange(r), Theme.commentHighlightColor(active: false, dark: dark)) }
         }
-        if let a = active, let it = items.first(where: { $0.thread.id == a }), !it.detached {
-            mark(it.start, it.end, Theme.commentHighlightColor(active: true, dark: dark))
+        if let a = active, let r = items.first(where: { $0.thread.id == a })?.range {
+            mark(r.location, NSMaxRange(r), Theme.commentHighlightColor(active: true, dark: dark))
         }
         if let d = draft {
             mark(d.start, d.end, Theme.commentHighlightColor(active: true, dark: dark))

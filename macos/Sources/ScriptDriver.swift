@@ -451,7 +451,7 @@ enum ScriptDriver {
         case "comments":
             for it in w.layer.items {
                 let t = it.thread
-                print("#\(t.id) \(t.resolved ? "resolved" : "open")\(it.detached ? " detached" : "") [\(it.start),\(it.end)) \(t.messages.map { $0.body })")
+                print("#\(t.id) \(t.resolved ? "resolved" : "open")\(it.detached ? " detached" : "") [\(it.start),\(it.range.map(NSMaxRange) ?? it.start)) \(t.messages.map { $0.body })")
             }
             if let d = w.layer.draftRange { print("draft [\(d.location),\(NSMaxRange(d)))") }
             print("active \(w.layer.active.map(String.init) ?? "none")")

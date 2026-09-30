@@ -6,7 +6,7 @@ use super::buffer::DocBuffer;
 use super::card::{Card, CardActions, DraftCard};
 use super::view::DocView;
 use margin_core::comments::activity::{self, Change};
-use margin_core::comments::{Author, Comments, Store, Thread};
+use margin_core::comments::{Author, Comments, Place, Store, Thread};
 use margin_core::md::edit;
 use adw::prelude::*;
 use gtk::glib;
@@ -199,20 +199,7 @@ impl CommentLayer {
             .filter(|tu| tu.thread.is_open())
             .map(|tu| {
                 let mut t = tu.thread.clone();
-                match self.anchor_of(tu) {
-                    Some(r) => {
-                        t.anchor.quote = text[r.clone()].to_string();
-                        t.anchor.start = r.start;
-                        t.anchor.end = r.end;
-                        t.anchor.detached = false;
-                    }
-                    None => {
-                        let p = self.buffer.byte_at(&self.buffer.iter_at_mark(&tu.start));
-                        t.anchor.start = p;
-                        t.anchor.end = p;
-                        t.anchor.detached = true;
-                    }
-                }
+                t.anchor.follow(&text, self.place_of(tu));
                 t
             })
             .collect()
@@ -244,15 +231,15 @@ impl CommentLayer {
         }
     }
 
-    /// Current anchors as byte ranges of the buffer text; `None` when the
-    /// commented text is gone.
-    fn anchor_of(&self, tu: &ThreadUi) -> Option<Range<usize>> {
-        if tu.thread.anchor.detached {
-            return None;
-        }
+    /// Where a thread's text is in the buffer text now, by its marks
+    /// (marks that meet are deleted text).
+    fn place_of(&self, tu: &ThreadUi) -> Place {
         let a = self.buffer.byte_at(&self.buffer.iter_at_mark(&tu.start));
+        if tu.thread.anchor.is_detached() {
+            return Place::Detached(a);
+        }
         let b = self.buffer.byte_at(&self.buffer.iter_at_mark(&tu.end));
-        (a < b).then_some(a..b)
+        Place::On(a..b)
     }
 
     /// Runs `f` on the stored threads with anchors brought up to date from
@@ -260,32 +247,13 @@ impl CommentLayer {
     fn update_store<T>(&self, f: impl FnOnce(&mut Comments) -> anyhow::Result<T>) -> Option<T> {
         let store = self.store()?;
         let text = self.buffer.text_string();
-        let anchors: Vec<(u64, Option<Range<usize>>, usize)> = self
-            .threads
-            .borrow()
-            .iter()
-            .map(|tu| {
-                let pos = self.buffer.byte_at(&self.buffer.iter_at_mark(&tu.start));
-                (tu.thread.id, self.anchor_of(tu), pos)
-            })
-            .collect();
+        let places: Vec<(u64, Place)> =
+            self.threads.borrow().iter().map(|tu| (tu.thread.id, self.place_of(tu))).collect();
         let result = store.update(|c| {
             c.sync(&text);
-            for (id, range, pos) in &anchors {
-                if let Ok(t) = c.thread_mut(*id) {
-                    match range {
-                        Some(r) => {
-                            t.anchor.start = r.start;
-                            t.anchor.end = r.end;
-                            t.anchor.quote = text[r.clone()].to_string();
-                            t.anchor.detached = false;
-                        }
-                        None => {
-                            t.anchor.start = *pos;
-                            t.anchor.end = *pos;
-                            t.anchor.detached = true;
-                        }
-                    }
+            for (id, place) in places {
+                if let Ok(t) = c.thread_mut(id) {
+                    t.anchor.follow(&text, place);
                 }
             }
             let out = f(c)?;
@@ -331,12 +299,11 @@ impl CommentLayer {
                 if let Some(tu) = threads.iter_mut().find(|x| x.thread.id == t.id) {
                     let changed = tu.thread.status != t.status
                         || tu.thread.messages != t.messages
-                        || tu.thread.anchor.detached != t.anchor.detached;
+                        || tu.thread.anchor.is_detached() != t.anchor.is_detached();
                     if changed {
-                        let keep_anchor = !t.anchor.detached;
                         let anchor = tu.thread.anchor.clone();
                         tu.thread = t.clone();
-                        if keep_anchor && !anchor.detached {
+                        if !t.anchor.is_detached() && !anchor.is_detached() {
                             tu.thread.anchor = anchor;
                         }
                         tu.card.update(&tu.thread);
@@ -392,8 +359,9 @@ impl CommentLayer {
     }
 
     fn make_thread_ui(&self, thread: Thread, text: &str) -> ThreadUi {
-        let a = thread.anchor.start.min(text.len());
-        let b = thread.anchor.end.min(text.len()).max(a);
+        let r = thread.anchor.range().unwrap_or(thread.anchor.start()..thread.anchor.start());
+        let a = r.start.min(text.len());
+        let b = r.end.min(text.len()).max(a);
         let sa = self.buffer.iter_at_byte(a);
         let sb = self.buffer.iter_at_byte(b);
         let start = self.buffer.create_mark(None, &sa, false);
@@ -559,9 +527,15 @@ impl CommentLayer {
             let b = self.buffer.byte_at(&self.buffer.iter_at_mark(&d.end));
             a..b.max(a)
         };
+        // Its text was deleted meanwhile, leaving nothing to comment on;
+        // the draft stays, so its words aren't lost.
+        if range.is_empty() {
+            self.toast(adw::Toast::new("The text you were commenting on was deleted"));
+            return;
+        }
         let text = self.buffer.text_string();
         let body = body.to_string();
-        let id = self.update_store(move |c| Ok(c.add(&text, range, &body, Author::User)));
+        let id = self.update_store(move |c| c.add(&text, range, &body, Author::User));
         self.remove_draft();
         if let Some(id) = id {
             self.activate(Some(id), false);
@@ -641,27 +615,15 @@ impl CommentLayer {
     }
 
     pub fn delete(&self, id: u64) {
-        let Some(mut old) = self
-            .threads
-            .borrow()
-            .iter()
-            .find(|t| t.thread.id == id)
-            .map(|t| {
-                let mut th = t.thread.clone();
-                if let Some(r) = self.anchor_of(t) {
-                    th.anchor.start = r.start;
-                    th.anchor.end = r.end;
-                }
-                th
-            })
-        else {
-            return;
-        };
         // Undo re-adds the thread against the text as it is now.
         let text = self.buffer.text_string();
-        old.anchor.quote = text
-            .get(old.anchor.start..old.anchor.end)
-            .map_or(old.anchor.quote.clone(), str::to_string);
+        let Some(old) = self.threads.borrow().iter().find(|t| t.thread.id == id).map(|t| {
+            let mut th = t.thread.clone();
+            th.anchor.follow(&text, self.place_of(t));
+            th
+        }) else {
+            return;
+        };
         if self.update_store(move |c| c.delete(id)).is_none() {
             return;
         }
@@ -811,7 +773,7 @@ impl CommentLayer {
             .threads
             .borrow()
             .iter()
-            .filter(|t| self.visible(&t.thread) && !t.thread.anchor.detached)
+            .filter(|t| self.visible(&t.thread) && !t.thread.anchor.is_detached())
             .filter_map(|t| {
                 let s = self.buffer.iter_at_mark(&t.start).offset();
                 let e = self.buffer.iter_at_mark(&t.end).offset();
@@ -875,7 +837,7 @@ impl CommentLayer {
                 }
             };
             for t in threads.iter() {
-                let tag = if !self.visible(&t.thread) || t.thread.anchor.detached {
+                let tag = if !self.visible(&t.thread) || t.thread.anchor.is_detached() {
                     None
                 } else if Some(t.thread.id) == active {
                     Some(&strong)

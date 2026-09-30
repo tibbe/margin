@@ -3,7 +3,7 @@
 //! position crosses [`Utf16Index`].
 
 use margin_core::comments::anchor::floor_char_boundary;
-use margin_core::comments::{self, activity, export, handoff, Author, Comments, Message, Status, Store, Thread};
+use margin_core::comments::{self, activity, export, handoff, Anchor, Author, Comments, Message, Place, Status, Store, Thread};
 use margin_core::md::edit::{self, BlockType, Plan};
 use margin_core::md::{self, search, Container, Doc, InlineKind, LineKind, Style};
 use std::ops::Range;
@@ -849,17 +849,25 @@ pub struct ThreadMessage {
     pub body: String,
 }
 
-/// A thread with its anchor as a UTF-16 range of the text it was read
+/// Where a thread's text is, in UTF-16 offsets of the text it was read
 /// against.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum AnchorPlace {
+    /// On this range of the text; an empty one is deleted text.
+    On { start: u32, end: u32 },
+    /// The commented text was deleted; this is where it was.
+    Detached { at: u32 },
+}
+
 #[derive(Debug, Clone, uniffi::Record)]
 pub struct CommentThread {
     pub id: u64,
-    pub resolved: bool,
-    pub detached: bool,
-    pub start: u32,
-    pub end: u32,
+    pub place: AnchorPlace,
+    /// The commented text, as last seen.
     pub quote: String,
     pub messages: Vec<ThreadMessage>,
+    /// When it was resolved, in milliseconds since the Unix epoch; `None`
+    /// while it is open.
     pub resolved_at_ms: Option<i64>,
 }
 
@@ -867,9 +875,7 @@ pub struct CommentThread {
 #[derive(Debug, Clone, uniffi::Record)]
 pub struct ThreadAnchor {
     pub id: u64,
-    pub start: u32,
-    pub end: u32,
-    pub detached: bool,
+    pub place: AnchorPlace,
 }
 
 #[derive(Debug, Clone, uniffi::Enum)]
@@ -921,16 +927,42 @@ fn message_from_ffi(m: &ThreadMessage) -> Message {
     Message { author, at: from_ms(m.at_ms), body: m.body.clone() }
 }
 
+fn place_to_ffi(p: &Place, text: &str, index: &Utf16Index) -> AnchorPlace {
+    match p {
+        Place::On(r) => AnchorPlace::On { start: index.u16_of(text, r.start), end: index.u16_of(text, r.end) },
+        Place::Detached(at) => AnchorPlace::Detached { at: index.u16_of(text, *at) },
+    }
+}
+
+fn place_from_ffi(p: AnchorPlace, text: &str, index: &Utf16Index) -> Place {
+    match p {
+        // Reversed, it is deleted text: `Anchor::follow` detaches it.
+        AnchorPlace::On { start, end } => Place::On(index.byte_of(text, start)..index.byte_of(text, end)),
+        AnchorPlace::Detached { at } => Place::Detached(index.byte_of(text, at)),
+    }
+}
+
+fn status_from_ms(resolved_at_ms: Option<i64>) -> Status {
+    resolved_at_ms.map_or(Status::Open, |t| Status::Resolved { at: from_ms(t) })
+}
+
 fn to_ffi(t: &Thread, text: &str, index: &Utf16Index) -> CommentThread {
     CommentThread {
         id: t.id,
-        resolved: t.status == Status::Resolved,
-        detached: t.anchor.detached,
-        start: index.u16_of(text, t.anchor.start),
-        end: index.u16_of(text, t.anchor.end),
-        quote: t.anchor.quote.clone(),
+        place: place_to_ffi(t.anchor.place(), text, index),
+        quote: t.anchor.quote().to_string(),
         messages: t.messages.iter().map(message_to_ffi).collect(),
-        resolved_at_ms: t.resolved_at.as_ref().map(ms),
+        resolved_at_ms: t.resolved_at().as_ref().map(ms),
+    }
+}
+
+/// The thread against `text`, where the editor has its text now.
+fn from_ffi(t: &CommentThread, text: &str, index: &Utf16Index) -> Thread {
+    Thread {
+        id: t.id,
+        status: status_from_ms(t.resolved_at_ms),
+        anchor: Anchor::at(text, place_from_ffi(t.place, text, index), t.quote.clone()),
+        messages: t.messages.iter().map(message_from_ffi).collect(),
     }
 }
 
@@ -977,17 +1009,7 @@ impl CommentStore {
             c.sync(&text);
             for a in &anchors {
                 if let Ok(t) = c.thread_mut(a.id) {
-                    let (s, e) = (bytes(a.start), bytes(a.end));
-                    if a.detached || s >= e {
-                        t.anchor.start = s;
-                        t.anchor.end = s;
-                        t.anchor.detached = true;
-                    } else {
-                        t.anchor.start = s;
-                        t.anchor.end = e;
-                        t.anchor.quote = text[s..e].to_string();
-                        t.anchor.detached = false;
-                    }
+                    t.anchor.follow(&text, place_from_ffi(a.place, &text, &index));
                 }
             }
             let mut added = None;
@@ -995,7 +1017,7 @@ impl CommentStore {
                 CommentChange::Anchors => {}
                 CommentChange::Add { start, end, body } => {
                     let (s, e) = (bytes(*start), bytes(*end));
-                    added = Some(c.add(&text, s.min(e)..s.max(e), body, Author::User));
+                    added = Some(c.add(&text, s.min(e)..s.max(e), body, Author::User)?);
                 }
                 CommentChange::Reply { id, body } => c.reply(*id, body, Author::User)?,
                 CommentChange::SetResolved { ids, resolved } => {
@@ -1011,20 +1033,7 @@ impl CommentStore {
                 }
                 CommentChange::Restore { thread } => {
                     if c.thread(thread.id).is_none() {
-                        let (s, e) = (bytes(thread.start), bytes(thread.end));
-                        let detached = thread.detached || s >= e;
-                        c.threads.push(Thread {
-                            id: thread.id,
-                            status: if thread.resolved { Status::Resolved } else { Status::Open },
-                            anchor: comments::Anchor {
-                                start: s,
-                                end: if detached { s } else { e },
-                                quote: if detached { thread.quote.clone() } else { text[s..e].to_string() },
-                                detached,
-                            },
-                            messages: thread.messages.iter().map(message_from_ffi).collect(),
-                            resolved_at: thread.resolved_at_ms.map(from_ms),
-                        });
+                        c.threads.push(from_ffi(thread, &text, &index));
                         c.threads.sort_by_key(|t| t.id);
                     }
                 }
@@ -1125,10 +1134,9 @@ pub fn thread_activity(old: Vec<CommentThread>, new: Vec<CommentThread>) -> Vec<
         ts.iter()
             .map(|t| Thread {
                 id: t.id,
-                status: if t.resolved { Status::Resolved } else { Status::Open },
-                anchor: comments::Anchor { start: 0, end: 0, quote: t.quote.clone(), detached: t.detached },
+                status: status_from_ms(t.resolved_at_ms),
+                anchor: Anchor::detached(0, t.quote.clone()),
                 messages: t.messages.iter().map(message_from_ffi).collect(),
-                resolved_at: t.resolved_at_ms.map(from_ms),
             })
             .collect()
     };
@@ -1161,25 +1169,7 @@ pub fn activity_summary(activity: Vec<ThreadActivity>) -> String {
 #[uniffi::export]
 pub fn comments_for_agent(document: String, text: String, threads: Vec<CommentThread>) -> String {
     let index = Utf16Index::new(&text);
-    let threads: Vec<Thread> = threads
-        .iter()
-        .map(|t| {
-            let start = index.byte_of(&text, t.start);
-            let end = index.byte_of(&text, t.end).max(start);
-            Thread {
-                id: t.id,
-                status: if t.resolved { Status::Resolved } else { Status::Open },
-                anchor: comments::Anchor {
-                    start,
-                    end: if t.detached { start } else { end },
-                    quote: if t.detached { t.quote.clone() } else { text[start..end].to_string() },
-                    detached: t.detached,
-                },
-                messages: t.messages.iter().map(message_from_ffi).collect(),
-                resolved_at: t.resolved_at_ms.map(from_ms),
-            }
-        })
-        .collect();
+    let threads: Vec<Thread> = threads.iter().map(|t| from_ffi(t, &text, &index)).collect();
     export::for_agent(&PathBuf::from(document), &text, &threads)
 }
 

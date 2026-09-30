@@ -1,7 +1,7 @@
 //! What agents did to a document's threads between two reads of its store:
 //! for the window's announcement and for system notifications.
 
-use super::store::{Status, Thread};
+use super::store::Thread;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Kind {
@@ -35,7 +35,7 @@ pub fn changes(old: &[Thread], new: &[Thread]) -> Vec<Change> {
         let change = |kind, message: Option<&str>| Change {
             id: t.id,
             kind,
-            quote: t.anchor.quote.clone(),
+            quote: t.anchor.quote().to_string(),
             message: message.map(str::to_string),
         };
         let Some(o) = old.iter().find(|o| o.id == t.id) else {
@@ -43,9 +43,9 @@ pub fn changes(old: &[Thread], new: &[Thread]) -> Vec<Change> {
             continue;
         };
         let mut replies: Vec<&str> = t.messages.iter().skip(o.messages.len()).map(|m| m.body.as_str()).collect();
-        let status = match (o.status, t.status) {
-            (Status::Open, Status::Resolved) => Some(Kind::Resolved),
-            (Status::Resolved, Status::Open) => Some(Kind::Reopened),
+        let status = match (o.is_open(), t.is_open()) {
+            (true, false) => Some(Kind::Resolved),
+            (false, true) => Some(Kind::Reopened),
             _ => None,
         };
         let with_status = if status.is_some() { replies.pop() } else { None };
@@ -55,7 +55,7 @@ pub fn changes(old: &[Thread], new: &[Thread]) -> Vec<Change> {
         }
     }
     for o in old.iter().filter(|o| !new.iter().any(|t| t.id == o.id)) {
-        out.push(Change { id: o.id, kind: Kind::Deleted, quote: o.anchor.quote.clone(), message: None });
+        out.push(Change { id: o.id, kind: Kind::Deleted, quote: o.anchor.quote().to_string(), message: None });
     }
     out
 }
@@ -114,8 +114,8 @@ mod tests {
     fn doc() -> (Comments, &'static str) {
         let text = "One two three.\n";
         let mut c = Comments::new(PathBuf::from("/d.md"));
-        c.add(text, 0..3, "Why?", Author::User);
-        c.add(text, 4..7, "And this?", Author::User);
+        c.add(text, 0..3, "Why?", Author::User).unwrap();
+        c.add(text, 4..7, "And this?", Author::User).unwrap();
         (c, text)
     }
 
@@ -162,7 +162,7 @@ mod tests {
         let mut new = old.clone();
         new.set_resolved(1, false).unwrap();
         new.delete(2).unwrap();
-        new.add(text, 8..13, "Plural?", Author::User);
+        new.add(text, 8..13, "Plural?", Author::User).unwrap();
         let cs = changes(&old.threads, &new.threads);
         assert_eq!(cs.iter().map(|c| c.headline()).collect::<Vec<_>>(), [
             "Reopened \u{201c}One\u{201d}",
@@ -178,7 +178,8 @@ mod tests {
         let (old, _) = doc();
         let mut new = old.clone();
         new.edit(1, 0, "Why not?").unwrap();
-        new.thread_mut(2).unwrap().anchor.start = 5;
+        let text = "One two three.\n";
+        new.thread_mut(2).unwrap().anchor.follow(text, crate::comments::Place::On(4..13));
         assert!(changes(&old.threads, &new.threads).is_empty());
     }
 

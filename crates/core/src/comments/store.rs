@@ -5,7 +5,7 @@
 //! The app and the CLI both edit it, so every write happens under a file
 //! lock as read-modify-write, and files are replaced atomically.
 
-use super::anchor::{find_quote, OffsetMap};
+use super::anchor::{find_quote, Anchor, OffsetMap, Place};
 use anyhow::{bail, Context, Result};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -19,7 +19,7 @@ use std::path::{Path, PathBuf};
 #[serde(rename_all = "lowercase")]
 pub enum Status {
     Open,
-    Resolved,
+    Resolved { at: DateTime<Utc> },
 }
 
 /// Who wrote a message: the one person who comments, from the editor, or
@@ -39,31 +39,26 @@ pub struct Message {
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
-pub struct Anchor {
-    /// Byte offsets into [`Comments::snapshot`].
-    pub start: usize,
-    pub end: usize,
-    /// The commented text, as last seen.
-    pub quote: String,
-    /// The commented text was deleted; `start == end` marks where it was.
-    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
-    pub detached: bool,
-}
-
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 pub struct Thread {
     pub id: u64,
     pub status: Status,
+    /// Offsets are into [`Comments::snapshot`].
     pub anchor: Anchor,
     /// The comment, then its replies.
     pub messages: Vec<Message>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub resolved_at: Option<DateTime<Utc>>,
 }
 
 impl Thread {
     pub fn is_open(&self) -> bool {
         self.status == Status::Open
+    }
+
+    /// When it was resolved, if it is.
+    pub fn resolved_at(&self) -> Option<DateTime<Utc>> {
+        match self.status {
+            Status::Open => None,
+            Status::Resolved { at } => Some(at),
+        }
     }
 }
 
@@ -82,7 +77,7 @@ pub struct Comments {
 impl Comments {
     pub fn new(doc: PathBuf) -> Self {
         Comments {
-            version: 1,
+            version: 2,
             doc,
             next_id: 1,
             threads: Vec::new(),
@@ -110,69 +105,44 @@ impl Comments {
         if self.snapshot.is_empty() && !self.threads.is_empty() {
             // No snapshot to diff against: fall back to finding the quotes.
             for t in &mut self.threads {
-                match find_quote(text, &t.anchor.quote, t.anchor.start) {
-                    Some(r) => {
-                        t.anchor.start = r.start;
-                        t.anchor.end = r.end;
-                        t.anchor.detached = false;
-                    }
-                    None => {
-                        t.anchor.detached = true;
-                        t.anchor.start = t.anchor.start.min(text.len());
-                        t.anchor.end = t.anchor.start;
-                    }
-                }
+                let a = &mut t.anchor;
+                let now = match find_quote(text, a.quote(), a.start()) {
+                    Some(r) => Place::On(r),
+                    None => Place::Detached(a.start()),
+                };
+                a.follow(text, now);
             }
         } else {
             let map = OffsetMap::new(&self.snapshot, text);
             for t in &mut self.threads {
-                let a = &mut t.anchor;
-                if a.detached {
-                    let p = map.map_start(a.start).min(text.len());
-                    a.start = p;
-                    a.end = p;
-                    continue;
-                }
-                match map.map_range(a.start..a.end) {
-                    Ok(r) => {
-                        a.quote = text[r.clone()].to_string();
-                        a.start = r.start;
-                        a.end = r.end;
-                    }
-                    Err(p) => {
-                        a.detached = true;
-                        a.start = p;
-                        a.end = p;
-                    }
-                }
+                let now = map.map(t.anchor.place());
+                t.anchor.follow(text, now);
             }
         }
         self.snapshot = text.to_string();
         true
     }
 
-    /// Adds a thread anchored to `range` of `text` (the current document).
-    pub fn add(&mut self, text: &str, range: Range<usize>, body: &str, author: Author) -> u64 {
+    /// Adds a thread on `range` of `text` (the current document). Fails
+    /// for an empty range, which has nothing to comment on.
+    pub fn add(&mut self, text: &str, range: Range<usize>, body: &str, author: Author) -> Result<u64> {
+        let Some(anchor) = Anchor::on(text, range) else {
+            bail!("there is no text there to comment on");
+        };
         self.sync(text);
         let id = self.next_id;
         self.next_id += 1;
         self.threads.push(Thread {
             id,
             status: Status::Open,
-            anchor: Anchor {
-                start: range.start,
-                end: range.end,
-                quote: text[range].to_string(),
-                detached: false,
-            },
+            anchor,
             messages: vec![Message {
                 author,
                 at: Utc::now(),
                 body: body.to_string(),
             }],
-            resolved_at: None,
         });
-        id
+        Ok(id)
     }
 
     pub fn reply(&mut self, id: u64, body: &str, author: Author) -> Result<()> {
@@ -187,13 +157,7 @@ impl Comments {
 
     pub fn set_resolved(&mut self, id: u64, resolved: bool) -> Result<()> {
         let t = self.thread_mut(id)?;
-        if resolved {
-            t.status = Status::Resolved;
-            t.resolved_at = Some(Utc::now());
-        } else {
-            t.status = Status::Open;
-            t.resolved_at = None;
-        }
+        t.status = if resolved { Status::Resolved { at: Utc::now() } } else { Status::Open };
         Ok(())
     }
 
@@ -424,23 +388,32 @@ mod tests {
         let mut c = Comments::new("/tmp/x.md".into());
         let text = "Deploy with blue/green everywhere.\n";
         let s = text.find("blue/green").unwrap();
-        let id = c.add(text, s..s + 10, "Canary instead?", Author::User);
+        let id = c.add(text, s..s + 10, "Canary instead?", Author::User).unwrap();
         assert_eq!(id, 1);
         let new = "Intro.\n\nDeploy with canary everywhere.\n";
         assert!(c.sync(new));
         let a = &c.thread(1).unwrap().anchor;
-        assert_eq!(&new[a.start..a.end], "canary");
-        assert_eq!(a.quote, "canary");
+        assert_eq!(&new[a.range().unwrap()], "canary");
+        assert_eq!(a.quote(), "canary");
         let gone = "Intro.\n";
         c.sync(gone);
-        assert!(c.thread(1).unwrap().anchor.detached);
+        let a = &c.thread(1).unwrap().anchor;
+        assert!(a.is_detached());
+        assert_eq!(a.quote(), "canary");
+    }
+
+    #[test]
+    fn nothing_to_comment_on() {
+        let mut c = Comments::new("/tmp/x.md".into());
+        assert!(c.add("hello\n", 2..2, "Why?", Author::User).is_err());
+        assert!(c.threads.is_empty());
     }
 
     #[test]
     fn edit_and_delete_messages() {
         let mut c = Comments::new("/tmp/x.md".into());
         let text = "hello world\n";
-        let id = c.add(text, 6..11, "Why?", Author::User);
+        let id = c.add(text, 6..11, "Why?", Author::User).unwrap();
         c.reply(id, "Because.", Author::Agent).unwrap();
         c.reply(id, "Fixed.", Author::Agent).unwrap();
         c.edit(id, 0, "Why not?").unwrap();
@@ -460,7 +433,7 @@ mod tests {
     #[test]
     fn messages_keep_their_authors() {
         let mut c = Comments::new("/tmp/x.md".into());
-        let id = c.add("hello\n", 0..5, "Why?", Author::User);
+        let id = c.add("hello\n", 0..5, "Why?", Author::User).unwrap();
         c.reply(id, "Because.", Author::Agent).unwrap();
         let json = serde_json::to_string(&c).unwrap();
         assert!(json.contains(r#""author":"user""#) && json.contains(r#""author":"agent""#), "{json}");
@@ -479,13 +452,13 @@ mod tests {
         fs::write(&doc, "hello world\n").unwrap();
         let store = Store::for_doc(&doc).unwrap();
         let id = store
-            .update(|c| Ok(c.add("hello world\n", 6..11, "hi", Author::User)))
+            .update(|c| c.add("hello world\n", 6..11, "hi", Author::User))
             .unwrap();
         store.update(|c| c.reply(id, "done", Author::Agent)).unwrap();
         store.update(|c| c.set_resolved(id, true)).unwrap();
         let c = store.load().unwrap();
         assert_eq!(c.threads[0].messages.len(), 2);
-        assert_eq!(c.threads[0].status, Status::Resolved);
+        assert!(!c.threads[0].is_open() && c.threads[0].resolved_at().is_some());
         assert_eq!(all_stores().unwrap().len(), 1);
         fs::remove_dir_all(&dir).unwrap();
     }

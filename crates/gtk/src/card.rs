@@ -1,7 +1,7 @@
 //! Comment cards shown in the gutter, and the text box used to write
 //! comments and replies.
 
-use margin_core::comments::{Author, Message, Status, Thread};
+use margin_core::comments::{Author, Message, Thread};
 use chrono::{DateTime, Local, Utc};
 use gtk::{gdk, glib, pango, prelude::*};
 use std::cell::RefCell;
@@ -255,14 +255,14 @@ impl Card {
         while let Some(child) = self.content.first_child() {
             self.content.remove(&child);
         }
-        let resolved = thread.status == Status::Resolved;
+        let resolved = !thread.is_open();
         self.resolved.replace(resolved);
         self.root.set_css_classes(&[]);
         self.root.add_css_class("comment-card");
         if resolved {
             self.root.add_css_class("resolved");
         }
-        if thread.anchor.detached {
+        if thread.anchor.is_detached() {
             self.root.add_css_class("detached");
         }
         if *self.active.borrow() {
@@ -309,8 +309,8 @@ impl Card {
         header.append(&menu);
         self.content.append(&header);
 
-        if thread.anchor.detached {
-            let q = wrap_label(&format!("“{}”", thread.anchor.quote.trim()), &["quote"]);
+        if thread.anchor.is_detached() {
+            let q = wrap_label(&format!("“{}”", thread.anchor.quote().trim()), &["quote"]);
             q.set_tooltip_text(Some("The commented text was deleted"));
             self.content.append(&q);
         }
@@ -326,7 +326,7 @@ impl Card {
             self.content.append(&wrap_label(&m.body, &["body"]));
         }
         if resolved {
-            let when_ = thread.resolved_at.as_ref().map(when).unwrap_or_default();
+            let when_ = thread.resolved_at().as_ref().map(when).unwrap_or_default();
             self.content
                 .append(&wrap_label(&format!("Resolved {when_}"), &["status"]));
         }

@@ -1,9 +1,123 @@
 //! Keeping comment anchors attached to their text while the document
 //! changes underneath them.
 
+use serde::{Deserialize, Serialize};
 use similar::{Algorithm, DiffTag, TextDiff};
 use std::ops::Range;
 use std::time::Duration;
+
+/// Where a thread's text is, as byte offsets into the document.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum Place {
+    /// On this range of the text. Never empty in an [`Anchor`].
+    On(Range<usize>),
+    /// The commented text was deleted; this is where it was.
+    Detached(usize),
+}
+
+impl Place {
+    /// Where the text starts, or was.
+    pub fn start(&self) -> usize {
+        match self {
+            Place::On(r) => r.start,
+            Place::Detached(at) => *at,
+        }
+    }
+}
+
+/// A thread's place in the document and the text it comments on. The
+/// fields are private, so every anchor keeps two rules: one on text has a
+/// non-empty range, and its quote is the text it was last placed on.
+/// (Loading a stored anchor checks only the first.)
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+#[serde(try_from = "StoredAnchor")]
+pub struct Anchor {
+    place: Place,
+    /// The commented text, as last seen.
+    quote: String,
+}
+
+/// An anchor as stored, checked on the way in.
+#[derive(Deserialize)]
+struct StoredAnchor {
+    place: Place,
+    quote: String,
+}
+
+impl TryFrom<StoredAnchor> for Anchor {
+    type Error = String;
+
+    fn try_from(a: StoredAnchor) -> Result<Anchor, String> {
+        match a.place {
+            Place::On(r) if r.is_empty() => Err(format!("anchor on nothing at {}", r.start)),
+            place => Ok(Anchor { place, quote: a.quote }),
+        }
+    }
+}
+
+impl Anchor {
+    /// On `range` of `text`; `None` when the range is empty (or not in
+    /// `text`), since there is nothing there to comment on.
+    pub fn on(text: &str, range: Range<usize>) -> Option<Anchor> {
+        let quote = text.get(range.clone()).filter(|q| !q.is_empty())?.to_string();
+        Some(Anchor { place: Place::On(range), quote })
+    }
+
+    /// Deleted text, remembered by its quote, that was at `at`.
+    pub fn detached(at: usize, quote: String) -> Anchor {
+        Anchor { place: Place::Detached(at), quote }
+    }
+
+    /// At `place` in `text`, with `quote` remembered in case it is
+    /// detached.
+    pub fn at(text: &str, place: Place, quote: String) -> Anchor {
+        let mut a = Anchor::detached(place.start(), quote);
+        a.follow(text, place);
+        a
+    }
+
+    pub fn place(&self) -> &Place {
+        &self.place
+    }
+
+    pub fn quote(&self) -> &str {
+        &self.quote
+    }
+
+    /// The text's range, or `None` if it was deleted.
+    pub fn range(&self) -> Option<Range<usize>> {
+        match &self.place {
+            Place::On(r) => Some(r.clone()),
+            Place::Detached(_) => None,
+        }
+    }
+
+    /// Where the text starts, or was.
+    pub fn start(&self) -> usize {
+        self.place.start()
+    }
+
+    pub fn is_detached(&self) -> bool {
+        matches!(self.place, Place::Detached(_))
+    }
+
+    /// Moves the anchor to `now`, where its text is in `text` (the
+    /// document now). On text, the quote becomes that text; an empty range
+    /// detaches it, and a detached anchor keeps its quote.
+    pub fn follow(&mut self, text: &str, now: Place) {
+        match now {
+            Place::On(r) => match text.get(r.clone()).filter(|q| !q.is_empty()) {
+                Some(q) => {
+                    self.quote = q.to_string();
+                    self.place = Place::On(r);
+                }
+                None => self.place = Place::Detached(r.start.min(text.len())),
+            },
+            Place::Detached(at) => self.place = Place::Detached(at.min(text.len())),
+        }
+    }
+}
 
 /// Maps byte offsets in an old version of a document to a new version.
 pub struct OffsetMap {
@@ -82,11 +196,17 @@ impl OffsetMap {
         0
     }
 
-    /// Maps a range; `None` if all of its text was deleted.
-    pub fn map_range(&self, r: Range<usize>) -> Result<Range<usize>, usize> {
-        let start = self.map_start(r.start);
-        let end = self.map_end(r.end);
-        if start < end { Ok(start..end) } else { Err(start.min(self.new_len)) }
+    /// Maps a place: text all of which was deleted is detached where it
+    /// was.
+    pub fn map(&self, p: &Place) -> Place {
+        match p {
+            Place::On(r) => {
+                let start = self.map_start(r.start);
+                let end = self.map_end(r.end);
+                if start < end { Place::On(start..end) } else { Place::Detached(start.min(self.new_len)) }
+            }
+            Place::Detached(at) => Place::Detached(self.map_start(*at).min(self.new_len)),
+        }
     }
 }
 
@@ -146,7 +266,10 @@ mod tests {
     fn mapped(old: &str, new: &str, quote: &str) -> Result<String, usize> {
         let s = old.find(quote).unwrap();
         let m = OffsetMap::new(old, new);
-        m.map_range(s..s + quote.len()).map(|r| new[r].to_string())
+        match m.map(&Place::On(s..s + quote.len())) {
+            Place::On(r) => Ok(new[r].to_string()),
+            Place::Detached(at) => Err(at),
+        }
     }
 
     #[test]
@@ -193,6 +316,31 @@ mod tests {
     #[test]
     fn detaches_when_deleted() {
         assert!(mapped("keep this gone text", "keep text", "this gone").is_err());
+    }
+
+    #[test]
+    fn anchors_on_nothing_cannot_be_made() {
+        assert!(Anchor::on("abc", 1..1).is_none());
+        assert!(Anchor::on("abc", 2..9).is_none());
+        let a = Anchor::on("abc", 1..3).unwrap();
+        assert_eq!((a.quote(), a.range()), ("bc", Some(1..3)));
+        assert!(serde_json::from_str::<Anchor>(r#"{"place":{"on":{"start":2,"end":2}},"quote":""}"#).is_err());
+        let back: Anchor = serde_json::from_str(&serde_json::to_string(&a).unwrap()).unwrap();
+        assert_eq!(back, a);
+    }
+
+    #[test]
+    fn following_keeps_the_quote_of_deleted_text() {
+        let mut a = Anchor::on("one two", 4..7).unwrap();
+        a.follow("one ", Place::Detached(4));
+        assert_eq!((a.quote(), a.place()), ("two", &Place::Detached(4)));
+        // An empty range is deleted text too.
+        let mut b = Anchor::on("one two", 4..7).unwrap();
+        b.follow("one two", Place::On(4..4));
+        assert_eq!((b.quote(), b.is_detached()), ("two", true));
+        // Found again, it takes the text there.
+        a.follow("one TWO", Place::On(4..7));
+        assert_eq!((a.quote(), a.range()), ("TWO", Some(4..7)));
     }
 
     #[test]

@@ -588,7 +588,7 @@ final class ThreadCard: GutterCard {
             row.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
             views.append(row)
 
-            if i == 0 && thread.detached {
+            if i == 0 && thread.place.isDetached {
                 let q = cardText("“\(thread.quote.trimmingCharacters(in: .whitespacesAndNewlines))”",
                                       font: NSFontManager.shared.convert(small, toHaveTrait: .italicFontMask),
                                       color: .secondaryLabelColor)

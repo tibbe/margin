@@ -1,0 +1,40 @@
+# Anchors: a thread whose text is deleted keeps its quote, through Delete
+# and Undo; a draft whose text is gone cannot post a thread on nothing.
+reset Keep this. Gone text here.\n
+save
+select Gone text
+key cmd-opt-m
+compose Why?
+key cmd-enter
+wait 100
+comments
+# Deleting the commented text detaches the thread.
+select Gone text
+key backspace
+save
+wait 100
+comments
+sh margin comments doc.md | head -4
+# Deleting the thread and undoing it brings it back detached, with its quote.
+click-card 1
+wait 100
+action marginDeleteComment:
+wait 100
+comments
+key cmd-z
+wait 100
+comments
+sh margin comments doc.md | head -4
+# A draft on text an agent then deletes posts nothing, and stays.
+key escape
+select this
+key cmd-opt-m
+external Keep here.\n
+wait-text Keep here.
+comments
+compose Why?
+key cmd-enter
+wait 100
+banner
+comments
+stored

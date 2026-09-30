@@ -187,6 +187,8 @@ Every editor produces the same source for the same keys. The choices:
   the thread, which stays where the text was and keeps the old quote.
 - A new comment's span is trimmed of whitespace and hidden syntax; without a
   selection it takes the word at the cursor. The document is saved first.
+  If its text is deleted before it is posted, it doesn't post (there is
+  nothing to comment on) and the draft stays, so its words aren't lost.
 - Cards never overlap: the focused card sits beside its text and the rest
   stack around it. When threads overlap, the cursor focuses the innermost.
 - Clicks in the gutter never move the text cursor, and document commands do

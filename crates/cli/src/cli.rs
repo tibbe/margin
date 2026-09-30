@@ -4,7 +4,7 @@
 use margin_core::comments::anchor::line_col;
 use margin_core::comments::export::{for_agent, shell_word};
 use margin_core::comments::handoff::Waiter;
-use margin_core::comments::{all_stores, read_doc, Author, Comments, Status, Store, Thread};
+use margin_core::comments::{all_stores, read_doc, Author, Comments, Store, Thread};
 use anyhow::{bail, Result};
 use chrono::{DateTime, Local, Utc};
 use clap::{Parser, Subcommand};
@@ -167,7 +167,8 @@ struct JsonMessage<'a> {
 struct JsonThread<'a> {
     doc: &'a Path,
     id: u64,
-    status: Status,
+    /// `open` or `resolved`.
+    status: &'static str,
     /// The commented text was deleted from the document.
     detached: bool,
     start: Pos,
@@ -180,16 +181,17 @@ struct JsonThread<'a> {
 }
 
 fn json_thread<'a>(doc: &'a Path, text: &str, t: &'a Thread) -> JsonThread<'a> {
-    let (l1, c1) = line_col(text, t.anchor.start);
-    let (l2, c2) = line_col(text, t.anchor.end);
+    let range = t.anchor.range().unwrap_or(t.anchor.start()..t.anchor.start());
+    let (l1, c1) = line_col(text, range.start);
+    let (l2, c2) = line_col(text, range.end);
     JsonThread {
         doc,
         id: t.id,
-        status: t.status,
-        detached: t.anchor.detached,
+        status: if t.is_open() { "open" } else { "resolved" },
+        detached: t.anchor.is_detached(),
         start: Pos { line: l1, column: c1 },
         end: Pos { line: l2, column: c2 },
-        quote: &t.anchor.quote,
+        quote: t.anchor.quote(),
         messages: t
             .messages
             .iter()
@@ -199,7 +201,7 @@ fn json_thread<'a>(doc: &'a Path, text: &str, t: &'a Thread) -> JsonThread<'a> {
                 body: &m.body,
             })
             .collect(),
-        resolved_at: t.resolved_at,
+        resolved_at: t.resolved_at(),
     }
 }
 
@@ -221,11 +223,11 @@ fn quote_line(q: &str) -> String {
 }
 
 fn format_thread(out: &mut String, doc: &Path, text: &str, t: &Thread) {
-    let (line, col) = line_col(text, t.anchor.start);
-    let status = match (t.status, t.anchor.detached) {
-        (Status::Open, false) => "open".to_string(),
-        (Status::Open, true) => "open, detached: the commented text was deleted".to_string(),
-        (Status::Resolved, _) => "resolved".to_string(),
+    let (line, col) = line_col(text, t.anchor.start());
+    let status = match (t.is_open(), t.anchor.is_detached()) {
+        (true, false) => "open",
+        (true, true) => "open, detached: the commented text was deleted",
+        (false, _) => "resolved",
     };
     out.push_str(&format!(
         "#{} {}:{}:{} ({})\n",
@@ -235,7 +237,7 @@ fn format_thread(out: &mut String, doc: &Path, text: &str, t: &Thread) {
         col,
         status
     ));
-    out.push_str(&format!("  on {}\n", quote_line(&t.anchor.quote)));
+    out.push_str(&format!("  on {}\n", quote_line(t.anchor.quote())));
     for m in &t.messages {
         let who = match m.author {
             Author::User => "user",
@@ -418,7 +420,7 @@ pub fn run(cmd: Command) -> Result<i32> {
             let (store, _, text) = load(&file)?;
             let range = find_quote(&text, &quote)?;
             let (l, c) = line_col(&text, range.start);
-            let id = store.update(|cm| Ok(cm.add(&text, range.clone(), &message, Author::Agent)))?;
+            let id = store.update(|cm| cm.add(&text, range.clone(), &message, Author::Agent))?;
             print(&format!("Added #{id} at {}:{l}:{c}.", display_path(&store.doc)));
         }
         Command::Wait { files, json } => {
