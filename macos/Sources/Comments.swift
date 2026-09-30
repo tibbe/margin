@@ -520,13 +520,16 @@ final class CommentLayer {
         lm.removeTemporaryAttribute(.backgroundColor, forCharacterRange: all)
         let dark = view.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
         // A highlight replaces the text's own background, so inline code
-        // gets its fill drawn over the highlight instead.
+        // gets its fill drawn over the highlight instead. Hidden syntax
+        // gets none: a fill starting on it also covers the character
+        // before, which a see-through highlight then shows doubled.
         let appearance = view.effectiveAppearance
         func mark(_ a: Int, _ b: Int, _ color: NSColor) {
             let s = max(0, min(a, len)), e = max(0, min(b, len))
             guard s < e, let storage = view.textStorage else { return }
-            storage.enumerateAttribute(.backgroundColor, in: NSRange(location: s, length: e - s)) { own, r, _ in
-                let c = (own as? NSColor).map { Theme.composite($0, over: color, in: appearance) } ?? color
+            storage.enumerateAttributes(in: NSRange(location: s, length: e - s)) { attrs, r, _ in
+                if attrs[.marginHidden] != nil { return }
+                let c = (attrs[.backgroundColor] as? NSColor).map { Theme.composite($0, over: color, in: appearance) } ?? color
                 lm.addTemporaryAttribute(.backgroundColor, value: c, forCharacterRange: r)
             }
         }
