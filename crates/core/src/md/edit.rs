@@ -119,8 +119,8 @@ fn normalize(mut changes: Vec<Change>) -> Vec<Change> {
 pub fn map_pos(changes: &[Change], pos: usize, stick_after: bool) -> usize {
     let mut delta: isize = 0;
     for c in changes {
-        let before = c.range.end < pos
-            || (c.range.end == pos && (!c.range.is_empty() || stick_after));
+        let before =
+            c.range.end < pos || (c.range.end == pos && (!c.range.is_empty() || stick_after));
         if before {
             delta += c.text.len() as isize - c.range.len() as isize;
         } else if c.range.start < pos {
@@ -226,7 +226,9 @@ fn next_grapheme(src: &str, p: usize, hi: usize) -> usize {
 /// Replaces everything but `>` with spaces: the prefix a continuation line
 /// needs to stay in the same containers.
 fn blank_out(s: &str) -> String {
-    s.chars().map(|c| if c == '>' { '>' } else { ' ' }).collect()
+    s.chars()
+        .map(|c| if c == '>' { '>' } else { ' ' })
+        .collect()
 }
 
 /// The prefix a new line needs to continue the innermost container of
@@ -264,7 +266,11 @@ fn next_item_marker(src: &str, doc: &Doc, i: usize) -> String {
     } else {
         marker.to_string()
     };
-    let body = if body.ends_with(' ') { body } else { format!("{body} ") };
+    let body = if body.ends_with(' ') {
+        body
+    } else {
+        format!("{body} ")
+    };
     let task = if it.task.is_some() { "[ ] " } else { "" };
     format!("{outer}{body}{task}")
 }
@@ -393,8 +399,12 @@ fn joins_previous(doc: &Doc, li: usize) -> bool {
 /// the next line continues the same paragraph.
 fn ends_with_hard_break(doc: &Doc, line: usize) -> bool {
     let l = &doc.lines[line];
-    l.kind == LineKind::Paragraph && doc.hidden_run_at(l.end).is_some_and(|r| r.end == l.end)
-        && doc.hidden.iter().any(|r| r.end == l.end && r.start + 1 == l.end)
+    l.kind == LineKind::Paragraph
+        && doc.hidden_run_at(l.end).is_some_and(|r| r.end == l.end)
+        && doc
+            .hidden
+            .iter()
+            .any(|r| r.end == l.end && r.start + 1 == l.end)
 }
 
 /// Enter. `soft` (Shift+Enter) inserts a line break inside the paragraph.
@@ -482,7 +492,10 @@ pub fn newline(src: &str, doc: &Doc, pos: usize, soft: bool) -> Plan {
             let (close, open) = split_inlines(src, doc, p);
             let before = &src[line.content_start..p];
             let after = &src[p..line.end];
-            let ws = (before.len() - before.trim_end().len(), after.len() - after.trim_start().len());
+            let ws = (
+                before.len() - before.trim_end().len(),
+                after.len() - after.trim_start().len(),
+            );
             (p - ws.0..p + ws.1, format!("{close}\n{marker}{open}"))
         };
         let n = t.len();
@@ -530,14 +543,20 @@ fn renumber_after(src: &str, doc: &Doc, i: usize, delta: i64) -> Vec<Change> {
     }
     let number = |k: usize| -> Option<(Range<usize>, i64)> {
         let m = doc.items[k].marker.clone();
-        let d = src[m.clone()].bytes().take_while(u8::is_ascii_digit).count();
+        let d = src[m.clone()]
+            .bytes()
+            .take_while(u8::is_ascii_digit)
+            .count();
         let n = src[m.start..m.start + d].parse().ok()?;
         Some((m.start..m.start + d, n))
     };
-    let sequential = list.items.windows(2).all(|w| match (number(w[0]), number(w[1])) {
-        (Some((_, a)), Some((_, b))) => b == a + 1,
-        _ => false,
-    });
+    let sequential = list
+        .items
+        .windows(2)
+        .all(|w| match (number(w[0]), number(w[1])) {
+            (Some((_, a)), Some((_, b))) => b == a + 1,
+            _ => false,
+        });
     if !sequential {
         return Vec::new();
     }
@@ -575,7 +594,10 @@ fn exit_list_item(src: &str, doc: &Doc, i: usize, li: usize) -> Plan {
     let outer = blank_out(&src[line.start..item.marker.start]);
     let t = format!("\n{outer}");
     let n = t.len();
-    Plan::at(vec![Change::replace(line.start..line.end, t)], line.start + n)
+    Plan::at(
+        vec![Change::replace(line.start..line.end, t)],
+        line.start + n,
+    )
 }
 
 // ---------------------------------------------------------------------------
@@ -624,7 +646,9 @@ fn delete_ranges(src: &str, doc: &Doc, del: Vec<Range<usize>>, old_cursor: usize
             .map(|(o, c)| (content.start + o, c))
             .filter(|(p, _)| !contains(&del, *p))
             .collect();
-        let visible = remaining.iter().any(|(p, c)| !c.is_whitespace() && !doc.is_hidden_byte(*p));
+        let visible = remaining
+            .iter()
+            .any(|(p, c)| !c.is_whitespace() && !doc.is_hidden_byte(*p));
         if !visible && !(e.kind == InlineKind::Code && !remaining.is_empty()) {
             del.push(e.open.clone());
             del.push(e.close.clone());
@@ -634,13 +658,25 @@ fn delete_ranges(src: &str, doc: &Doc, del: Vec<Range<usize>>, old_cursor: usize
         if e.kind == InlineKind::Code {
             continue;
         }
-        let lead: Vec<(usize, char)> = remaining.iter().take_while(|(_, c)| c.is_whitespace()).copied().collect();
-        let trail: Vec<(usize, char)> = remaining.iter().rev().take_while(|(_, c)| c.is_whitespace()).copied().collect();
+        let lead: Vec<(usize, char)> = remaining
+            .iter()
+            .take_while(|(_, c)| c.is_whitespace())
+            .copied()
+            .collect();
+        let trail: Vec<(usize, char)> = remaining
+            .iter()
+            .rev()
+            .take_while(|(_, c)| c.is_whitespace())
+            .copied()
+            .collect();
         if !lead.is_empty() {
             for (p, c) in &lead {
                 del.push(*p..*p + c.len_utf8());
             }
-            inserts.push(Change::insert(e.open.start, lead.iter().map(|(_, c)| c).collect::<String>()));
+            inserts.push(Change::insert(
+                e.open.start,
+                lead.iter().map(|(_, c)| c).collect::<String>(),
+            ));
             if old_cursor <= lead[0].0 {
                 cursor_override = Some((e.open.start, false));
             }
@@ -649,7 +685,10 @@ fn delete_ranges(src: &str, doc: &Doc, del: Vec<Range<usize>>, old_cursor: usize
             for (p, c) in &trail {
                 del.push(*p..*p + c.len_utf8());
             }
-            inserts.push(Change::insert(e.close.end, trail.iter().rev().map(|(_, c)| c).collect::<String>()));
+            inserts.push(Change::insert(
+                e.close.end,
+                trail.iter().rev().map(|(_, c)| c).collect::<String>(),
+            ));
             let (p, c) = trail[0];
             if old_cursor >= p + c.len_utf8() {
                 cursor_override = Some((e.close.end, true));
@@ -709,7 +748,9 @@ fn subtract(set: Vec<Range<usize>>, r: &Range<usize>) -> Vec<Range<usize>> {
 }
 
 fn prev_visible_line(doc: &Doc, li: usize) -> Option<usize> {
-    (0..li).rev().find(|&i| doc.lines[i].kind != LineKind::Blank)
+    (0..li)
+        .rev()
+        .find(|&i| doc.lines[i].kind != LineKind::Blank)
 }
 
 fn next_visible_line(doc: &Doc, li: usize) -> Option<usize> {
@@ -759,7 +800,11 @@ fn backspace_at_start(src: &str, doc: &Doc, li: usize) -> Plan {
     {
         let it = &doc.items[i];
         if let Some((_, task)) = &it.task {
-            return Plan::mapped(vec![Change::delete(task.start..line.content_start)], task.start, false);
+            return Plan::mapped(
+                vec![Change::delete(task.start..line.content_start)],
+                task.start,
+                false,
+            );
         }
         if it.depth > 1 {
             let parent = line.containers.iter().rev().skip(1).find_map(|c| match c {
@@ -831,9 +876,11 @@ fn backspace_at_start(src: &str, doc: &Doc, li: usize) -> Plan {
             let cb = &doc.code_blocks[ci];
             let content = cb.content_lines();
             if content.start == li {
-                let empty = content
-                    .clone()
-                    .all(|l| src[doc.lines[l].content_start..doc.lines[l].end].trim().is_empty());
+                let empty = content.clone().all(|l| {
+                    src[doc.lines[l].content_start..doc.lines[l].end]
+                        .trim()
+                        .is_empty()
+                });
                 if empty && cb.fenced {
                     let start = doc.lines[cb.first_line].start;
                     let end = doc.line_end_incl(cb.last_line);
@@ -843,7 +890,11 @@ fn backspace_at_start(src: &str, doc: &Doc, li: usize) -> Plan {
             }
         }
         let prev = &doc.lines[li - 1];
-        return Plan::mapped(vec![Change::delete(prev.end..line.content_start)], prev.end, false);
+        return Plan::mapped(
+            vec![Change::delete(prev.end..line.content_start)],
+            prev.end,
+            false,
+        );
     }
 
     let Some(pi) = prev_visible_line(doc, li) else {
@@ -923,7 +974,10 @@ pub fn replace_plain(src: &str, doc: &Doc, range: Range<usize>, with: &str) -> O
             return None;
         }
     }
-    Some(Plan::at(vec![Change::replace(range.clone(), with)], range.start + with.len()))
+    Some(Plan::at(
+        vec![Change::replace(range.clone(), with)],
+        range.start + with.len(),
+    ))
 }
 
 /// Deletes a selection with word-processor semantics.
@@ -936,7 +990,8 @@ pub fn delete_range(src: &str, doc: &Doc, range: Range<usize>) -> Plan {
     let a_line = &doc.lines[la];
     let b_line = &doc.lines[lb];
     let a_at_start = a_line.kind == LineKind::Blank || at_visual_start(doc, la, range.start);
-    let b_at_start = lb > la && (range.end <= b_line.content_start || b_line.kind == LineKind::Blank);
+    let b_at_start =
+        lb > la && (range.end <= b_line.content_start || b_line.kind == LineKind::Blank);
     if a_at_start && b_at_start {
         // Whole lines: the following line keeps its own block type.
         return delete_ranges(src, doc, vec![a_line.start..b_line.start], a_line.start);
@@ -955,8 +1010,13 @@ pub fn delete_range(src: &str, doc: &Doc, range: Range<usize>) -> Plan {
     // From the start of a paragraph or heading, the whitespace after the
     // selection would start the block: Markdown hides it (and four spaces
     // would turn a paragraph into code), so it goes too.
-    let b = if matches!(a_line.kind, LineKind::Paragraph | LineKind::Heading(_)) && at_visual_start(doc, la, a) {
-        b + src[b..].bytes().take_while(|&c| c == b' ' || c == b'\t').count()
+    let b = if matches!(a_line.kind, LineKind::Paragraph | LineKind::Heading(_))
+        && at_visual_start(doc, la, a)
+    {
+        b + src[b..]
+            .bytes()
+            .take_while(|&c| c == b' ' || c == b'\t')
+            .count()
     } else {
         b
     };
@@ -1199,7 +1259,12 @@ pub fn set_block(src: &str, doc: &Doc, sel: Range<usize>, kind: BlockType) -> Pl
     let first = doc.line_index(sel.start);
     let last = doc.line_index(sel.end.max(sel.start));
     let lines: Vec<usize> = (first..=last)
-        .filter(|&l| matches!(doc.lines[l].kind, LineKind::Paragraph | LineKind::Heading(_)))
+        .filter(|&l| {
+            matches!(
+                doc.lines[l].kind,
+                LineKind::Paragraph | LineKind::Heading(_)
+            )
+        })
         .collect();
     let cursor_line = doc.line_index(sel.end);
     let cursor_off = sel.end.saturating_sub(doc.lines[cursor_line].content_start);
@@ -1238,7 +1303,9 @@ pub fn set_block(src: &str, doc: &Doc, sel: Range<usize>, kind: BlockType) -> Pl
         }
         BlockType::Bullet | BlockType::Numbered | BlockType::Task => {
             let is_kind = |l: usize| -> bool {
-                let Some(i) = line_syntax(src, doc, l).item else { return false };
+                let Some(i) = line_syntax(src, doc, l).item else {
+                    return false;
+                };
                 let it = &doc.items[i];
                 let ordered = doc.lists[it.list].ordered;
                 match kind {
@@ -1260,7 +1327,10 @@ pub fn set_block(src: &str, doc: &Doc, sel: Range<usize>, kind: BlockType) -> Pl
                 let syn = line_syntax(src, doc, l);
                 let line = &doc.lines[l];
                 let marker_end = match syn.item {
-                    Some(i) => doc.items[i].task.as_ref().map_or(line.content_start, |_| line.content_start),
+                    Some(i) => doc.items[i]
+                        .task
+                        .as_ref()
+                        .map_or(line.content_start, |_| line.content_start),
                     None => syn.base,
                 };
                 let old = syn.base..marker_end.max(syn.base);
@@ -1308,7 +1378,12 @@ pub fn set_block(src: &str, doc: &Doc, sel: Range<usize>, kind: BlockType) -> Pl
             }
         }
         BlockType::Quote => {
-            let quoted = |l: usize| doc.lines[l].containers.iter().any(|c| matches!(c, Container::Quote(_)));
+            let quoted = |l: usize| {
+                doc.lines[l]
+                    .containers
+                    .iter()
+                    .any(|c| matches!(c, Container::Quote(_)))
+            };
             let toggle_off = lines.iter().all(|&l| quoted(l));
             let (a, b) = (lines[0], *lines.last().unwrap());
             for l in a..=b {
@@ -1357,7 +1432,10 @@ fn toggle_code_block(src: &str, doc: &Doc, first: usize, last: usize, cursor: us
             changes.push(Change::delete(doc.lines[o].start..doc.line_end_incl(o)));
         }
         if let Some(c) = cb.close_line {
-            let start = doc.lines[c].start.saturating_sub(1).max(doc.lines[cb.first_line].start);
+            let start = doc.lines[c]
+                .start
+                .saturating_sub(1)
+                .max(doc.lines[cb.first_line].start);
             changes.push(Change::delete(start..doc.lines[c].end));
         }
         return Plan::mapped(changes, cursor, false);
@@ -1398,7 +1476,9 @@ pub fn indent(src: &str, doc: &Doc, sel: Range<usize>, outdent: bool) -> Plan {
             }
             continue;
         }
-        let Some(i) = line_syntax(src, doc, li).item else { continue };
+        let Some(i) = line_syntax(src, doc, li).item else {
+            continue;
+        };
         handled = true;
         let it = &doc.items[i];
         let siblings = &doc.lists[it.list].items;
@@ -1421,7 +1501,11 @@ pub fn indent(src: &str, doc: &Doc, sel: Range<usize>, outdent: bool) -> Plan {
                 .saturating_sub(pit.marker.start - doc.lines[pit.line].start);
             for &l in &item_lines {
                 let ln = &doc.lines[l];
-                let at = if l == li { it.marker.start - remove } else { ln.start + (it.marker.start - line.start) - remove };
+                let at = if l == li {
+                    it.marker.start - remove
+                } else {
+                    ln.start + (it.marker.start - line.start) - remove
+                };
                 let n = src[at.min(ln.end)..ln.end]
                     .bytes()
                     .take(remove)
@@ -1447,14 +1531,25 @@ pub fn indent(src: &str, doc: &Doc, sel: Range<usize>, outdent: bool) -> Plan {
             // only a list starting at 1 can interrupt a paragraph, so "2."
             // would otherwise read as text continuing the item above.
             if doc.lists[it.list].ordered {
-                let digits = src[it.marker.clone()].bytes().take_while(u8::is_ascii_digit).count();
+                let digits = src[it.marker.clone()]
+                    .bytes()
+                    .take_while(u8::is_ascii_digit)
+                    .count();
                 let continues_sublist = (0..li)
                     .rev()
                     .find(|&l| doc.lines[l].kind != LineKind::Blank)
                     .and_then(|l| doc.item_on_line(l))
-                    .is_some_and(|k| doc.items[k].depth > it.depth && doc.lists[doc.items[k].list].ordered);
-                if !continues_sublist && digits > 0 && &src[it.marker.start..it.marker.start + digits] != "1" {
-                    changes.push(Change::replace(it.marker.start..it.marker.start + digits, "1"));
+                    .is_some_and(|k| {
+                        doc.items[k].depth > it.depth && doc.lists[doc.items[k].list].ordered
+                    });
+                if !continues_sublist
+                    && digits > 0
+                    && &src[it.marker.start..it.marker.start + digits] != "1"
+                {
+                    changes.push(Change::replace(
+                        it.marker.start..it.marker.start + digits,
+                        "1",
+                    ));
                 }
             }
             for &l in &item_lines {
@@ -1462,7 +1557,8 @@ pub fn indent(src: &str, doc: &Doc, sel: Range<usize>, outdent: bool) -> Plan {
                 if l == li {
                     changes.push(Change::insert(it.marker.start, pad.clone()));
                 } else if ln.kind != LineKind::Blank {
-                    let at = ln.start + src[ln.start..ln.end].len() - src[ln.start..ln.end].trim_start_matches(['>']).len();
+                    let at = ln.start + src[ln.start..ln.end].len()
+                        - src[ln.start..ln.end].trim_start_matches(['>']).len();
                     changes.push(Change::insert(at, pad.clone()));
                 }
             }
@@ -1498,11 +1594,12 @@ pub fn make_link(src: &str, doc: &Doc, sel: Range<usize>, url: &str) -> Plan {
         visual_pos(doc, sel.start)..visual_pos(doc, sel.end)
     };
     // Editing an existing link's destination.
-    if let Some(e) = doc
-        .inlines
-        .iter()
-        .find(|e| e.kind == InlineKind::Link && e.content().start <= sel.start && sel.end <= e.content().end && e.close.len() > 1)
-    {
+    if let Some(e) = doc.inlines.iter().find(|e| {
+        e.kind == InlineKind::Link
+            && e.content().start <= sel.start
+            && sel.end <= e.content().end
+            && e.close.len() > 1
+    }) {
         let new_close = format!("]({url})");
         let changes = vec![Change::replace(e.close.clone(), new_close)];
         return Plan::mapped(changes, sel.end, false);
@@ -1524,14 +1621,20 @@ pub fn remove_link(doc: &Doc, pos: usize) -> Option<Plan> {
     let e = doc.inlines.iter().find(|e| {
         e.kind == InlineKind::Link && e.content().start <= pos && pos <= e.content().end
     })?;
-    let changes = vec![Change::delete(e.open.clone()), Change::delete(e.close.clone())];
+    let changes = vec![
+        Change::delete(e.open.clone()),
+        Change::delete(e.close.clone()),
+    ];
     Some(Plan::mapped(changes, pos, false))
 }
 
 /// Markdown for a selection, with inline syntax balanced: selecting from
 /// the middle of a bold phrase yields `**…**`, not a dangling `**`.
 pub fn copy_source(src: &str, doc: &Doc, range: Range<usize>) -> String {
-    let (a, b) = (range.start.min(range.end), range.end.max(range.start).min(src.len()));
+    let (a, b) = (
+        range.start.min(range.end),
+        range.end.max(range.start).min(src.len()),
+    );
     let mut prefix = String::new();
     let mut suffix = String::new();
     let mut order: Vec<&super::doc::Inline> = doc.inlines.iter().collect();
@@ -1626,8 +1729,14 @@ mod tests {
             let at = src.find(needle).unwrap();
             replace_plain(src, &doc, at..at + needle.len(), with).map(|p| p.apply(src))
         };
-        assert_eq!(rep("Some **bold words** here\n", "words", "W").as_deref(), Some("Some **bold W** here\n"));
-        assert_eq!(rep("two\nweeks\n", "two\nweeks", "2w").as_deref(), Some("2w\n"));
+        assert_eq!(
+            rep("Some **bold words** here\n", "words", "W").as_deref(),
+            Some("Some **bold W** here\n")
+        );
+        assert_eq!(
+            rep("two\nweeks\n", "two\nweeks", "2w").as_deref(),
+            Some("2w\n")
+        );
         assert_eq!(rep("**bold** text\n", "bold** text", "x"), None);
         assert_eq!(rep("- a\n  b\n", "a\n  b", "x"), None);
     }
@@ -1699,8 +1808,14 @@ mod tests {
 
     #[test]
     fn typing_links_tasks_and_numbers() {
-        assert_eq!(keys("|", "see [docs](https://x) now"), "see [docs](https://x) now|");
-        assert_eq!(keys("|", "- [ ] buy milk⏎eggs"), "- [ ] buy milk\n- [ ] eggs|");
+        assert_eq!(
+            keys("|", "see [docs](https://x) now"),
+            "see [docs](https://x) now|"
+        );
+        assert_eq!(
+            keys("|", "- [ ] buy milk⏎eggs"),
+            "- [ ] buy milk\n- [ ] eggs|"
+        );
         assert_eq!(keys("|", "1. one⏎two⏎⏎after"), "1. one\n2. two\n\nafter|");
         assert_eq!(keys("|", "* a⏎b"), "* a\n* b|");
     }
@@ -1770,7 +1885,10 @@ mod tests {
     #[test]
     fn tab_on_ordered_item_starts_sublist_at_one() {
         assert_eq!(keys("1. a\n2. |b\n", "⇥"), "1. a\n   1. |b\n");
-        assert_eq!(keys("1. a\n   1. x\n2. |b\n", "⇥"), "1. a\n   1. x\n   2. |b\n");
+        assert_eq!(
+            keys("1. a\n   1. x\n2. |b\n", "⇥"),
+            "1. a\n   1. x\n   2. |b\n"
+        );
     }
 
     #[test]
@@ -1935,10 +2053,7 @@ mod tests {
 
     #[test]
     fn delete_selection_keeps_partner_markers() {
-        assert_eq!(
-            sel("a **b[old** te]xt\n", delete_range),
-            "a **b|**xt\n"
-        );
+        assert_eq!(sel("a **b[old** te]xt\n", delete_range), "a **b|**xt\n");
     }
 
     #[test]
@@ -1977,11 +2092,21 @@ mod tests {
     #[test]
     fn toggle_bold_wraps_and_unwraps() {
         assert_eq!(
-            sel("a [bold] c\n", |s, d, r| toggle_inline(s, d, r, InlineKind::Strong)),
+            sel("a [bold] c\n", |s, d, r| toggle_inline(
+                s,
+                d,
+                r,
+                InlineKind::Strong
+            )),
             "a **[bold]** c\n"
         );
         assert_eq!(
-            sel("a **[bold]** c\n", |s, d, r| toggle_inline(s, d, r, InlineKind::Strong)),
+            sel("a **[bold]** c\n", |s, d, r| toggle_inline(
+                s,
+                d,
+                r,
+                InlineKind::Strong
+            )),
             "a [bold] c\n"
         );
     }
@@ -1989,24 +2114,40 @@ mod tests {
     #[test]
     fn toggle_bold_trims_whitespace_and_splits() {
         assert_eq!(
-            sel("a[ bold ]c\n", |s, d, r| toggle_inline(s, d, r, InlineKind::Strong)),
+            sel("a[ bold ]c\n", |s, d, r| toggle_inline(
+                s,
+                d,
+                r,
+                InlineKind::Strong
+            )),
             "a **[bold]** c\n"
         );
         assert_eq!(
-            sel("**ab [cd] ef**\n", |s, d, r| toggle_inline(s, d, r, InlineKind::Strong)),
+            sel("**ab [cd] ef**\n", |s, d, r| toggle_inline(
+                s,
+                d,
+                r,
+                InlineKind::Strong
+            )),
             "**ab** [cd] **ef**\n"
         );
     }
 
     #[test]
     fn toggle_bold_on_word_at_cursor() {
-        let out = run("a wo|rd c\n", |s, d, p| toggle_inline(s, d, p..p, InlineKind::Strong));
+        let out = run("a wo|rd c\n", |s, d, p| {
+            toggle_inline(s, d, p..p, InlineKind::Strong)
+        });
         assert_eq!(out.replace('|', ""), "a **word** c\n");
     }
 
     #[test]
     fn heading_commands() {
-        let h2 = |s: &str| run(s, |src, d, p| set_block(src, d, p..p, BlockType::Heading(2)));
+        let h2 = |s: &str| {
+            run(s, |src, d, p| {
+                set_block(src, d, p..p, BlockType::Heading(2))
+            })
+        };
         assert_eq!(h2("ti|tle\n"), "## ti|tle\n");
         assert_eq!(h2("# ti|tle\n"), "## ti|tle\n");
         assert_eq!(h2("## ti|tle\n"), "ti|tle\n");
@@ -2026,7 +2167,9 @@ mod tests {
 
     #[test]
     fn bullet_middle_of_list_off_separates() {
-        let out = run("- a\n- b|\n- c\n", |src, d, p| set_block(src, d, p..p, BlockType::Bullet));
+        let out = run("- a\n- b|\n- c\n", |src, d, p| {
+            set_block(src, d, p..p, BlockType::Bullet)
+        });
         assert_eq!(out, "- a\n\nb|\n\n- c\n");
     }
 
@@ -2073,7 +2216,12 @@ mod tests {
     #[test]
     fn links() {
         assert_eq!(
-            sel("see [docs] now\n", |s, d, r| make_link(s, d, r, "https://x")),
+            sel("see [docs] now\n", |s, d, r| make_link(
+                s,
+                d,
+                r,
+                "https://x"
+            )),
             "see [docs](https://x)| now\n"
         );
     }

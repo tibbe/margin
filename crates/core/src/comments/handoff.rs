@@ -8,7 +8,7 @@
 //! Waiters that started before the last send are on their way out, and
 //! don't count as waiting.
 
-use super::store::{data_dir, Store};
+use super::store::{Store, data_dir};
 use anyhow::{Context, Result};
 use std::fs::{self, File};
 use std::io::{ErrorKind, Write};
@@ -20,7 +20,10 @@ const RECORD: &str = "waiter";
 /// The directory holding a document's waiters and send count.
 fn dir(doc: &Path) -> Result<PathBuf> {
     let store = Store::for_doc(doc)?;
-    let stem = store.path.file_stem().context("comment store has no name")?;
+    let stem = store
+        .path
+        .file_stem()
+        .context("comment store has no name")?;
     Ok(data_dir().join("waiting").join(stem))
 }
 
@@ -113,7 +116,9 @@ pub fn waiting(doc: &Path) -> Result<usize> {
                 let _ = fs::remove_file(&path);
             }
             Err(_) => {
-                let seen: Option<u64> = fs::read_to_string(&path).ok().and_then(|s| s.trim().parse().ok());
+                let seen: Option<u64> = fs::read_to_string(&path)
+                    .ok()
+                    .and_then(|s| s.trim().parse().ok());
                 if seen == Some(sent) {
                     n += 1;
                 }
@@ -129,7 +134,9 @@ pub fn send(doc: &Path) -> Result<usize> {
     let n = waiting(doc)?;
     if n > 0 {
         let dir = dir(doc)?;
-        replace(&dir.join(SENT), &(sent_count(&dir) + 1).to_string(), |_| Ok(()))?;
+        replace(&dir.join(SENT), &(sent_count(&dir) + 1).to_string(), |_| {
+            Ok(())
+        })?;
     }
     Ok(n)
 }
@@ -228,7 +235,9 @@ mod tests {
 
     #[test]
     fn a_send_reaches_the_waiters_of_its_document_only() {
-        let _env = crate::comments::DATA_DIR_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _env = crate::comments::DATA_DIR_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         let root = std::env::temp_dir().join(format!("margin-handoff-{}", std::process::id()));
         fs::create_dir_all(&root).unwrap();
         unsafe { std::env::set_var("MARGIN_DATA_DIR", root.join("data")) };
@@ -261,7 +270,9 @@ mod tests {
 
     #[test]
     fn a_dead_waiters_record_is_dropped() {
-        let _env = crate::comments::DATA_DIR_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _env = crate::comments::DATA_DIR_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         let root = std::env::temp_dir().join(format!("margin-handoff-dead-{}", std::process::id()));
         fs::create_dir_all(&root).unwrap();
         unsafe { std::env::set_var("MARGIN_DATA_DIR", root.join("data")) };

@@ -89,7 +89,11 @@ pub fn for_agent(doc: &Path, text: &str, threads: &[Thread]) -> String {
     for t in threads {
         let a = &t.anchor;
         let at = match a.range() {
-            Some(r) => format!("`{name}:{}` \"{}\"", span(text, r.start, r.end), short_quote(a.quote())),
+            Some(r) => format!(
+                "`{name}:{}` \"{}\"",
+                span(text, r.start, r.end),
+                short_quote(a.quote())
+            ),
             None => format!(
                 "`{name}:{}` (the commented text, \"{}\", was deleted)",
                 span(text, a.start(), a.start()),
@@ -131,9 +135,17 @@ mod tests {
         let text = "# Plan\n\nSome **bold words** here.\nNext line with a naïve idea.\n";
         let mut c = Comments::new("/nowhere/plan.md".into());
         let naive = text.find("naïve idea").unwrap();
-        c.add(text, naive..naive + "naïve idea".len(), "Say more.\n\nWhat changes?", Author::Agent).unwrap();
+        c.add(
+            text,
+            naive..naive + "naïve idea".len(),
+            "Say more.\n\nWhat changes?",
+            Author::Agent,
+        )
+        .unwrap();
         let bold = text.find("bold words").unwrap();
-        let id = c.add(text, bold..bold + 10, "Italic instead?", Author::User).unwrap();
+        let id = c
+            .add(text, bold..bold + 10, "Italic instead?", Author::User)
+            .unwrap();
         c.reply(id, "Done.", Author::Agent).unwrap();
         assert_eq!(
             for_agent(Path::new("/nowhere/plan.md"), text, &c.threads),
@@ -155,7 +167,12 @@ mod tests {
         c.add(text, 4..7, "Why?", Author::User).unwrap();
         c.sync("one\n");
         let out = for_agent(Path::new("/x/a.md"), "one\n", &c.threads);
-        assert!(out.contains("#1 `/x/a.md:2:1` (the commented text, \"two\", was deleted)\n  - User: Why?"), "{out}");
+        assert!(
+            out.contains(
+                "#1 `/x/a.md:2:1` (the commented text, \"two\", was deleted)\n  - User: Why?"
+            ),
+            "{out}"
+        );
     }
 
     #[test]
@@ -163,7 +180,12 @@ mod tests {
         let text = "one two\n";
         let mut c = Comments::new("/x/my plan.md".into());
         let id = c.add(text, 0..3, "Why?", Author::User).unwrap();
-        for (r, a) in [("Because.", Author::Agent), ("Not enough.", Author::User), ("Rewrote it.", Author::Agent), ("Better,\nbut shorter?", Author::User)] {
+        for (r, a) in [
+            ("Because.", Author::Agent),
+            ("Not enough.", Author::User),
+            ("Rewrote it.", Author::Agent),
+            ("Better,\nbut shorter?", Author::User),
+        ] {
             c.reply(id, r, a).unwrap();
         }
         let short = c.add(text, 4..7, "Typo?", Author::User).unwrap();

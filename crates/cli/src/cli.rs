@@ -1,13 +1,13 @@
 //! The command-line interface: opening documents in the app, and the
 //! commands coding agents use to read and answer comments.
 
+use anyhow::{Result, bail};
+use chrono::{DateTime, Local, Utc};
+use clap::{Parser, Subcommand};
 use margin_core::comments::anchor::line_col;
 use margin_core::comments::export::{for_agent, shell_word};
 use margin_core::comments::handoff::Waiter;
-use margin_core::comments::{all_stores, read_doc, Author, Comments, Store, Thread};
-use anyhow::{bail, Result};
-use chrono::{DateTime, Local, Utc};
-use clap::{Parser, Subcommand};
+use margin_core::comments::{Author, Comments, Store, Thread, all_stores, read_doc};
 use serde::Serialize;
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -181,7 +181,10 @@ struct JsonThread<'a> {
 }
 
 fn json_thread<'a>(doc: &'a Path, text: &str, t: &'a Thread) -> JsonThread<'a> {
-    let range = t.anchor.range().unwrap_or(t.anchor.start()..t.anchor.start());
+    let range = t
+        .anchor
+        .range()
+        .unwrap_or(t.anchor.start()..t.anchor.start());
     let (l1, c1) = line_col(text, range.start);
     let (l2, c2) = line_col(text, range.end);
     JsonThread {
@@ -189,8 +192,14 @@ fn json_thread<'a>(doc: &'a Path, text: &str, t: &'a Thread) -> JsonThread<'a> {
         id: t.id,
         status: if t.is_open() { "open" } else { "resolved" },
         detached: t.anchor.is_detached(),
-        start: Pos { line: l1, column: c1 },
-        end: Pos { line: l2, column: c2 },
+        start: Pos {
+            line: l1,
+            column: c1,
+        },
+        end: Pos {
+            line: l2,
+            column: c2,
+        },
         quote: t.anchor.quote(),
         messages: t
             .messages
@@ -268,7 +277,11 @@ fn threads_text(docs: &[(PathBuf, Comments, String)], include_resolved: bool) ->
         if resolved > 0 {
             header.push_str(&format!(
                 ", {resolved} resolved{}",
-                if include_resolved { "" } else { " (--resolved to show)" }
+                if include_resolved {
+                    ""
+                } else {
+                    " (--resolved to show)"
+                }
             ));
         }
         if !out.is_empty() {
@@ -305,7 +318,11 @@ fn discovered_docs(all: bool, open_only: bool) -> Result<Vec<PathBuf>> {
         .filter(|(s, c)| {
             (all || s.doc.starts_with(&cwd))
                 && s.doc.exists()
-                && if open_only { c.open_count() > 0 } else { !c.threads.is_empty() }
+                && if open_only {
+                    c.open_count() > 0
+                } else {
+                    !c.threads.is_empty()
+                }
         })
         .map(|(s, _)| s.doc)
         .collect())
@@ -341,7 +358,11 @@ pub fn run(cmd: Command) -> Result<i32> {
             let files = if files.is_empty() {
                 let found = discovered_docs(all, !resolved)?;
                 if found.is_empty() && !json {
-                    let scope = if all { "anywhere" } else { "under the current directory" };
+                    let scope = if all {
+                        "anywhere"
+                    } else {
+                        "under the current directory"
+                    };
                     print(&format!("No documents with open comments {scope}."));
                     return Ok(0);
                 }
@@ -362,7 +383,9 @@ pub fn run(cmd: Command) -> Result<i32> {
                 bail!("no comment #{id} on {}", store.doc.display());
             };
             if json {
-                print(&serde_json::to_string_pretty(&json_thread(&store.doc, &text, t))?);
+                print(&serde_json::to_string_pretty(&json_thread(
+                    &store.doc, &text, t,
+                ))?);
             } else {
                 let mut out = String::new();
                 format_thread(&mut out, &store.doc, &text, t);
@@ -389,11 +412,7 @@ pub fn run(cmd: Command) -> Result<i32> {
                 if resolve { " and resolved it" } else { "" }
             ));
         }
-        Command::Resolve {
-            file,
-            id,
-            message,
-        } => {
+        Command::Resolve { file, id, message } => {
             let (store, _, text) = load(&file)?;
             store.update(|c| {
                 c.sync(&text);
@@ -421,7 +440,10 @@ pub fn run(cmd: Command) -> Result<i32> {
             let range = find_quote(&text, &quote)?;
             let (l, c) = line_col(&text, range.start);
             let id = store.update(|cm| cm.add(&text, range.clone(), &message, Author::Agent))?;
-            print(&format!("Added #{id} at {}:{l}:{c}.", display_path(&store.doc)));
+            print(&format!(
+                "Added #{id} at {}:{l}:{c}.",
+                display_path(&store.doc)
+            ));
         }
         Command::Wait { files, json } => {
             let waiters = files
@@ -441,17 +463,26 @@ pub fn run(cmd: Command) -> Result<i32> {
                 }
                 std::thread::sleep(std::time::Duration::from_millis(250));
             };
-            let docs = load_many(&sent.iter().map(|w| w.doc().to_path_buf()).collect::<Vec<_>>())?;
+            let docs = load_many(
+                &sent
+                    .iter()
+                    .map(|w| w.doc().to_path_buf())
+                    .collect::<Vec<_>>(),
+            )?;
             if json {
                 print(&threads_json(&docs, false)?);
             } else {
                 let mut out = String::new();
                 for (doc, c, text) in &docs {
-                    let open: Vec<Thread> = c.threads.iter().filter(|t| t.is_open()).cloned().collect();
+                    let open: Vec<Thread> =
+                        c.threads.iter().filter(|t| t.is_open()).cloned().collect();
                     out.push_str(&for_agent(doc, text, &open));
                     out.push('\n');
                 }
-                let args: Vec<String> = files.iter().map(|f| shell_word(&f.display().to_string())).collect();
+                let args: Vec<String> = files
+                    .iter()
+                    .map(|f| shell_word(&f.display().to_string()))
+                    .collect();
                 out.push_str(&format!(
                     "Once you have answered them, run `margin wait {}` again for the next round.",
                     args.join(" ")

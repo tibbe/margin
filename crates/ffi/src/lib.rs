@@ -3,10 +3,13 @@
 //! position crosses [`Utf16Index`].
 
 use margin_core::comments::anchor::floor_char_boundary;
-use margin_core::comments::{self, activity, export, handoff, Anchor, Author, Comments, Message, Place, Status, Store, Thread};
+use margin_core::comments::{
+    self, Anchor, Author, Comments, Message, Place, Status, Store, Thread, activity, export,
+    handoff,
+};
 use margin_core::file_sync::{self, Loaded};
 use margin_core::md::edit::{self, BlockType, Plan};
-use margin_core::md::{self, search, Container, Doc, InlineKind, LineKind, Style};
+use margin_core::md::{self, Container, Doc, InlineKind, LineKind, Style, search};
 use std::ops::Range;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
@@ -30,7 +33,9 @@ impl std::error::Error for MarginError {}
 
 impl From<anyhow::Error> for MarginError {
     fn from(e: anyhow::Error) -> Self {
-        MarginError::Failed { message: format!("{e:#}") }
+        MarginError::Failed {
+            message: format!("{e:#}"),
+        }
     }
 }
 
@@ -61,7 +66,12 @@ impl Utf16Index {
                 *line_ascii.last_mut().unwrap() = false;
             }
         }
-        Utf16Index { line_byte, line_u16, line_ascii, len_u16: n }
+        Utf16Index {
+            line_byte,
+            line_u16,
+            line_ascii,
+            len_u16: n,
+        }
     }
 
     fn u16_of(&self, s: &str, byte: usize) -> u32 {
@@ -272,7 +282,10 @@ pub enum BlockStyle {
 }
 
 fn counts(containers: &[Container]) -> (u8, u8) {
-    let quotes = containers.iter().filter(|c| matches!(c, Container::Quote(_))).count() as u8;
+    let quotes = containers
+        .iter()
+        .filter(|c| matches!(c, Container::Quote(_)))
+        .count() as u8;
     (quotes, containers.len() as u8 - quotes)
 }
 
@@ -295,7 +308,10 @@ impl Analysis {
     }
 
     fn range(&self, r: Range<usize>) -> TextRange {
-        TextRange { start: self.u(r.start), end: self.u(r.end) }
+        TextRange {
+            start: self.u(r.start),
+            end: self.u(r.end),
+        }
     }
 
     fn bytes(&self, start: u32, end: u32) -> Range<usize> {
@@ -332,7 +348,11 @@ impl Analysis {
                 let c = e.content();
                 matches!(e.kind, InlineKind::Link | InlineKind::Image)
                     && c.start <= b
-                    && if inclusive_end { b <= c.end } else { b < c.end.max(c.start + 1) }
+                    && if inclusive_end {
+                        b <= c.end
+                    } else {
+                        b < c.end.max(c.start + 1)
+                    }
             })
             .and_then(|e| e.url.clone())
     }
@@ -351,7 +371,8 @@ impl Analysis {
     /// than a Swift string conversion. Invalid bytes are replaced.
     #[uniffi::constructor]
     pub fn from_utf8(bytes: Vec<u8>) -> Arc<Self> {
-        let text = String::from_utf8(bytes).unwrap_or_else(|e| String::from_utf8_lossy(e.as_bytes()).into_owned());
+        let text = String::from_utf8(bytes)
+            .unwrap_or_else(|e| String::from_utf8_lossy(e.as_bytes()).into_owned());
         Analysis::new(text)
     }
 
@@ -452,7 +473,15 @@ impl Analysis {
                 LineKind::Rule => 9,
                 LineKind::Raw => 10,
             };
-            for v in [self.u(l.start), self.u(l.end), self.u(l.content_start), self.u(l.visible_start), kind, quotes as u32, items as u32] {
+            for v in [
+                self.u(l.start),
+                self.u(l.end),
+                self.u(l.content_start),
+                self.u(l.visible_start),
+                kind,
+                quotes as u32,
+                items as u32,
+            ] {
                 out.extend_from_slice(&v.to_le_bytes());
             }
         }
@@ -497,7 +526,10 @@ impl Analysis {
             .enumerate()
             .filter_map(|(ii, it)| {
                 let line = &self.doc.lines[it.line];
-                let k = line.containers.iter().position(|c| *c == Container::Item(ii))?;
+                let k = line
+                    .containers
+                    .iter()
+                    .position(|c| *c == Container::Item(ii))?;
                 let (quotes, items) = counts(&line.containers[..=k]);
                 Some(ItemInfo {
                     line: it.line as u32,
@@ -522,9 +554,18 @@ impl Analysis {
                     last -= 1;
                 }
                 let lf = &self.doc.lines[q.first_line];
-                let k = lf.containers.iter().position(|c| *c == Container::Quote(qi)).unwrap_or(0);
+                let k = lf
+                    .containers
+                    .iter()
+                    .position(|c| *c == Container::Quote(qi))
+                    .unwrap_or(0);
                 let (quotes, items) = counts(&lf.containers[..k]);
-                QuoteInfo { first_line: q.first_line as u32, last_line: last as u32, quotes, items }
+                QuoteInfo {
+                    first_line: q.first_line as u32,
+                    last_line: last as u32,
+                    quotes,
+                    items,
+                }
             })
             .collect()
     }
@@ -556,7 +597,11 @@ impl Analysis {
             .iter()
             .map(|t| TableInfo {
                 first_line: self.doc.line_index(t.range.start) as u32,
-                last_line: t.rows.last().map_or(t.delimiter_line, |r| r.line.max(t.delimiter_line)) as u32,
+                last_line: t
+                    .rows
+                    .last()
+                    .map_or(t.delimiter_line, |r| r.line.max(t.delimiter_line))
+                    as u32,
                 delimiter_line: t.delimiter_line as u32,
                 aligns: t
                     .aligns
@@ -576,7 +621,10 @@ impl Analysis {
                         cells: r
                             .cells
                             .iter()
-                            .map(|c| TableCellInfo { content: self.range(c.content.clone()), lead: self.range(c.lead.clone()) })
+                            .map(|c| TableCellInfo {
+                                content: self.range(c.content.clone()),
+                                lead: self.range(c.lead.clone()),
+                            })
                             .collect(),
                         trail: self.range(r.trail.clone()),
                     })
@@ -654,7 +702,12 @@ impl Analysis {
     /// Typing or pasting over a selection.
     pub fn replace_range(&self, start: u32, end: u32, text: String) -> EditPlan {
         let text = text.replace("\r\n", "\n").replace('\r', "\n");
-        self.plan(edit::replace_range(&self.text, &self.doc, self.bytes(start, end), &text))
+        self.plan(edit::replace_range(
+            &self.text,
+            &self.doc,
+            self.bytes(start, end),
+            &text,
+        ))
     }
 
     pub fn newline(&self, pos: u32, soft: bool) -> EditPlan {
@@ -670,7 +723,11 @@ impl Analysis {
     }
 
     pub fn delete_range(&self, start: u32, end: u32) -> EditPlan {
-        self.plan(edit::delete_range(&self.text, &self.doc, self.bytes(start, end)))
+        self.plan(edit::delete_range(
+            &self.text,
+            &self.doc,
+            self.bytes(start, end),
+        ))
     }
 
     pub fn toggle_inline(&self, start: u32, end: u32, style: InlineStyle) -> EditPlan {
@@ -680,7 +737,12 @@ impl Analysis {
             InlineStyle::Strikethrough => InlineKind::Strike,
             InlineStyle::Code => InlineKind::Code,
         };
-        self.plan(edit::toggle_inline(&self.text, &self.doc, self.bytes(start, end), kind))
+        self.plan(edit::toggle_inline(
+            &self.text,
+            &self.doc,
+            self.bytes(start, end),
+            kind,
+        ))
     }
 
     pub fn set_block(&self, start: u32, end: u32, style: BlockStyle) -> EditPlan {
@@ -693,19 +755,39 @@ impl Analysis {
             BlockStyle::Quote => BlockType::Quote,
             BlockStyle::CodeBlock => BlockType::Code,
         };
-        self.plan(edit::set_block(&self.text, &self.doc, self.bytes(start, end), kind))
+        self.plan(edit::set_block(
+            &self.text,
+            &self.doc,
+            self.bytes(start, end),
+            kind,
+        ))
     }
 
     pub fn indent(&self, start: u32, end: u32, outdent: bool) -> EditPlan {
-        self.plan(edit::indent(&self.text, &self.doc, self.bytes(start, end), outdent))
+        self.plan(edit::indent(
+            &self.text,
+            &self.doc,
+            self.bytes(start, end),
+            outdent,
+        ))
     }
 
     pub fn toggle_task(&self, item: u32, cursor: u32) -> EditPlan {
-        self.plan(edit::toggle_task(&self.text, &self.doc, item as usize, self.b(cursor)))
+        self.plan(edit::toggle_task(
+            &self.text,
+            &self.doc,
+            item as usize,
+            self.b(cursor),
+        ))
     }
 
     pub fn make_link(&self, start: u32, end: u32, url: String) -> EditPlan {
-        self.plan(edit::make_link(&self.text, &self.doc, self.bytes(start, end), &url))
+        self.plan(edit::make_link(
+            &self.text,
+            &self.doc,
+            self.bytes(start, end),
+            &url,
+        ))
     }
 
     pub fn remove_link(&self, pos: u32) -> Option<EditPlan> {
@@ -715,7 +797,8 @@ impl Analysis {
     /// Replaces a find match in place, keeping formatting around it, when
     /// it lies in plain text.
     pub fn replace_plain(&self, start: u32, end: u32, with: String) -> Option<EditPlan> {
-        edit::replace_plain(&self.text, &self.doc, self.bytes(start, end), &with).map(|p| self.plan(p))
+        edit::replace_plain(&self.text, &self.doc, self.bytes(start, end), &with)
+            .map(|p| self.plan(p))
     }
 
     /// Replace All: every match of `needle` (as shown) replaced by `with`,
@@ -751,7 +834,11 @@ impl Analysis {
         Some(EditPlan {
             changes: changes
                 .iter()
-                .map(|c| Replacement { start: self.u(c.range.start), end: self.u(c.range.end), text: c.text.clone() })
+                .map(|c| Replacement {
+                    start: self.u(c.range.start),
+                    end: self.u(c.range.end),
+                    text: c.text.clone(),
+                })
                 .collect(),
             cursor: new_index.u16_of(&text, cursor),
             selection: None,
@@ -789,13 +876,18 @@ fn read_loaded(path: &str) -> Result<Loaded> {
 #[uniffi::export]
 pub fn read_document(path: String) -> Result<LoadedText> {
     let l = read_loaded(&path)?;
-    Ok(LoadedText { crlf: l.crlf(), text: l.into_text() })
+    Ok(LoadedText {
+        crlf: l.crlf(),
+        text: l.into_text(),
+    })
 }
 
 /// Absolute, symlink-free path of a document that may not exist yet.
 #[uniffi::export]
 pub fn canonical_path(path: String) -> Result<String> {
-    Ok(comments::canonical_doc_path(Path::new(&path))?.display().to_string())
+    Ok(comments::canonical_doc_path(Path::new(&path))?
+        .display()
+        .to_string())
 }
 
 /// Minimal replacements turning `old` into `new`, as UTF-16 ranges of
@@ -867,7 +959,9 @@ impl FileSync {
     /// For a document opened as `opened` (from `read_document`).
     #[uniffi::constructor]
     pub fn new(opened: LoadedText) -> Arc<Self> {
-        Arc::new(FileSync { inner: Mutex::new(file_sync::FileSync::new(&opened.text, opened.crlf)) })
+        Arc::new(FileSync {
+            inner: Mutex::new(file_sync::FileSync::new(&opened.text, opened.crlf)),
+        })
     }
 
     /// The text was edited.
@@ -899,7 +993,12 @@ impl FileSync {
     /// `None` when there is nothing to take in.
     pub fn disk_changed(&self, ours: String, path: String) -> Result<Option<FileChange>> {
         let disk = read_loaded(&path)?;
-        Ok(self.inner.lock().unwrap().disk_changed(&ours, disk).map(Into::into))
+        Ok(self
+            .inner
+            .lock()
+            .unwrap()
+            .disk_changed(&ours, disk)
+            .map(Into::into))
     }
 
     /// Saving `ours` to the file at `path`, which is read first.
@@ -992,18 +1091,43 @@ pub struct ThreadAnchor {
 pub enum CommentChange {
     /// Only record the editor's anchors.
     Anchors,
-    Add { start: u32, end: u32, body: String },
-    Reply { id: u64, body: String },
-    SetResolved { ids: Vec<u64>, resolved: bool },
-    Delete { id: u64 },
+    Add {
+        start: u32,
+        end: u32,
+        body: String,
+    },
+    Reply {
+        id: u64,
+        body: String,
+    },
+    SetResolved {
+        ids: Vec<u64>,
+        resolved: bool,
+    },
+    Delete {
+        id: u64,
+    },
     /// Puts back a deleted thread (Undo).
-    Restore { thread: CommentThread },
+    Restore {
+        thread: CommentThread,
+    },
     /// Replaces message `index`'s body (0 is the comment).
-    Edit { id: u64, index: u32, body: String },
+    Edit {
+        id: u64,
+        index: u32,
+        body: String,
+    },
     /// Deletes message `index`; 0 deletes the thread.
-    DeleteMessage { id: u64, index: u32 },
+    DeleteMessage {
+        id: u64,
+        index: u32,
+    },
     /// Puts back a deleted reply at `index` (Undo).
-    InsertMessage { id: u64, index: u32, message: ThreadMessage },
+    InsertMessage {
+        id: u64,
+        index: u32,
+        message: ThreadMessage,
+    },
 }
 
 #[derive(Debug, Clone, uniffi::Record)]
@@ -1026,7 +1150,11 @@ fn message_to_ffi(m: &Message) -> ThreadMessage {
         Author::User => MessageAuthor::User,
         Author::Agent => MessageAuthor::Agent,
     };
-    ThreadMessage { author, at_ms: ms(&m.at), body: m.body.clone() }
+    ThreadMessage {
+        author,
+        at_ms: ms(&m.at),
+        body: m.body.clone(),
+    }
 }
 
 fn message_from_ffi(m: &ThreadMessage) -> Message {
@@ -1034,20 +1162,31 @@ fn message_from_ffi(m: &ThreadMessage) -> Message {
         MessageAuthor::User => Author::User,
         MessageAuthor::Agent => Author::Agent,
     };
-    Message { author, at: from_ms(m.at_ms), body: m.body.clone() }
+    Message {
+        author,
+        at: from_ms(m.at_ms),
+        body: m.body.clone(),
+    }
 }
 
 fn place_to_ffi(p: &Place, text: &str, index: &Utf16Index) -> AnchorPlace {
     match p {
-        Place::On(r) => AnchorPlace::On { start: index.u16_of(text, r.start), end: index.u16_of(text, r.end) },
-        Place::Detached(at) => AnchorPlace::Detached { at: index.u16_of(text, *at) },
+        Place::On(r) => AnchorPlace::On {
+            start: index.u16_of(text, r.start),
+            end: index.u16_of(text, r.end),
+        },
+        Place::Detached(at) => AnchorPlace::Detached {
+            at: index.u16_of(text, *at),
+        },
     }
 }
 
 fn place_from_ffi(p: AnchorPlace, text: &str, index: &Utf16Index) -> Place {
     match p {
         // Reversed, it is deleted text: `Anchor::follow` detaches it.
-        AnchorPlace::On { start, end } => Place::On(index.byte_of(text, start)..index.byte_of(text, end)),
+        AnchorPlace::On { start, end } => {
+            Place::On(index.byte_of(text, start)..index.byte_of(text, end))
+        }
         AnchorPlace::Detached { at } => Place::Detached(index.byte_of(text, at)),
     }
 }
@@ -1090,7 +1229,9 @@ pub struct CommentStore {
 impl CommentStore {
     #[uniffi::constructor]
     pub fn new(document: String) -> Result<Arc<Self>> {
-        Ok(Arc::new(CommentStore { store: Mutex::new(Store::for_doc(Path::new(&document))?) }))
+        Ok(Arc::new(CommentStore {
+            store: Mutex::new(Store::for_doc(Path::new(&document))?),
+        }))
     }
 
     /// The store's file, to watch for changes agents make.
@@ -1108,10 +1249,18 @@ impl CommentStore {
 
     /// Records the editor's anchors against `text`, then makes `change`,
     /// under the store's lock.
-    pub fn update(&self, text: String, anchors: Vec<ThreadAnchor>, change: CommentChange) -> Result<CommentState> {
+    pub fn update(
+        &self,
+        text: String,
+        anchors: Vec<ThreadAnchor>,
+        change: CommentChange,
+    ) -> Result<CommentState> {
         let store = self.store.lock().unwrap().clone();
         if matches!(change, CommentChange::Anchors) && !store.exists() {
-            return Ok(CommentState { threads: Vec::new(), added: None });
+            return Ok(CommentState {
+                threads: Vec::new(),
+                added: None,
+            });
         }
         let index = Utf16Index::new(&text);
         let bytes = |u: u32| index.byte_of(&text, u);
@@ -1119,7 +1268,8 @@ impl CommentStore {
             c.sync(&text);
             for a in &anchors {
                 if let Ok(t) = c.thread_mut(a.id) {
-                    t.anchor.follow(&text, place_from_ffi(a.place, &text, &index));
+                    t.anchor
+                        .follow(&text, place_from_ffi(a.place, &text, &index));
                 }
             }
             let mut added = None;
@@ -1137,7 +1287,9 @@ impl CommentStore {
                 }
                 CommentChange::Delete { id } => c.delete(*id)?,
                 CommentChange::Edit { id, index, body } => c.edit(*id, *index as usize, body)?,
-                CommentChange::DeleteMessage { id, index } => c.delete_message(*id, *index as usize)?,
+                CommentChange::DeleteMessage { id, index } => {
+                    c.delete_message(*id, *index as usize)?
+                }
                 CommentChange::InsertMessage { id, index, message } => {
                     c.insert_message(*id, *index as usize, message_from_ffi(message))?
                 }
@@ -1150,7 +1302,10 @@ impl CommentStore {
             }
             Ok((c.clone(), added))
         })?;
-        Ok(CommentState { threads: threads_of(&c, &text, &index), added })
+        Ok(CommentState {
+            threads: threads_of(&c, &text, &index),
+            added,
+        })
     }
 
     /// Moves the threads to `new_document` (Save As), re-anchored against
@@ -1233,7 +1388,12 @@ fn activity_to_core(a: &ThreadActivity) -> activity::Change {
         ActivityKind::Reopened => activity::Kind::Reopened,
         ActivityKind::Deleted => activity::Kind::Deleted,
     };
-    activity::Change { id: a.id, kind, quote: a.quote.clone(), message: a.message.clone() }
+    activity::Change {
+        id: a.id,
+        kind,
+        quote: a.quote.clone(),
+        message: a.message.clone(),
+    }
 }
 
 /// The changes from `old` to `new`, the threads before and after a reload.
@@ -1302,7 +1462,9 @@ pub struct DocAgents {
 impl DocAgents {
     #[uniffi::constructor]
     pub fn new(document: String) -> Arc<Self> {
-        Arc::new(DocAgents { inner: Mutex::new(handoff::DocAgents::new(Path::new(&document))) })
+        Arc::new(DocAgents {
+            inner: Mutex::new(handoff::DocAgents::new(Path::new(&document))),
+        })
     }
 
     /// The state now; `now_ms` is any clock that only goes forward.

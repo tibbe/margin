@@ -4,8 +4,8 @@
 
 use super::buffer::DocBuffer;
 use super::view::DocView;
-use margin_core::md::{edit, search};
 use gtk::{gdk, glib, prelude::*};
+use margin_core::md::{edit, search};
 use std::cell::{Cell, RefCell};
 use std::ops::Range;
 use std::rc::{Rc, Weak};
@@ -191,7 +191,11 @@ impl FindBar {
                 && let Some(f) = w.upgrade()
             {
                 f.clear_highlights();
-                if let Some(r) = f.current.get().and_then(|i| f.matches.borrow().get(i).cloned()) {
+                if let Some(r) = f
+                    .current
+                    .get()
+                    .and_then(|i| f.matches.borrow().get(i).cloned())
+                {
                     let (s, e) = (f.buffer.iter_at_byte(r.start), f.buffer.iter_at_byte(r.end));
                     f.buffer.select_range(&s, &e);
                 }
@@ -275,7 +279,10 @@ impl FindBar {
             let st = self.buffer.state();
             search::find_all(&st.text, &st.doc, &needle, self.match_case.is_active())
         };
-        let old_current = self.current.get().and_then(|i| self.matches.borrow().get(i).cloned());
+        let old_current = self
+            .current
+            .get()
+            .and_then(|i| self.matches.borrow().get(i).cloned());
         self.matches.replace(found);
         let current = if jump {
             let cursor = match self.buffer.selection_bytes() {
@@ -283,7 +290,9 @@ impl FindBar {
                 None => self.buffer.cursor_byte(),
             };
             let m = self.matches.borrow();
-            m.iter().position(|r| r.start >= cursor).or((!m.is_empty()).then_some(0))
+            m.iter()
+                .position(|r| r.start >= cursor)
+                .or((!m.is_empty()).then_some(0))
         } else {
             let m = self.matches.borrow();
             old_current
@@ -311,7 +320,11 @@ impl FindBar {
         for (i, r) in matches.iter().enumerate() {
             let s = self.buffer.iter_at_byte(r.start);
             let e = self.buffer.iter_at_byte(r.end);
-            let tag = if Some(i) == self.current.get() { &current } else { &found };
+            let tag = if Some(i) == self.current.get() {
+                &current
+            } else {
+                &found
+            };
             self.buffer.apply_tag(tag, &s, &e);
         }
         let label = match (self.current.get(), matches.len()) {
@@ -327,7 +340,11 @@ impl FindBar {
     /// is only selected when the bar closes: the selection color would hide
     /// the current-match highlight.
     fn select_current(&self) {
-        let Some(r) = self.current.get().and_then(|i| self.matches.borrow().get(i).cloned()) else {
+        let Some(r) = self
+            .current
+            .get()
+            .and_then(|i| self.matches.borrow().get(i).cloned())
+        else {
             return;
         };
         let s = self.buffer.iter_at_byte(r.start);
@@ -365,14 +382,19 @@ impl FindBar {
             self.buffer.apply_plan(&plan);
             return;
         }
-        self.buffer.run(|s, d, _, _| edit::delete_range(s, d, r.clone()));
+        self.buffer
+            .run(|s, d, _, _| edit::delete_range(s, d, r.clone()));
         if !with.is_empty() {
             self.buffer.run(|s, d, c, _| edit::insert(s, d, c, with));
         }
     }
 
     pub fn replace_current(&self) {
-        let Some(r) = self.current.get().and_then(|i| self.matches.borrow().get(i).cloned()) else {
+        let Some(r) = self
+            .current
+            .get()
+            .and_then(|i| self.matches.borrow().get(i).cloned())
+        else {
             return;
         };
         let with = self.replace_entry.text().to_string();

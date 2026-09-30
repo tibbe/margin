@@ -3,8 +3,8 @@
 //! boundaries.
 
 use super::buffer::{DocBuffer, ITEM_STEP, QUOTE_STEP};
-use margin_core::md::{BlockKind, Container, Doc, LineKind, Style};
 use gtk::{pango, prelude::*};
+use margin_core::md::{BlockKind, Container, Doc, LineKind, Style};
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -47,13 +47,20 @@ struct Placement {
 
 /// Visible characters of a source range, with a map from source byte to
 /// output byte for attribute placement.
-fn visible_text(src: &str, doc: &Doc, lines: std::ops::RangeInclusive<usize>) -> (String, Vec<(usize, usize)>) {
+fn visible_text(
+    src: &str,
+    doc: &Doc,
+    lines: std::ops::RangeInclusive<usize>,
+) -> (String, Vec<(usize, usize)>) {
     let mut out = String::new();
     let mut map = Vec::new();
     let last = *lines.end();
     for li in lines {
         let l = &doc.lines[li];
-        if matches!(l.kind, LineKind::Blank | LineKind::SetextUnderline | LineKind::Fence) {
+        if matches!(
+            l.kind,
+            LineKind::Blank | LineKind::SetextUnderline | LineKind::Fence
+        ) {
             continue;
         }
         for (off, c) in src[l.content_start..l.end].char_indices() {
@@ -65,7 +72,11 @@ fn visible_text(src: &str, doc: &Doc, lines: std::ops::RangeInclusive<usize>) ->
         }
         if li < last {
             map.push((l.end, out.len()));
-            out.push(if doc.soft_breaks.binary_search(&l.end).is_ok() { ' ' } else { '\n' });
+            out.push(if doc.soft_breaks.binary_search(&l.end).is_ok() {
+                ' '
+            } else {
+                '\n'
+            });
         }
     }
     map.push((usize::MAX, out.len()));
@@ -170,8 +181,12 @@ fn blocks(buffer: &DocBuffer) -> Vec<Block> {
                         attrs.insert(attr);
                     };
                     match sp.style {
-                        Style::Strong | Style::TableHeader => add(pango::AttrInt::new_weight(pango::Weight::Bold).into()),
-                        Style::Emphasis | Style::Image => add(pango::AttrInt::new_style(pango::Style::Italic).into()),
+                        Style::Strong | Style::TableHeader => {
+                            add(pango::AttrInt::new_weight(pango::Weight::Bold).into())
+                        }
+                        Style::Emphasis | Style::Image => {
+                            add(pango::AttrInt::new_style(pango::Style::Italic).into())
+                        }
                         Style::Strike => add(pango::AttrInt::new_strikethrough(true).into()),
                         Style::TaskDone => {
                             add(pango::AttrInt::new_strikethrough(true).into());
@@ -186,7 +201,9 @@ fn blocks(buffer: &DocBuffer) -> Vec<Block> {
                             add(pango::AttrColor::new_foreground(0x1a1a, 0x5f5f, 0xb4b4).into());
                             add(pango::AttrInt::new_underline(pango::Underline::Single).into());
                         }
-                        Style::Quote => add(pango::AttrColor::new_foreground(0x5555, 0x5555, 0x5555).into()),
+                        Style::Quote => {
+                            add(pango::AttrColor::new_foreground(0x5555, 0x5555, 0x5555).into())
+                        }
                         _ => {}
                     }
                 }
@@ -196,7 +213,8 @@ fn blocks(buffer: &DocBuffer) -> Vec<Block> {
                     s.set_start_index(0);
                     s.set_end_index(text.len() as u32);
                     attrs.insert(s);
-                    let mut w: pango::Attribute = pango::AttrInt::new_weight(pango::Weight::Bold).into();
+                    let mut w: pango::Attribute =
+                        pango::AttrInt::new_weight(pango::Weight::Bold).into();
                     w.set_start_index(0);
                     w.set_end_index(text.len() as u32);
                     attrs.insert(w);
@@ -223,7 +241,11 @@ fn blocks(buffer: &DocBuffer) -> Vec<Block> {
 fn layout_for(ctx: &gtk::PrintContext, b: &Block, width: f64) -> pango::Layout {
     let layout = ctx.create_pango_layout();
     layout.set_font_description(Some(&b.font));
-    let inner = if b.kind == Kind::Code { width - 2.0 * CODE_PAD } else { width };
+    let inner = if b.kind == Kind::Code {
+        width - 2.0 * CODE_PAD
+    } else {
+        width
+    };
     layout.set_width((inner.max(20.0) * pango::SCALE as f64) as i32);
     layout.set_wrap(pango::WrapMode::WordChar);
     layout.set_text(&b.text);
@@ -261,7 +283,11 @@ fn paginate(ctx: &gtk::PrintContext, blocks: &[Block]) -> Vec<Vec<Placement>> {
                 pages.push(Vec::new());
                 y = 0.0;
             }
-            pages.last_mut().unwrap().push(Placement { block: bi, lines: 0..0, y });
+            pages.last_mut().unwrap().push(Placement {
+                block: bi,
+                lines: 0..0,
+                y,
+            });
             y += 12.0;
             continue;
         }
@@ -317,14 +343,21 @@ fn draw(ctx: &gtk::PrintContext, blocks: &[Block], page: &[Placement]) {
             let _ = cr.fill();
             continue;
         }
-        let Some(layout) = b.layout.borrow().clone() else { continue };
+        let Some(layout) = b.layout.borrow().clone() else {
+            continue;
+        };
         let lines = line_extents(&layout);
         let (first, last) = (p.lines.start as usize, p.lines.end as usize - 1);
         let top = lines[first].0;
         let bottom = p.y + lines[last].1 - top;
         if b.kind == Kind::Code {
             cr.set_source_rgb(0.95, 0.95, 0.95);
-            cr.rectangle(b.indent, p.y - CODE_PAD, width - b.indent, bottom - p.y + 2.0 * CODE_PAD);
+            cr.rectangle(
+                b.indent,
+                p.y - CODE_PAD,
+                width - b.indent,
+                bottom - p.y + 2.0 * CODE_PAD,
+            );
             let _ = cr.fill();
         }
         for &x in &b.bars {
@@ -334,7 +367,13 @@ fn draw(ctx: &gtk::PrintContext, blocks: &[Block], page: &[Placement]) {
         }
         cr.set_source_rgb(0.0, 0.0, 0.0);
         let x = b.indent + if b.kind == Kind::Code { CODE_PAD } else { 0.0 };
-        for (i, line) in layout.lines_readonly().iter().enumerate().take(last + 1).skip(first) {
+        for (i, line) in layout
+            .lines_readonly()
+            .iter()
+            .enumerate()
+            .take(last + 1)
+            .skip(first)
+        {
             cr.move_to(x, p.y + lines[i].2 - top);
             if b.outline {
                 pangocairo::functions::layout_line_path(&cr, line);
@@ -381,7 +420,11 @@ fn operation(buffer: &DocBuffer, title: &str) -> gtk::PrintOperation {
 }
 
 /// Shows the print dialog and prints the document as rendered.
-pub fn print(window: &impl IsA<gtk::Window>, buffer: &DocBuffer, title: &str) -> Result<(), String> {
+pub fn print(
+    window: &impl IsA<gtk::Window>,
+    buffer: &DocBuffer,
+    title: &str,
+) -> Result<(), String> {
     operation(buffer, title)
         .run(gtk::PrintOperationAction::PrintDialog, Some(window))
         .map(|_| ())

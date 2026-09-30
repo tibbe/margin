@@ -6,15 +6,15 @@ use super::buffer::{DocBuffer, Look};
 use super::comments::CommentLayer;
 use super::find::FindBar;
 use super::view::DocView;
+use adw::prelude::*;
+use anyhow::Result;
+use gtk::{gio, glib};
 use margin_core::comments::activity::{self, Change, Kind};
 use margin_core::comments::handoff::{AgentState, DocAgents};
-use margin_core::comments::{canonical_doc_path, data_dir, read_doc, Store};
+use margin_core::comments::{Store, canonical_doc_path, data_dir, read_doc};
 use margin_core::file_sync::{FileSync, Loaded, Reconcile, Save};
-use margin_core::md::edit::{self, BlockType};
 use margin_core::md::InlineKind;
-use anyhow::Result;
-use adw::prelude::*;
-use gtk::{gio, glib};
+use margin_core::md::edit::{self, BlockType};
 use std::cell::{Cell, RefCell};
 use std::fs;
 use std::io::Write;
@@ -85,7 +85,10 @@ fn home_relative(p: &Path) -> String {
 
 fn atomic_write(path: &Path, data: &[u8]) -> std::io::Result<()> {
     let dir = path.parent().unwrap_or(Path::new("."));
-    let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+    let name = path
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_default();
     let tmp = dir.join(format!(".{name}.margin-{}", std::process::id()));
     let perms = fs::metadata(path).ok().map(|m| m.permissions());
     {
@@ -118,7 +121,9 @@ pub fn new_draft(app: &adw::Application, look: Look) -> Result<Rc<DocWindow>> {
 
 /// Reopens drafts left behind (e.g. by a crash). Returns how many.
 pub fn recover_drafts(app: &adw::Application, look: Look) -> usize {
-    let Ok(entries) = fs::read_dir(drafts_dir()) else { return 0 };
+    let Ok(entries) = fs::read_dir(drafts_dir()) else {
+        return 0;
+    };
     let mut n = 0;
     for e in entries.flatten() {
         let p = e.path();
@@ -324,8 +329,11 @@ impl DocWindow {
         let name = self.display_name();
         // For the window manager: task switchers and the bar show it.
         self.window.set_title(Some(&format!("{name} – Margin")));
-        self.title
-            .set_title(&if self.dirty() { format!("• {name}") } else { name });
+        self.title.set_title(&if self.dirty() {
+            format!("• {name}")
+        } else {
+            name
+        });
         self.title.set_subtitle(&if self.draft.get() {
             "Not saved yet".to_string()
         } else {
@@ -350,13 +358,14 @@ impl DocWindow {
             .replace((!self.draft.get()).then(|| DocAgents::new(&self.path())));
         if self.agent_timer.borrow().is_none() {
             let weak = self.weak();
-            let id = glib::timeout_add_local(Duration::from_secs(1), move || match weak.upgrade() {
-                Some(w) => {
-                    w.update_agent();
-                    glib::ControlFlow::Continue
-                }
-                None => glib::ControlFlow::Break,
-            });
+            let id =
+                glib::timeout_add_local(Duration::from_secs(1), move || match weak.upgrade() {
+                    Some(w) => {
+                        w.update_agent();
+                        glib::ControlFlow::Continue
+                    }
+                    None => glib::ControlFlow::Break,
+                });
             self.agent_timer.replace(Some(id));
         }
         self.update_agent();
@@ -373,7 +382,9 @@ impl DocWindow {
     }
 
     pub fn send_enabled(&self) -> bool {
-        self.window.lookup_action("send-to-agent").is_some_and(|a| a.is_enabled())
+        self.window
+            .lookup_action("send-to-agent")
+            .is_some_and(|a| a.is_enabled())
     }
 
     pub fn agent_state(&self) -> AgentState {
@@ -387,14 +398,22 @@ impl DocWindow {
     fn show_agent(&self) {
         let state = self.agent_state.get();
         self.working.set_visible(state == AgentState::Working);
-        if let Some(a) = self.window.lookup_action("send-to-agent").and_downcast::<gio::SimpleAction>() {
+        if let Some(a) = self
+            .window
+            .lookup_action("send-to-agent")
+            .and_downcast::<gio::SimpleAction>()
+        {
             a.set_enabled(self.can_send());
         }
         self.send.set_tooltip_text(Some(match state {
-            AgentState::Waiting if self.layer.open_count() > 0 => "Send open comments to the agent (Ctrl+Shift+Enter)",
+            AgentState::Waiting if self.layer.open_count() > 0 => {
+                "Send open comments to the agent (Ctrl+Shift+Enter)"
+            }
             AgentState::Waiting => "An agent is waiting, but there are no open comments to send",
             AgentState::Working => "The agent is working on the comments you sent",
-            AgentState::None => "No agent is waiting on this document. Ask your agent to run “margin wait” on it",
+            AgentState::None => {
+                "No agent is waiting on this document. Ask your agent to run “margin wait” on it"
+            }
         }));
     }
 
@@ -402,7 +421,11 @@ impl DocWindow {
     fn send_to_agent(&self) {
         self.update_agent();
         if !self.can_send() {
-            self.toast(if self.layer.open_count() == 0 { "No open comments" } else { "No agent is waiting" });
+            self.toast(if self.layer.open_count() == 0 {
+                "No open comments"
+            } else {
+                "No agent is waiting"
+            });
             return;
         }
         self.save();
@@ -411,8 +434,16 @@ impl DocWindow {
             Some(Ok(0)) | None => self.toast("No agent is waiting"),
             Some(Ok(n)) => {
                 let open = self.layer.open_count();
-                let what = if open == 1 { "1 open comment".to_string() } else { format!("{open} open comments") };
-                let to = if n == 1 { "the agent".to_string() } else { format!("{n} agents") };
+                let what = if open == 1 {
+                    "1 open comment".to_string()
+                } else {
+                    format!("{open} open comments")
+                };
+                let to = if n == 1 {
+                    "the agent".to_string()
+                } else {
+                    format!("{n} agents")
+                };
                 self.toast(&format!("Sent {what} to {to}"));
             }
             Some(Err(e)) => self.toast(&format!("Could not send: {e:#}")),
@@ -449,7 +480,14 @@ impl DocWindow {
         };
         // A click focuses the thread when there is just one (0: none).
         let first = unseen[0].id;
-        let thread = if unseen.iter().all(|c| c.id == first && c.kind != Kind::Deleted) { first } else { 0 };
+        let thread = if unseen
+            .iter()
+            .all(|c| c.id == first && c.kind != Kind::Deleted)
+        {
+            first
+        } else {
+            0
+        };
         let title = self.display_name();
         if scripted() {
             println!("notification {title} | {body} | thread {thread}");
@@ -576,7 +614,10 @@ impl DocWindow {
         scroll.set_propagation_phase(gtk::PropagationPhase::Capture);
         let weak = self.weak();
         scroll.connect_scroll(move |c, _, dy| {
-            if !c.current_event_state().contains(gtk::gdk::ModifierType::CONTROL_MASK) {
+            if !c
+                .current_event_state()
+                .contains(gtk::gdk::ModifierType::CONTROL_MASK)
+            {
                 return glib::Propagation::Proceed;
             }
             if let Some(w) = weak.upgrade() {
@@ -604,9 +645,9 @@ impl DocWindow {
             } else {
                 self.path().parent().unwrap_or(Path::new("/")).join(target)
             };
-            let is_md = p
-                .extension()
-                .is_some_and(|e| e.eq_ignore_ascii_case("md") || e.eq_ignore_ascii_case("markdown"));
+            let is_md = p.extension().is_some_and(|e| {
+                e.eq_ignore_ascii_case("md") || e.eq_ignore_ascii_case("markdown")
+            });
             if is_md && let Some(app) = self.window.application() {
                 let app = app.downcast::<adw::Application>().expect("adw app");
                 if let Err(e) = open(&app, &p, self.buffer.look()) {
@@ -615,7 +656,11 @@ impl DocWindow {
                 return;
             }
             let file = gio::File::for_path(&p);
-            gtk::FileLauncher::new(Some(&file)).launch(Some(&self.window), gio::Cancellable::NONE, |_| {});
+            gtk::FileLauncher::new(Some(&file)).launch(
+                Some(&self.window),
+                gio::Cancellable::NONE,
+                |_| {},
+            );
             return;
         }
         gtk::UriLauncher::new(url).launch(Some(&self.window), gio::Cancellable::NONE, |_| {});
@@ -689,7 +734,8 @@ impl DocWindow {
 
     fn watch(&self) {
         let file = gio::File::for_path(self.path());
-        if let Ok(m) = file.monitor_file(gio::FileMonitorFlags::WATCH_MOVES, gio::Cancellable::NONE) {
+        if let Ok(m) = file.monitor_file(gio::FileMonitorFlags::WATCH_MOVES, gio::Cancellable::NONE)
+        {
             let weak = self.weak();
             m.connect_changed(move |_, _, _, _| {
                 if let Some(w) = weak.upgrade() {
@@ -703,7 +749,9 @@ impl DocWindow {
                 let _ = fs::create_dir_all(dir);
             }
             let file = gio::File::for_path(&store.path);
-            if let Ok(m) = file.monitor_file(gio::FileMonitorFlags::WATCH_MOVES, gio::Cancellable::NONE) {
+            if let Ok(m) =
+                file.monitor_file(gio::FileMonitorFlags::WATCH_MOVES, gio::Cancellable::NONE)
+            {
                 let weak = self.weak();
                 m.connect_changed(move |_, _, _, _| {
                     if let Some(w) = weak.upgrade() {
@@ -736,7 +784,9 @@ impl DocWindow {
 
     /// Picks up edits made to the file by someone else.
     fn check_disk(&self) {
-        let Ok(raw) = read_doc(&self.path()) else { return };
+        let Ok(raw) = read_doc(&self.path()) else {
+            return;
+        };
         let ours = self.buffer.text_string();
         let change = self.sync.borrow_mut().disk_changed(&ours, Loaded::new(raw));
         if let Some(r) = change {
@@ -955,7 +1005,11 @@ impl DocWindow {
             self.toast("No open comments");
             return;
         }
-        let text = margin_core::comments::export::for_agent(&self.path(), &self.buffer.text_string(), &threads);
+        let text = margin_core::comments::export::for_agent(
+            &self.path(),
+            &self.buffer.text_string(),
+            &threads,
+        );
         self.window.clipboard().set_text(&text);
         self.toast(&match threads.len() {
             1 => "Copied 1 open comment".to_string(),
@@ -967,14 +1021,16 @@ impl DocWindow {
         if self.buffer.source_mode() || self.in_gutter() {
             return;
         }
-        self.buffer.run(|s, d, c, sel| edit::indent(s, d, sel.unwrap_or(c..c), outdent));
+        self.buffer
+            .run(|s, d, c, sel| edit::indent(s, d, sel.unwrap_or(c..c), outdent));
     }
 
     fn inline(&self, kind: InlineKind) {
         if self.buffer.source_mode() || self.in_gutter() {
             return;
         }
-        self.buffer.run(|s, d, c, sel| edit::toggle_inline(s, d, sel.unwrap_or(c..c), kind));
+        self.buffer
+            .run(|s, d, c, sel| edit::toggle_inline(s, d, sel.unwrap_or(c..c), kind));
         self.view.grab_focus();
     }
 
@@ -982,7 +1038,8 @@ impl DocWindow {
         if self.buffer.source_mode() || self.in_gutter() {
             return;
         }
-        self.buffer.run(|s, d, c, sel| edit::set_block(s, d, sel.unwrap_or(c..c), kind));
+        self.buffer
+            .run(|s, d, c, sel| edit::set_block(s, d, sel.unwrap_or(c..c), kind));
         self.view.grab_focus();
     }
 
@@ -996,10 +1053,19 @@ impl DocWindow {
             st.doc
                 .inlines
                 .iter()
-                .find(|e| e.kind == InlineKind::Link && e.content().start <= c && c <= e.content().end)
+                .find(|e| {
+                    e.kind == InlineKind::Link && e.content().start <= c && c <= e.content().end
+                })
                 .and_then(|e| e.url.clone())
         };
-        let dialog = adw::AlertDialog::new(Some(if current.is_some() { "Edit Link" } else { "Insert Link" }), None);
+        let dialog = adw::AlertDialog::new(
+            Some(if current.is_some() {
+                "Edit Link"
+            } else {
+                "Insert Link"
+            }),
+            None,
+        );
         let entry = gtk::Entry::builder()
             .placeholder_text("https://…")
             .activates_default(true)
@@ -1017,37 +1083,40 @@ impl DocWindow {
         let sel = self.buffer.selection_bytes();
         let cursor = self.buffer.cursor_byte();
         let weak = self.weak();
-        dialog.connect_response(None, glib::clone!(
-            #[weak]
-            entry,
-            move |_, resp| {
-                let Some(w) = weak.upgrade() else { return };
-                match resp {
-                    "apply" => {
-                        let url = entry.text().trim().to_string();
-                        if !url.is_empty() {
-                            let range = sel.clone().unwrap_or(cursor..cursor);
+        dialog.connect_response(
+            None,
+            glib::clone!(
+                #[weak]
+                entry,
+                move |_, resp| {
+                    let Some(w) = weak.upgrade() else { return };
+                    match resp {
+                        "apply" => {
+                            let url = entry.text().trim().to_string();
+                            if !url.is_empty() {
+                                let range = sel.clone().unwrap_or(cursor..cursor);
+                                let plan = {
+                                    let st = w.buffer.state();
+                                    edit::make_link(&st.text, &st.doc, range, &url)
+                                };
+                                w.buffer.apply_plan(&plan);
+                            }
+                        }
+                        "remove" => {
                             let plan = {
                                 let st = w.buffer.state();
-                                edit::make_link(&st.text, &st.doc, range, &url)
+                                edit::remove_link(&st.doc, cursor)
                             };
-                            w.buffer.apply_plan(&plan);
+                            if let Some(p) = plan {
+                                w.buffer.apply_plan(&p);
+                            }
                         }
+                        _ => {}
                     }
-                    "remove" => {
-                        let plan = {
-                            let st = w.buffer.state();
-                            edit::remove_link(&st.doc, cursor)
-                        };
-                        if let Some(p) = plan {
-                            w.buffer.apply_plan(&p);
-                        }
-                    }
-                    _ => {}
+                    w.view.grab_focus();
                 }
-                w.view.grab_focus();
-            }
-        ));
+            ),
+        );
         dialog.present(Some(&self.window));
         entry.grab_focus();
     }
@@ -1085,7 +1154,11 @@ impl DocWindow {
         if !self.save() {
             anyhow::bail!("could not save the current document before Save As");
         }
-        let new = if new.extension().is_none() { new.with_extension("md") } else { new.to_path_buf() };
+        let new = if new.extension().is_none() {
+            new.with_extension("md")
+        } else {
+            new.to_path_buf()
+        };
         if canonical_doc_path(&new)? == self.path() {
             return Ok(());
         }
@@ -1153,7 +1226,10 @@ impl DocWindow {
         }
         let dialog = adw::AlertDialog::new(
             Some("Unsaved Changes"),
-            Some(&format!("Save changes to “{}” before closing?", self.display_name())),
+            Some(&format!(
+                "Save changes to “{}” before closing?",
+                self.display_name()
+            )),
         );
         dialog.add_response("cancel", "Cancel");
         dialog.add_response("discard", "Discard");
@@ -1206,7 +1282,10 @@ pub fn choose_and_open(
     near: Option<Rc<DocWindow>>,
 ) {
     let Some(app) = app.cloned() else { return };
-    let dialog = gtk::FileDialog::builder().title("Open Markdown Document").modal(true).build();
+    let dialog = gtk::FileDialog::builder()
+        .title("Open Markdown Document")
+        .modal(true)
+        .build();
     let filters = gio::ListStore::new::<gtk::FileFilter>();
     filters.append(&markdown_filter());
     dialog.set_filters(Some(&filters));
@@ -1341,7 +1420,10 @@ pub const ACCELS: &[(&str, &[&str])] = &[
     ("win.find-prev", &["<Control><Shift>g"]),
     ("win.show-markdown", &["<Control>slash"]),
     ("win.wrap-paragraphs", &["<Alt>z"]),
-    ("win.zoom-in", &["<Control>plus", "<Control>equal", "<Control>KP_Add"]),
+    (
+        "win.zoom-in",
+        &["<Control>plus", "<Control>equal", "<Control>KP_Add"],
+    ),
     ("win.zoom-out", &["<Control>minus", "<Control>KP_Subtract"]),
     ("win.zoom-reset", &["<Control>0", "<Control>KP_0"]),
     ("win.fullscreen", &["F11"]),
@@ -1436,7 +1518,10 @@ fn shortcuts_dialog() -> adw::ShortcutsDialog {
         &[
             ("Comment on selection", "<Control><Alt>m"),
             ("Copy open comments for an agent", "<Control><Shift>c"),
-            ("Send open comments to the waiting agent", "<Control><Shift>Return"),
+            (
+                "Send open comments to the waiting agent",
+                "<Control><Shift>Return",
+            ),
             ("Next comment", "<Control><Alt>Down"),
             ("Previous comment", "<Control><Alt>Up"),
             ("Reply to focused comment", "<Control><Alt>r"),

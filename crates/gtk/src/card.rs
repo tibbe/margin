@@ -1,12 +1,11 @@
 //! Comment cards shown in the gutter, and the text box used to write
 //! comments and replies.
 
-use margin_core::comments::{Author, Message, Thread};
 use chrono::{DateTime, Local, Utc};
 use gtk::{gdk, glib, pango, prelude::*};
+use margin_core::comments::{Author, Message, Thread};
 use std::cell::RefCell;
 use std::rc::Rc;
-
 
 /// A multi-line text box with a placeholder and submit/cancel buttons.
 /// Ctrl+Enter submits; Escape cancels.
@@ -70,7 +69,11 @@ impl Composer {
             move |b| {
                 let empty = b.char_count() == 0;
                 hint.set_visible(empty);
-                submit.set_sensitive(!b.text(&b.start_iter(), &b.end_iter(), false).trim().is_empty());
+                submit.set_sensitive(
+                    !b.text(&b.start_iter(), &b.end_iter(), false)
+                        .trim()
+                        .is_empty(),
+                );
                 if !always_show_buttons {
                     buttons.set_visible(!empty);
                 }
@@ -115,7 +118,9 @@ impl Composer {
 
     pub fn text(&self) -> String {
         let b = self.text_view.buffer();
-        b.text(&b.start_iter(), &b.end_iter(), false).trim().to_string()
+        b.text(&b.start_iter(), &b.end_iter(), false)
+            .trim()
+            .to_string()
     }
 
     pub fn set_text(&self, text: &str) {
@@ -130,7 +135,6 @@ impl Composer {
     pub fn focus(&self) {
         self.text_view.grab_focus();
     }
-
 }
 
 pub fn when(at: &DateTime<Utc>) -> String {
@@ -173,7 +177,12 @@ fn header_row(m: Option<&Message>) -> gtk::Box {
             Author::User => "You",
             Author::Agent => "Agent",
         };
-        byline.append(&gtk::Label::builder().label(who).css_classes(["author"]).build());
+        byline.append(
+            &gtk::Label::builder()
+                .label(who)
+                .css_classes(["author"])
+                .build(),
+        );
         byline.append(
             &gtk::Label::builder()
                 .label(format!(" · {}", when(&m.at)))
@@ -358,11 +367,15 @@ impl Card {
 
     fn sync_composer(&self) {
         let show = *self.active.borrow() && !*self.resolved.borrow();
-        self.composer.root.set_visible(show || !self.composer.text().is_empty());
+        self.composer
+            .root
+            .set_visible(show || !self.composer.text().is_empty());
     }
 
     pub fn has_focus(&self) -> bool {
-        let Some(root) = self.root.root() else { return false };
+        let Some(root) = self.root.root() else {
+            return false;
+        };
         match root.focus() {
             Some(w) => w.is_ancestor(&self.root) || w == self.root.clone().upcast::<gtk::Widget>(),
             None => false,

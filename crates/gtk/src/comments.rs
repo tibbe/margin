@@ -5,11 +5,11 @@
 use super::buffer::DocBuffer;
 use super::card::{Card, CardActions, DraftCard};
 use super::view::DocView;
+use adw::prelude::*;
+use gtk::glib;
 use margin_core::comments::activity::{self, Change};
 use margin_core::comments::{Author, Comments, Place, Store, Thread};
 use margin_core::md::edit;
-use adw::prelude::*;
-use gtk::glib;
 use std::cell::{Cell, RefCell};
 use std::ops::Range;
 use std::rc::{Rc, Weak};
@@ -179,11 +179,19 @@ impl CommentLayer {
     }
 
     pub fn open_count(&self) -> usize {
-        self.threads.borrow().iter().filter(|t| t.thread.is_open()).count()
+        self.threads
+            .borrow()
+            .iter()
+            .filter(|t| t.thread.is_open())
+            .count()
     }
 
     pub fn resolved_count(&self) -> usize {
-        self.threads.borrow().iter().filter(|t| !t.thread.is_open()).count()
+        self.threads
+            .borrow()
+            .iter()
+            .filter(|t| !t.thread.is_open())
+            .count()
     }
 
     pub fn store(&self) -> Option<Store> {
@@ -247,8 +255,12 @@ impl CommentLayer {
     fn update_store<T>(&self, f: impl FnOnce(&mut Comments) -> anyhow::Result<T>) -> Option<T> {
         let store = self.store()?;
         let text = self.buffer.text_string();
-        let places: Vec<(u64, Place)> =
-            self.threads.borrow().iter().map(|tu| (tu.thread.id, self.place_of(tu))).collect();
+        let places: Vec<(u64, Place)> = self
+            .threads
+            .borrow()
+            .iter()
+            .map(|tu| (tu.thread.id, self.place_of(tu)))
+            .collect();
         let result = store.update(|c| {
             c.sync(&text);
             for (id, place) in places {
@@ -288,7 +300,12 @@ impl CommentLayer {
         // Our own changes reach `threads` before the store's file monitor
         // fires, so whatever is new here came from someone else (an agent).
         let changes = if announce {
-            let old: Vec<Thread> = self.threads.borrow().iter().map(|tu| tu.thread.clone()).collect();
+            let old: Vec<Thread> = self
+                .threads
+                .borrow()
+                .iter()
+                .map(|tu| tu.thread.clone())
+                .collect();
             activity::changes(&old, &c.threads)
         } else {
             Vec::new()
@@ -329,7 +346,11 @@ impl CommentLayer {
             self.gutter.put(&w, 0.0, 0.0);
         }
         if let Some(id) = self.active.get()
-            && !self.threads.borrow().iter().any(|t| t.thread.id == id && self.visible(&t.thread))
+            && !self
+                .threads
+                .borrow()
+                .iter()
+                .any(|t| t.thread.id == id && self.visible(&t.thread))
         {
             self.active.set(None);
         }
@@ -359,7 +380,10 @@ impl CommentLayer {
     }
 
     fn make_thread_ui(&self, thread: Thread, text: &str) -> ThreadUi {
-        let r = thread.anchor.range().unwrap_or(thread.anchor.start()..thread.anchor.start());
+        let r = thread
+            .anchor
+            .range()
+            .unwrap_or(thread.anchor.start()..thread.anchor.start());
         let a = r.start.min(text.len());
         let b = r.end.min(text.len()).max(a);
         let sa = self.buffer.iter_at_byte(a);
@@ -423,7 +447,11 @@ impl CommentLayer {
         self.show_resolved.set(show);
         if !show
             && let Some(id) = self.active.get()
-            && self.threads.borrow().iter().any(|t| t.thread.id == id && !t.thread.is_open())
+            && self
+                .threads
+                .borrow()
+                .iter()
+                .any(|t| t.thread.id == id && !t.thread.is_open())
         {
             self.active.set(None);
         }
@@ -485,7 +513,8 @@ impl CommentLayer {
         self.draft.replace(Some(draft));
         // The highlight marks what is being commented on; a selection
         // would hide it.
-        self.buffer.place_cursor(&self.buffer.iter_at_byte(range.end));
+        self.buffer
+            .place_cursor(&self.buffer.iter_at_byte(range.end));
         self.active.set(None);
         self.sync_cards();
         self.refresh_highlights();
@@ -500,7 +529,8 @@ impl CommentLayer {
             self.buffer.with_tagging(|| {
                 let s = self.buffer.iter_at_mark(&d.hl.0);
                 let e = self.buffer.iter_at_mark(&d.hl.1);
-                self.buffer.remove_tag(&self.buffer.comment_tag(true), &s, &e);
+                self.buffer
+                    .remove_tag(&self.buffer.comment_tag(true), &s, &e);
             });
             for m in [&d.start, &d.end, &d.hl.0, &d.hl.1] {
                 self.buffer.delete_mark(m);
@@ -530,7 +560,9 @@ impl CommentLayer {
         // Its text was deleted meanwhile, leaving nothing to comment on;
         // the draft stays, so its words aren't lost.
         if range.is_empty() {
-            self.toast(adw::Toast::new("The text you were commenting on was deleted"));
+            self.toast(adw::Toast::new(
+                "The text you were commenting on was deleted",
+            ));
             return;
         }
         let text = self.buffer.text_string();
@@ -549,7 +581,10 @@ impl CommentLayer {
     }
 
     pub fn set_resolved(&self, id: u64, resolved: bool) {
-        if self.update_store(move |c| c.set_resolved(id, resolved)).is_none() {
+        if self
+            .update_store(move |c| c.set_resolved(id, resolved))
+            .is_none()
+        {
             return;
         }
         if resolved {
@@ -617,11 +652,17 @@ impl CommentLayer {
     pub fn delete(&self, id: u64) {
         // Undo re-adds the thread against the text as it is now.
         let text = self.buffer.text_string();
-        let Some(old) = self.threads.borrow().iter().find(|t| t.thread.id == id).map(|t| {
-            let mut th = t.thread.clone();
-            th.anchor.follow(&text, self.place_of(t));
-            th
-        }) else {
+        let Some(old) = self
+            .threads
+            .borrow()
+            .iter()
+            .find(|t| t.thread.id == id)
+            .map(|t| {
+                let mut th = t.thread.clone();
+                th.anchor.follow(&text, self.place_of(t));
+                th
+            })
+        else {
             return;
         };
         if self.update_store(move |c| c.delete(id)).is_none() {
@@ -674,7 +715,11 @@ impl CommentLayer {
 
     /// Focuses thread `id` and scrolls to it, if it is shown.
     pub fn reveal(&self, id: u64) {
-        let shown = self.threads.borrow().iter().any(|t| t.thread.id == id && self.visible(&t.thread));
+        let shown = self
+            .threads
+            .borrow()
+            .iter()
+            .any(|t| t.thread.id == id && self.visible(&t.thread));
         if shown {
             self.activate(Some(id), true);
         }
@@ -704,7 +749,10 @@ impl CommentLayer {
             (Some(i), true) => (i + 1) % order.len(),
             (Some(i), false) => (i + order.len() - 1) % order.len(),
             (None, true) => order.iter().position(|(o, _)| *o > cursor).unwrap_or(0),
-            (None, false) => order.iter().rposition(|(o, _)| *o < cursor).unwrap_or(order.len() - 1),
+            (None, false) => order
+                .iter()
+                .rposition(|(o, _)| *o < cursor)
+                .unwrap_or(order.len() - 1),
         };
         self.activate(Some(order[next].1), true);
     }
@@ -729,7 +777,12 @@ impl CommentLayer {
         let (kind, arg) = what.split_once(' ').unwrap_or((what, ""));
         let id: u64 = arg.trim().parse().unwrap_or(0);
         let threads = self.threads.borrow();
-        let card = || threads.iter().find(|t| t.thread.id == id).map(|t| t.card.clone());
+        let card = || {
+            threads
+                .iter()
+                .find(|t| t.thread.id == id)
+                .map(|t| t.card.clone())
+        };
         match kind {
             "add" => Some(self.add_button.clone().upcast()),
             "card" => card().map(|c| c.root.clone().upcast()),
@@ -825,7 +878,10 @@ impl CommentLayer {
                 buf.remove_tag(&normal, &s, &e);
                 buf.remove_tag(&strong, &s, &e);
             }
-            let apply = |start: &gtk::TextMark, end: &gtk::TextMark, hl: &(gtk::TextMark, gtk::TextMark), tag: Option<&gtk::TextTag>| {
+            let apply = |start: &gtk::TextMark,
+                         end: &gtk::TextMark,
+                         hl: &(gtk::TextMark, gtk::TextMark),
+                         tag: Option<&gtk::TextTag>| {
                 let s = buf.iter_at_mark(start);
                 let e = buf.iter_at_mark(end);
                 buf.move_mark(&hl.0, &s);
@@ -927,7 +983,11 @@ impl CommentLayer {
         // Stack top to bottom without overlaps and below the page top.
         let mut bottom = -CARD_GAP;
         for i in 0..n {
-            let want = if items.iter().any(|i| i.focused) { ys[i] } else { items[i].y };
+            let want = if items.iter().any(|i| i.focused) {
+                ys[i]
+            } else {
+                items[i].y
+            };
             ys[i] = want.max(bottom + CARD_GAP).max(0);
             bottom = ys[i] + items[i].h;
         }
@@ -947,8 +1007,7 @@ impl CommentLayer {
             .buffer
             .selection_bounds()
             .map_or(0, |(a, _)| self.view.iter_location(&a).y() + 48);
-        self.gutter
-            .set_size_request(width, extent.max(sel_y) + 24);
+        self.gutter.set_size_request(width, extent.max(sel_y) + 24);
 
         let show_add = self.draft.borrow().is_none() && self.store().is_some();
         match self.buffer.selection_bounds().filter(|_| show_add) {

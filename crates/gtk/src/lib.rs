@@ -14,8 +14,8 @@ mod theme;
 mod view;
 mod window;
 
-use buffer::Look;
 use adw::prelude::*;
+use buffer::Look;
 use gtk::{gio, glib};
 use std::cell::RefCell;
 use std::path::PathBuf;
@@ -45,7 +45,9 @@ fn load_look() -> Look {
     }
 }
 
-const ZOOM_STEPS: &[f64] = &[0.5, 0.67, 0.8, 0.9, 1.0, 1.1, 1.25, 1.5, 1.75, 2.0, 2.5, 3.0];
+const ZOOM_STEPS: &[f64] = &[
+    0.5, 0.67, 0.8, 0.9, 1.0, 1.1, 1.25, 1.5, 1.75, 2.0, 2.5, 3.0,
+];
 
 /// Makes the text of every window a step larger (`step > 0`), smaller
 /// (`step < 0`) or its normal size (`0`).
@@ -53,8 +55,17 @@ pub fn zoom(step: i32) {
     let now = settings::get().zoom;
     let z = match step {
         0 => 1.0,
-        s if s > 0 => ZOOM_STEPS.iter().copied().find(|&z| z > now + 0.01).unwrap_or(now),
-        _ => ZOOM_STEPS.iter().rev().copied().find(|&z| z < now - 0.01).unwrap_or(now),
+        s if s > 0 => ZOOM_STEPS
+            .iter()
+            .copied()
+            .find(|&z| z > now + 0.01)
+            .unwrap_or(now),
+        _ => ZOOM_STEPS
+            .iter()
+            .rev()
+            .copied()
+            .find(|&z| z < now - 0.01)
+            .unwrap_or(now),
     };
     settings::update(|s| s.zoom = z);
     refresh_look(true);
@@ -64,7 +75,8 @@ pub fn zoom(step: i32) {
 pub fn set_wrap_paragraphs(on: bool) {
     settings::update(|s| s.wrap_paragraphs = on);
     for w in window::all() {
-        w.view.keep_cursor_still(|| w.buffer.set_wrap_paragraphs(on));
+        w.view
+            .keep_cursor_still(|| w.buffer.set_wrap_paragraphs(on));
         w.sync_wrap_action(on);
         w.layer.queue_relayout();
     }
@@ -144,7 +156,9 @@ fn watch_theme() {
         && let Some(dir) = marker.parent()
     {
         let file = gio::File::for_path(dir);
-        if let Ok(m) = file.monitor_directory(gio::FileMonitorFlags::WATCH_MOVES, gio::Cancellable::NONE) {
+        if let Ok(m) =
+            file.monitor_directory(gio::FileMonitorFlags::WATCH_MOVES, gio::Cancellable::NONE)
+        {
             m.connect_changed(|_, _, _, _| schedule_refresh_look());
             THEME_MONITOR.with(|t| t.replace(Some(m)));
         }
@@ -207,12 +221,15 @@ pub fn run(files: Vec<PathBuf>) -> anyhow::Result<i32> {
         ));
         app.add_action(&about_action);
         // A notification's click: the document, focused on its thread (0: none).
-        let show = gio::SimpleAction::new("show-activity", Some(glib::VariantTy::new("(st)").unwrap()));
+        let show =
+            gio::SimpleAction::new("show-activity", Some(glib::VariantTy::new("(st)").unwrap()));
         show.connect_activate(glib::clone!(
             #[weak]
             app,
             move |_, target| {
-                let Some((path, thread)) = target.and_then(|t| t.get::<(String, u64)>()) else { return };
+                let Some((path, thread)) = target.and_then(|t| t.get::<(String, u64)>()) else {
+                    return;
+                };
                 match window::open(&app, std::path::Path::new(&path), look()) {
                     Ok(w) => {
                         if thread != 0 {

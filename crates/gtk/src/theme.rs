@@ -51,7 +51,13 @@ fn parse_colors(text: &str) -> HashMap<String, String> {
         }
         if let Some((k, v)) = line.split_once('=') {
             let v = v.trim();
-            let v = v.split(" #").next().unwrap_or(v).trim().trim_matches('"').trim_matches('\'');
+            let v = v
+                .split(" #")
+                .next()
+                .unwrap_or(v)
+                .trim()
+                .trim_matches('"')
+                .trim_matches('\'');
             map.insert(k.trim().to_string(), v.to_string());
         }
     }
@@ -221,7 +227,11 @@ impl Fonts {
             size: body.1,
             mono,
             ui,
-            text_scale: if dpi > 0 { dpi as f64 / 1024.0 / 96.0 } else { 1.0 },
+            text_scale: if dpi > 0 {
+                dpi as f64 / 1024.0 / 96.0
+            } else {
+                1.0
+            },
         }
     }
 }

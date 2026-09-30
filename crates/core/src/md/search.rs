@@ -77,10 +77,16 @@ mod tests {
 
     #[test]
     fn matches_rendered_text_across_hidden_syntax() {
-        assert_eq!(found("Some **bold** text\n", "bold text"), vec!["bold** text"]);
+        assert_eq!(
+            found("Some **bold** text\n", "bold text"),
+            vec!["bold** text"]
+        );
         assert_eq!(found("# Title\n", "title"), vec!["Title"]);
         assert_eq!(found("- item one\n", "- item"), Vec::<&str>::new());
-        assert_eq!(found("[docs](https://x.y) here\n", "docs here"), vec!["docs](https://x.y) here"]);
+        assert_eq!(
+            found("[docs](https://x.y) here\n", "docs here"),
+            vec!["docs](https://x.y) here"]
+        );
     }
 
     #[test]

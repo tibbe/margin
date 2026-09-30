@@ -3,11 +3,11 @@
 //! word processor, and styling is re-derived from the analysis after every
 //! change, touching only the lines whose styling actually changed.
 
-use super::theme::{rgba, rgba_alpha, Fonts, Palette};
-use margin_core::md::edit::{self, Plan};
-use margin_core::md::{self, Doc, LineKind, Style};
+use super::theme::{Fonts, Palette, rgba, rgba_alpha};
 use gtk::{glib, pango, prelude::*, subclass::prelude::*};
 use margin_core::diff::diff_changes;
+use margin_core::md::edit::{self, Plan};
+use margin_core::md::{self, Doc, LineKind, Style};
 use std::cell::{Cell, Ref, RefCell};
 use std::collections::HashMap;
 use std::ops::Range;
@@ -57,7 +57,12 @@ impl TextIndex {
         let l = self.line_char.partition_point(|&c| c <= ch) - 1;
         let start = self.line_byte[l];
         let skip = ch - self.line_char[l];
-        start + s[start..].chars().take(skip).map(char::len_utf8).sum::<usize>()
+        start
+            + s[start..]
+                .chars()
+                .take(skip)
+                .map(char::len_utf8)
+                .sum::<usize>()
     }
 }
 
@@ -236,7 +241,10 @@ mod imp {
 
         fn delete_range(&self, start: &mut gtk::TextIter, end: &mut gtk::TextIter) {
             if self.raw.get() > 0 || self.source_mode.get() {
-                let (a, b) = (start.offset().min(end.offset()), start.offset().max(end.offset()));
+                let (a, b) = (
+                    start.offset().min(end.offset()),
+                    start.offset().max(end.offset()),
+                );
                 self.record_delete(a as usize, (b - a) as usize);
                 self.parent_delete_range(start, end);
                 return;
@@ -280,7 +288,8 @@ mod imp {
                 obj.apply_plan(&plan);
             }
             self.parent_end_user_action();
-            self.user_action.set(self.user_action.get().saturating_sub(1));
+            self.user_action
+                .set(self.user_action.get().saturating_sub(1));
         }
 
         fn apply_tag(&self, tag: &gtk::TextTag, start: &gtk::TextIter, end: &gtk::TextIter) {
@@ -564,7 +573,6 @@ fn expand_to_lines(mut ranges: Vec<Range<usize>>, st: &State) -> Vec<Range<usize
     out
 }
 
-
 impl DocBuffer {
     pub fn new(look: Look) -> DocBuffer {
         let b: DocBuffer = glib::Object::new();
@@ -733,7 +741,11 @@ impl DocBuffer {
     }
 
     pub fn search_tags(&self) -> (gtk::TextTag, gtk::TextTag) {
-        self.imp().search_tags.borrow().clone().expect("search tags")
+        self.imp()
+            .search_tags
+            .borrow()
+            .clone()
+            .expect("search tags")
     }
 
     pub fn source_mode(&self) -> bool {
@@ -787,7 +799,10 @@ impl DocBuffer {
     pub fn selection_bytes(&self) -> Option<Range<usize>> {
         let (a, b) = self.selection_bounds()?;
         let st = self.imp().state.borrow();
-        let (a, b) = (st.byte_of(a.offset() as usize), st.byte_of(b.offset() as usize));
+        let (a, b) = (
+            st.byte_of(a.offset() as usize),
+            st.byte_of(b.offset() as usize),
+        );
         Some(a.min(b)..a.max(b))
     }
 
@@ -888,7 +903,9 @@ impl DocBuffer {
             self.insert_at_cursor(&text);
         } else {
             match self.selection_bytes() {
-                Some(sel) => self.run(|src, doc, _, _| edit::replace_range(src, doc, sel.clone(), &text)),
+                Some(sel) => {
+                    self.run(|src, doc, _, _| edit::replace_range(src, doc, sel.clone(), &text))
+                }
                 None => self.run(|src, doc, c, _| edit::insert(src, doc, c, &text)),
             }
         }
@@ -925,7 +942,13 @@ impl DocBuffer {
             let st = imp.state.borrow();
             changes
                 .iter()
-                .map(|c| (st.char_of(c.range.start) as i32, st.char_of(c.range.end) as i32, c.text.clone()))
+                .map(|c| {
+                    (
+                        st.char_of(c.range.start) as i32,
+                        st.char_of(c.range.end) as i32,
+                        c.text.clone(),
+                    )
+                })
                 .collect()
         };
         imp.raw.set(imp.raw.get() + 1);
@@ -1003,7 +1026,10 @@ impl DocBuffer {
             let s = self.iter_at_offset(r.start as i32);
             let e = self.iter_at_offset(r.end as i32);
             self.apply_tag(&tag, &s, &e);
-            marks.push((self.create_mark(None, &s, true), self.create_mark(None, &e, false)));
+            marks.push((
+                self.create_mark(None, &s, true),
+                self.create_mark(None, &e, false),
+            ));
         }
         imp.tagging.set(imp.tagging.get() - 1);
         imp.reveal.replace(marks);

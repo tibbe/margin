@@ -47,7 +47,9 @@ thread_local! {
 /// window (dialogs included) once a second, for testing flows that happen
 /// before a document window exists.
 pub fn maybe_watch_toplevels() {
-    let Some(dir) = std::env::var_os("MARGIN_TOPLEVEL_SHOTS") else { return };
+    let Some(dir) = std::env::var_os("MARGIN_TOPLEVEL_SHOTS") else {
+        return;
+    };
     let dir = std::path::PathBuf::from(dir);
     let tick = Cell::new(0u32);
     glib::timeout_add_local(Duration::from_secs(1), move || {
@@ -63,7 +65,9 @@ pub fn maybe_watch_toplevels() {
 }
 
 pub fn maybe_run_script(win: &Rc<DocWindow>) {
-    let Ok(path) = std::env::var("MARGIN_SCRIPT") else { return };
+    let Ok(path) = std::env::var("MARGIN_SCRIPT") else {
+        return;
+    };
     if STARTED.with(|s| s.replace(true)) {
         return;
     }
@@ -101,7 +105,9 @@ fn run(win: Rc<DocWindow>, steps: Vec<String>, i: usize) {
         .and_then(|n| super::window::all().get(n).cloned())
         .unwrap_or_else(|| win.clone());
     let delay = step(&target, &steps[i]);
-    target.view.scroll_mark_onscreen(&target.buffer.get_insert());
+    target
+        .view
+        .scroll_mark_onscreen(&target.buffer.get_insert());
     glib::timeout_add_local_once(Duration::from_millis(delay), move || run(win, steps, i + 1));
 }
 
@@ -161,8 +167,12 @@ fn step(win: &DocWindow, line: &str) -> u64 {
                 view.emit_delete_from_cursor(gtk::DeleteType::Chars, 1);
             }
         }
-        "tab" => buf.run(|s, d, c, sel| margin_core::md::edit::indent(s, d, sel.unwrap_or(c..c), false)),
-        "shift-tab" => buf.run(|s, d, c, sel| margin_core::md::edit::indent(s, d, sel.unwrap_or(c..c), true)),
+        "tab" => {
+            buf.run(|s, d, c, sel| margin_core::md::edit::indent(s, d, sel.unwrap_or(c..c), false))
+        }
+        "shift-tab" => {
+            buf.run(|s, d, c, sel| margin_core::md::edit::indent(s, d, sel.unwrap_or(c..c), true))
+        }
         "home" => view.emit_move_cursor(gtk::MovementStep::DisplayLineEnds, -1, false),
         "end" => view.emit_move_cursor(gtk::MovementStep::DisplayLineEnds, 1, false),
         "left" => view.emit_move_cursor(gtk::MovementStep::VisualPositions, -n(), false),
@@ -190,7 +200,9 @@ fn step(win: &DocWindow, line: &str) -> u64 {
         "action" => {
             let (name, _) = arg.split_once(' ').unwrap_or((arg, ""));
             let (group, action) = name.split_once('.').unwrap_or(("win", name));
-            if let Err(e) = WidgetExt::activate_action(&win.window, &format!("{group}.{action}"), None) {
+            if let Err(e) =
+                WidgetExt::activate_action(&win.window, &format!("{group}.{action}"), None)
+            {
                 eprintln!("script: action {name}: {e}");
             }
         }
@@ -213,8 +225,12 @@ fn step(win: &DocWindow, line: &str) -> u64 {
             after_paint(win.window.upcast_ref(), move || locate(&w, &what));
             return 200;
         }
-        "resolve" => win.layer.set_resolved(arg.trim().parse().unwrap_or(0), true),
-        "reopen" => win.layer.set_resolved(arg.trim().parse().unwrap_or(0), false),
+        "resolve" => win
+            .layer
+            .set_resolved(arg.trim().parse().unwrap_or(0), true),
+        "reopen" => win
+            .layer
+            .set_resolved(arg.trim().parse().unwrap_or(0), false),
         "delete-thread" => win.layer.delete(arg.trim().parse().unwrap_or(0)),
         "size" => {
             let mut it = arg.split_whitespace().filter_map(|x| x.parse::<i32>().ok());
@@ -242,7 +258,12 @@ fn step(win: &DocWindow, line: &str) -> u64 {
             let g = view.geometry();
             let mut n = 0;
             for y in (0..end_y + height + 200).step_by(3) {
-                for x in [0, g.left + 5, g.left + g.doc_width / 2, g.left + g.doc_width + 20] {
+                for x in [
+                    0,
+                    g.left + 5,
+                    g.left + g.doc_width / 2,
+                    g.left + g.doc_width + 20,
+                ] {
                     let _ = view.iter_at_location(x, y);
                     let _ = view.iter_at_position(x, y);
                     n += 1;
@@ -255,10 +276,17 @@ fn step(win: &DocWindow, line: &str) -> u64 {
             legacy.set_propagation_phase(gtk::PropagationPhase::Capture);
             legacy.connect_event(|_, e| {
                 let t = e.event_type();
-                if std::env::var_os("MARGIN_TRACE_MOTION").is_some() || !matches!(t, gtk::gdk::EventType::MotionNotify) {
+                if std::env::var_os("MARGIN_TRACE_MOTION").is_some()
+                    || !matches!(t, gtk::gdk::EventType::MotionNotify)
+                {
                     let pos = e.position().unwrap_or((-1.0, -1.0));
-                    let button = e.downcast_ref::<gtk::gdk::ButtonEvent>().map(|b| b.button());
-                    eprintln!("event: {t:?} at {pos:?} button {button:?} state {:?}", e.modifier_state());
+                    let button = e
+                        .downcast_ref::<gtk::gdk::ButtonEvent>()
+                        .map(|b| b.button());
+                    eprintln!(
+                        "event: {t:?} at {pos:?} button {button:?} state {:?}",
+                        e.modifier_state()
+                    );
                 }
                 glib::Propagation::Proceed
             });
@@ -275,12 +303,22 @@ fn step(win: &DocWindow, line: &str) -> u64 {
                     b.connect_clicked(|_| eprintln!("button: clicked"));
                     let g = gtk::GestureClick::new();
                     g.set_propagation_phase(gtk::PropagationPhase::Capture);
-                    g.connect_pressed(|g, n, x, y| eprintln!("button: pressed n={n} at {x},{y} seq={:?}", g.current_sequence()));
+                    g.connect_pressed(|g, n, x, y| {
+                        eprintln!(
+                            "button: pressed n={n} at {x},{y} seq={:?}",
+                            g.current_sequence()
+                        )
+                    });
                     g.connect_released(|_, n, x, y| eprintln!("button: released n={n} at {x},{y}"));
                     g.connect_cancel(|_, _| eprintln!("button: gesture cancelled"));
                     g.connect_stopped(|_| eprintln!("button: gesture stopped"));
                     b.add_controller(g);
-                    eprintln!("tracing {} (sensitive={}, mapped={})", b.type_().name(), b.is_sensitive(), b.is_mapped());
+                    eprintln!(
+                        "tracing {} (sensitive={}, mapped={})",
+                        b.type_().name(),
+                        b.is_sensitive(),
+                        b.is_mapped()
+                    );
                 }
                 None => eprintln!("script: no button {arg:?}"),
             }
@@ -309,7 +347,15 @@ fn step(win: &DocWindow, line: &str) -> u64 {
         }
         "agent" => {
             win.update_agent();
-            println!("agent {:?} | send {}", win.agent_state(), if win.send_enabled() { "enabled" } else { "disabled" });
+            println!(
+                "agent {:?} | send {}",
+                win.agent_state(),
+                if win.send_enabled() {
+                    "enabled"
+                } else {
+                    "disabled"
+                }
+            );
         }
         "close" => win.window.close(),
         "shot-popover" => {
@@ -323,10 +369,12 @@ fn step(win: &DocWindow, line: &str) -> u64 {
             return 300;
         }
         "clipboard" => {
-            win.window.clipboard().read_text_async(gtk::gio::Cancellable::NONE, |r| match r {
-                Ok(Some(t)) => println!("----- clipboard -----\n{t}----- end -----"),
-                other => eprintln!("clipboard: {other:?}"),
-            });
+            win.window
+                .clipboard()
+                .read_text_async(gtk::gio::Cancellable::NONE, |r| match r {
+                    Ok(Some(t)) => println!("----- clipboard -----\n{t}----- end -----"),
+                    other => eprintln!("clipboard: {other:?}"),
+                });
             return 300;
         }
         "scroll-state" => {
@@ -398,7 +446,9 @@ fn locate(win: &DocWindow, what: &str) {
     let window: &gtk::Widget = win.window.upcast_ref();
     let (sx, sy) = win.window.surface_transform();
     let buffer_point = |x: i32, y: i32| {
-        let (x, y) = win.view.buffer_to_window_coords(gtk::TextWindowType::Widget, x, y);
+        let (x, y) = win
+            .view
+            .buffer_to_window_coords(gtk::TextWindowType::Widget, x, y);
         win.view
             .compute_point(window, &gtk::graphene::Point::new(x as f32, y as f32))
     };
@@ -411,7 +461,10 @@ fn locate(win: &DocWindow, what: &str) {
     } else if let Some(action) = what.strip_prefix("action ") {
         find_by_action(window, action).and_then(|w| {
             let b = w.compute_bounds(window)?;
-            Some(gtk::graphene::Point::new(b.x() + b.width() / 2.0, b.y() + b.height() / 2.0))
+            Some(gtk::graphene::Point::new(
+                b.x() + b.width() / 2.0,
+                b.y() + b.height() / 2.0,
+            ))
         })
     } else if let Some(label) = what.strip_prefix("button ") {
         find_widget(window, &|w| {
@@ -420,7 +473,10 @@ fn locate(win: &DocWindow, what: &str) {
         })
         .and_then(|w| {
             let b = w.compute_bounds(window)?;
-            Some(gtk::graphene::Point::new(b.x() + b.width() / 2.0, b.y() + b.height() / 2.0))
+            Some(gtk::graphene::Point::new(
+                b.x() + b.width() / 2.0,
+                b.y() + b.height() / 2.0,
+            ))
         })
     } else if let Some(text) = what.strip_prefix("text ") {
         let src = win.buffer.text_string();

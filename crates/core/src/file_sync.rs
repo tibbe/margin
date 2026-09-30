@@ -94,7 +94,11 @@ impl FileSync {
     /// For a document opened as `text` (as the editors hold text: see
     /// [`Loaded`]) from a file that used CRLF if `crlf`.
     pub fn new(text: &str, crlf: bool) -> FileSync {
-        FileSync { base: text.to_string(), crlf, state: State::Saved }
+        FileSync {
+            base: text.to_string(),
+            crlf,
+            state: State::Saved,
+        }
     }
 
     /// The text was edited.
@@ -126,7 +130,11 @@ impl FileSync {
 
     /// `ours` in the file's newlines, to write (Save As).
     pub fn file_text(&self, ours: &str) -> String {
-        if self.crlf { ours.replace('\n', "\r\n") } else { ours.to_string() }
+        if self.crlf {
+            ours.replace('\n', "\r\n")
+        } else {
+            ours.to_string()
+        }
     }
 
     /// The file was changed, and now reads `disk`, with `ours` in the
@@ -197,7 +205,9 @@ impl FileSync {
     /// The person's answer to a conflict: keep their text, which then
     /// needs saving over the file's. False if no conflict waits.
     pub fn keep_mine(&mut self) -> bool {
-        let State::Conflict { disk } = &self.state else { return false };
+        let State::Conflict { disk } = &self.state else {
+            return false;
+        };
         self.base = disk.clone();
         self.state = State::Unsaved { failed: false };
         true
@@ -206,7 +216,9 @@ impl FileSync {
     /// The person's answer to a conflict: load the file's text, which this
     /// returns to show. `None` if no conflict waits.
     pub fn load_theirs(&mut self) -> Option<String> {
-        let State::Conflict { disk } = &self.state else { return None };
+        let State::Conflict { disk } = &self.state else {
+            return None;
+        };
         self.base = disk.clone();
         self.state = State::Saved;
         Some(self.base.clone())
@@ -240,7 +252,10 @@ mod tests {
         assert_eq!(f.save("one\n", loaded("one\r\n")), Save::Done);
         f.edited();
         assert!(f.needs_save());
-        assert_eq!(f.save("one\ntwo\n", loaded("one\r\n")), Save::Write("one\r\ntwo\r\n".into()));
+        assert_eq!(
+            f.save("one\ntwo\n", loaded("one\r\n")),
+            Save::Write("one\r\ntwo\r\n".into())
+        );
         f.wrote("one\ntwo\n");
         assert!(!f.needs_save() && f.has("one\ntwo\n"));
     }
@@ -249,17 +264,29 @@ mod tests {
     fn a_save_takes_in_an_outside_edit_first() {
         // No edits of ours: show theirs, and there is nothing to write.
         let mut f = opened("a\nb\n");
-        assert_eq!(f.save("a\nb\n", loaded("a\nB\n")), Save::Changed(Reconcile::Load("a\nB\n".into())));
+        assert_eq!(
+            f.save("a\nb\n", loaded("a\nB\n")),
+            Save::Changed(Reconcile::Load("a\nB\n".into()))
+        );
         assert_eq!(f.save("a\nB\n", loaded("a\nB\n")), Save::Done);
         // Edits on other lines merge, then the merge is written.
         let mut f = opened("a\nx\nb\n");
         f.edited();
-        assert_eq!(f.save("A\nx\nb\n", loaded("a\nx\nB\n")), Save::Changed(Reconcile::Merge("A\nx\nB\n".into())));
-        assert_eq!(f.save("A\nx\nB\n", loaded("a\nx\nB\n")), Save::Write("A\nx\nB\n".into()));
+        assert_eq!(
+            f.save("A\nx\nb\n", loaded("a\nx\nB\n")),
+            Save::Changed(Reconcile::Merge("A\nx\nB\n".into()))
+        );
+        assert_eq!(
+            f.save("A\nx\nB\n", loaded("a\nx\nB\n")),
+            Save::Write("A\nx\nB\n".into())
+        );
         // They made our edit too.
         let mut f = opened("a\n");
         f.edited();
-        assert_eq!(f.save("b\n", loaded("b\n")), Save::Changed(Reconcile::CaughtUp));
+        assert_eq!(
+            f.save("b\n", loaded("b\n")),
+            Save::Changed(Reconcile::CaughtUp)
+        );
         assert!(!f.needs_save());
         assert_eq!(f.save("b\n", loaded("b\n")), Save::Done);
     }
@@ -268,13 +295,19 @@ mod tests {
     fn nothing_is_written_while_a_conflict_waits() {
         let mut f = opened("a\n");
         f.edited();
-        assert_eq!(f.save("mine\n", loaded("theirs\n")), Save::Changed(Reconcile::Conflict));
+        assert_eq!(
+            f.save("mine\n", loaded("theirs\n")),
+            Save::Changed(Reconcile::Conflict)
+        );
         assert_eq!(f.save("mine\n", loaded("theirs\n")), Save::Blocked);
         assert_eq!(f.disk_changed("mine\n", loaded("newer\n")), None);
         assert!(f.needs_save() && !f.has("a\n"));
         // Keeping ours writes it over theirs.
         assert!(f.keep_mine());
-        assert_eq!(f.save("mine\n", loaded("theirs\n")), Save::Write("mine\n".into()));
+        assert_eq!(
+            f.save("mine\n", loaded("theirs\n")),
+            Save::Write("mine\n".into())
+        );
         assert!(!f.keep_mine() && f.load_theirs().is_none());
     }
 
@@ -282,7 +315,10 @@ mod tests {
     fn loading_theirs_ends_a_conflict() {
         let mut f = opened("a\n");
         f.edited();
-        assert_eq!(f.disk_changed("mine\n", loaded("theirs\n")), Some(Reconcile::Conflict));
+        assert_eq!(
+            f.disk_changed("mine\n", loaded("theirs\n")),
+            Some(Reconcile::Conflict)
+        );
         assert_eq!(f.load_theirs(), Some("theirs\n".into()));
         assert!(!f.needs_save() && f.has("theirs\n"));
         assert_eq!(f.load_theirs(), None);
@@ -293,9 +329,15 @@ mod tests {
         let mut f = opened("a\n");
         assert_eq!(f.disk_changed("a\n", loaded("a\r\n")), None);
         assert_eq!(f.file_text("a\n"), "a\r\n");
-        assert_eq!(f.disk_changed("a\n", loaded("b\n")), Some(Reconcile::Load("b\n".into())));
+        assert_eq!(
+            f.disk_changed("a\n", loaded("b\n")),
+            Some(Reconcile::Load("b\n".into()))
+        );
         f.edited();
-        assert_eq!(f.disk_changed("c\n", loaded("c\n")), Some(Reconcile::CaughtUp));
+        assert_eq!(
+            f.disk_changed("c\n", loaded("c\n")),
+            Some(Reconcile::CaughtUp)
+        );
         assert!(!f.needs_save());
     }
 

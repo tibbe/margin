@@ -5,8 +5,8 @@
 
 use super::buffer::{DocBuffer, ITEM_STEP, QUOTE_STEP};
 use super::theme::{rgba, rgba_alpha};
-use margin_core::md::{edit, Container, InlineKind, LineKind};
 use gtk::{gdk, gio, glib, graphene, prelude::*, subclass::prelude::*};
+use margin_core::md::{Container, InlineKind, LineKind, edit};
 use std::cell::{Cell, RefCell};
 
 /// Comment card width at the default text size.
@@ -32,7 +32,9 @@ pub fn geometry(width: i32, scale: f64, ui_scale: f64) -> Geometry {
     // or comprehension cost up to about 100 characters per line.
     let max_doc = (760.0 * scale) as i32;
     let room = width - card - GUTTER_GAP - 2 * SIDE_PAD;
-    let doc_width = room.clamp(300, max_doc).min((width - 2 * SIDE_PAD).max(120));
+    let doc_width = room
+        .clamp(300, max_doc)
+        .min((width - 2 * SIDE_PAD).max(120));
     let mut left = (width - doc_width) / 2;
     let needed = doc_width + GUTTER_GAP + card + SIDE_PAD;
     if left + needed > width {
@@ -129,7 +131,9 @@ mod imp {
         fn snapshot_layer(&self, layer: gtk::TextViewLayer, snapshot: gtk::Snapshot) {
             self.parent_snapshot_layer(layer, snapshot.clone());
             let obj = self.obj();
-            let Some(buf) = obj.doc_buffer_opt() else { return };
+            let Some(buf) = obj.doc_buffer_opt() else {
+                return;
+            };
             match layer {
                 gtk::TextViewLayer::BelowText => obj.draw_blocks(&buf, &snapshot),
                 gtk::TextViewLayer::AboveText => obj.draw_markers(&buf, &snapshot),
@@ -199,7 +203,9 @@ mod imp {
                 if buf.source_mode() {
                     buf.delete_selection(true, true);
                 } else {
-                    buf.run(|src, doc, _, sel| edit::delete_range(src, doc, sel.unwrap_or_default()));
+                    buf.run(|src, doc, _, sel| {
+                        edit::delete_range(src, doc, sel.unwrap_or_default())
+                    });
                 }
             }
         }
@@ -260,7 +266,9 @@ impl DocView {
 
     fn copy_selection(&self) -> bool {
         let buf = self.doc_buffer();
-        let Some(sel) = buf.selection_bytes() else { return false };
+        let Some(sel) = buf.selection_bytes() else {
+            return false;
+        };
         let text = {
             let st = buf.state();
             if buf.source_mode() {
@@ -338,7 +346,8 @@ impl DocView {
                     g.set_state(gtk::EventSequenceState::Claimed);
                     return;
                 }
-                if g.current_event_state().contains(gdk::ModifierType::CONTROL_MASK)
+                if g.current_event_state()
+                    .contains(gdk::ModifierType::CONTROL_MASK)
                     && let Some(url) = view.link_at(bx, by)
                 {
                     g.set_state(gtk::EventSequenceState::Claimed);
@@ -357,7 +366,9 @@ impl DocView {
             move |m, x, y| {
                 let (bx, by) =
                     view.window_to_buffer_coords(gtk::TextWindowType::Widget, x as i32, y as i32);
-                let ctrl = m.current_event_state().contains(gdk::ModifierType::CONTROL_MASK);
+                let ctrl = m
+                    .current_event_state()
+                    .contains(gdk::ModifierType::CONTROL_MASK);
                 let pointer = view.checkbox_at(bx as f32, by as f32).is_some()
                     || (ctrl && view.link_at(bx, by).is_some());
                 view.set_cursor_from_name(Some(if pointer { "pointer" } else { "text" }));
@@ -395,7 +406,10 @@ impl DocView {
     pub fn checkbox_center(&self, n: usize) -> Option<(i32, i32)> {
         let boxes = self.imp().checkboxes.borrow();
         let (r, _) = boxes.get(n)?;
-        Some(((r.x() + r.width() / 2.0) as i32, (r.y() + r.height() / 2.0) as i32))
+        Some((
+            (r.x() + r.width() / 2.0) as i32,
+            (r.y() + r.height() / 2.0) as i32,
+        ))
     }
 
     /// Checks or unchecks the task item the cursor is on.
@@ -573,7 +587,11 @@ impl DocView {
                 continue;
             }
             let line = &doc.lines[it.line];
-            let Some(k) = line.containers.iter().position(|c| *c == Container::Item(ii)) else {
+            let Some(k) = line
+                .containers
+                .iter()
+                .position(|c| *c == Container::Item(ii))
+            else {
                 continue;
             };
             let x_text = g.left as f32 + indent_px(&line.containers[..=k], scale);
@@ -584,8 +602,18 @@ impl DocView {
                 let size = (14.0 * scale as f32).round();
                 let bx = x_text - size - gap;
                 let by = y + ((h - size) / 2.0).round();
-                let cr = snapshot.append_cairo(&graphene::Rect::new(bx - 2.0, by - 2.0, size + 4.0, size + 4.0));
-                cr.rectangle(bx as f64 + 0.75, by as f64 + 0.75, size as f64 - 1.5, size as f64 - 1.5);
+                let cr = snapshot.append_cairo(&graphene::Rect::new(
+                    bx - 2.0,
+                    by - 2.0,
+                    size + 4.0,
+                    size + 4.0,
+                ));
+                cr.rectangle(
+                    bx as f64 + 0.75,
+                    by as f64 + 0.75,
+                    size as f64 - 1.5,
+                    size as f64 - 1.5,
+                );
                 if checked {
                     set_color(&cr, &rgba(&p.accent));
                     let _ = cr.fill();
@@ -601,7 +629,10 @@ impl DocView {
                     cr.set_line_width(1.5 * scale);
                     let _ = cr.stroke();
                 }
-                boxes.push((graphene::Rect::new(bx - 4.0, by - 4.0, size + 8.0, size + 8.0), ii));
+                boxes.push((
+                    graphene::Rect::new(bx - 4.0, by - 4.0, size + 8.0, size + 8.0),
+                    ii,
+                ));
             } else {
                 let text = match it.number {
                     Some(n) => format!("{n}."),
@@ -626,7 +657,12 @@ impl DocView {
 }
 
 fn set_color(cr: &gtk::cairo::Context, c: &gdk::RGBA) {
-    cr.set_source_rgba(c.red() as f64, c.green() as f64, c.blue() as f64, c.alpha() as f64);
+    cr.set_source_rgba(
+        c.red() as f64,
+        c.green() as f64,
+        c.blue() as f64,
+        c.alpha() as f64,
+    );
 }
 
 #[cfg(test)]

@@ -5,8 +5,8 @@
 //! The app and the CLI both edit it, so every write happens under a file
 //! lock as read-modify-write, and files are replaced atomically.
 
-use super::anchor::{find_quote, Anchor, OffsetMap, Place};
-use anyhow::{bail, Context, Result};
+use super::anchor::{Anchor, OffsetMap, Place, find_quote};
+use anyhow::{Context, Result, bail};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -125,7 +125,13 @@ impl Comments {
 
     /// Adds a thread on `range` of `text` (the current document). Fails
     /// for an empty range, which has nothing to comment on.
-    pub fn add(&mut self, text: &str, range: Range<usize>, body: &str, author: Author) -> Result<u64> {
+    pub fn add(
+        &mut self,
+        text: &str,
+        range: Range<usize>,
+        body: &str,
+        author: Author,
+    ) -> Result<u64> {
         let Some(anchor) = Anchor::on(text, range) else {
             bail!("there is no text there to comment on");
         };
@@ -157,7 +163,11 @@ impl Comments {
 
     pub fn set_resolved(&mut self, id: u64, resolved: bool) -> Result<()> {
         let t = self.thread_mut(id)?;
-        t.status = if resolved { Status::Resolved { at: Utc::now() } } else { Status::Open };
+        t.status = if resolved {
+            Status::Resolved { at: Utc::now() }
+        } else {
+            Status::Open
+        };
         Ok(())
     }
 
@@ -228,7 +238,9 @@ pub fn data_dir() -> PathBuf {
     {
         return base.join("margin");
     }
-    let home = std::env::var_os("HOME").map(PathBuf::from).unwrap_or_default();
+    let home = std::env::var_os("HOME")
+        .map(PathBuf::from)
+        .unwrap_or_default();
     if cfg!(target_os = "macos") {
         home.join("Library/Application Support/Margin")
     } else {
@@ -263,7 +275,13 @@ impl Store {
             .map(|n| n.to_string_lossy().into_owned())
             .unwrap_or_default()
             .chars()
-            .map(|c| if c.is_alphanumeric() || c == '.' || c == '-' || c == '_' { c } else { '_' })
+            .map(|c| {
+                if c.is_alphanumeric() || c == '.' || c == '-' || c == '_' {
+                    c
+                } else {
+                    '_'
+                }
+            })
             .collect();
         let path = data_dir().join("docs").join(format!("{name}-{hex}.json"));
         Ok(Store { doc, path })
@@ -301,7 +319,9 @@ impl Store {
         match fs::read_to_string(&self.path) {
             Ok(s) => serde_json::from_str(&s)
                 .with_context(|| format!("corrupt comment store {}", self.path.display())),
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Comments::new(self.doc.clone())),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                Ok(Comments::new(self.doc.clone()))
+            }
             Err(e) => Err(e).with_context(|| format!("reading {}", self.path.display())),
         }
     }
@@ -330,15 +350,18 @@ impl Store {
 
     fn write(&self, c: &Comments) -> Result<()> {
         let json = serde_json::to_string_pretty(c)?;
-        let tmp = self.path.with_extension(format!("tmp{}", std::process::id()));
+        let tmp = self
+            .path
+            .with_extension(format!("tmp{}", std::process::id()));
         {
-            let mut f = fs::File::create(&tmp)
-                .with_context(|| format!("writing {}", tmp.display()))?;
+            let mut f =
+                fs::File::create(&tmp).with_context(|| format!("writing {}", tmp.display()))?;
             f.write_all(json.as_bytes())?;
             f.write_all(b"\n")?;
             f.sync_all()?;
         }
-        fs::rename(&tmp, &self.path).with_context(|| format!("replacing {}", self.path.display()))?;
+        fs::rename(&tmp, &self.path)
+            .with_context(|| format!("replacing {}", self.path.display()))?;
         Ok(())
     }
 }
@@ -357,8 +380,12 @@ pub fn all_stores() -> Result<Vec<(Store, Comments)>> {
         if path.extension().is_none_or(|e| e != "json") {
             continue;
         }
-        let Ok(text) = fs::read_to_string(&path) else { continue };
-        let Ok(c) = serde_json::from_str::<Comments>(&text) else { continue };
+        let Ok(text) = fs::read_to_string(&path) else {
+            continue;
+        };
+        let Ok(c) = serde_json::from_str::<Comments>(&text) else {
+            continue;
+        };
         let store = Store {
             doc: c.doc.clone(),
             path,
@@ -388,7 +415,9 @@ mod tests {
         let mut c = Comments::new("/tmp/x.md".into());
         let text = "Deploy with blue/green everywhere.\n";
         let s = text.find("blue/green").unwrap();
-        let id = c.add(text, s..s + 10, "Canary instead?", Author::User).unwrap();
+        let id = c
+            .add(text, s..s + 10, "Canary instead?", Author::User)
+            .unwrap();
         assert_eq!(id, 1);
         let new = "Intro.\n\nDeploy with canary everywhere.\n";
         assert!(c.sync(new));
@@ -422,7 +451,14 @@ mod tests {
         assert!(c.edit(id, 3, "x").is_err());
         let reply = c.thread(id).unwrap().messages[1].clone();
         c.delete_message(id, 1).unwrap();
-        let bodies = |c: &Comments| c.thread(id).unwrap().messages.iter().map(|m| m.body.clone()).collect::<Vec<_>>();
+        let bodies = |c: &Comments| {
+            c.thread(id)
+                .unwrap()
+                .messages
+                .iter()
+                .map(|m| m.body.clone())
+                .collect::<Vec<_>>()
+        };
         assert_eq!(bodies(&c), ["Why not?", "Fixed."]);
         c.insert_message(id, 1, reply).unwrap();
         assert_eq!(bodies(&c), ["Why not?", "Because.", "Fixed."]);
@@ -436,7 +472,10 @@ mod tests {
         let id = c.add("hello\n", 0..5, "Why?", Author::User).unwrap();
         c.reply(id, "Because.", Author::Agent).unwrap();
         let json = serde_json::to_string(&c).unwrap();
-        assert!(json.contains(r#""author":"user""#) && json.contains(r#""author":"agent""#), "{json}");
+        assert!(
+            json.contains(r#""author":"user""#) && json.contains(r#""author":"agent""#),
+            "{json}"
+        );
         let back: Comments = serde_json::from_str(&json).unwrap();
         let authors: Vec<Author> = back.threads[0].messages.iter().map(|m| m.author).collect();
         assert_eq!(authors, [Author::User, Author::Agent]);
@@ -444,7 +483,9 @@ mod tests {
 
     #[test]
     fn store_roundtrip_with_lock() {
-        let _env = crate::comments::DATA_DIR_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _env = crate::comments::DATA_DIR_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         let dir = std::env::temp_dir().join(format!("margin-test-{}", std::process::id()));
         fs::create_dir_all(&dir).unwrap();
         unsafe { std::env::set_var("MARGIN_DATA_DIR", dir.join("data")) };
@@ -454,7 +495,9 @@ mod tests {
         let id = store
             .update(|c| c.add("hello world\n", 6..11, "hi", Author::User))
             .unwrap();
-        store.update(|c| c.reply(id, "done", Author::Agent)).unwrap();
+        store
+            .update(|c| c.reply(id, "done", Author::Agent))
+            .unwrap();
         store.update(|c| c.set_resolved(id, true)).unwrap();
         let c = store.load().unwrap();
         assert_eq!(c.threads[0].messages.len(), 2);

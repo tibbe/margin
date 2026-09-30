@@ -1,0 +1,4 @@
+# `cargo fmt` takes the edition from Cargo.toml; rustfmt run on its own
+# (by an editor or a hook) doesn't, so both are spelled out.
+edition = "2024"
+style_edition = "2024"

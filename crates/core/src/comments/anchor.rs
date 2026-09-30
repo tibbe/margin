@@ -51,7 +51,10 @@ impl TryFrom<StoredAnchor> for Anchor {
     fn try_from(a: StoredAnchor) -> Result<Anchor, String> {
         match a.place {
             Place::On(r) if r.is_empty() => Err(format!("anchor on nothing at {}", r.start)),
-            place => Ok(Anchor { place, quote: a.quote }),
+            place => Ok(Anchor {
+                place,
+                quote: a.quote,
+            }),
         }
     }
 }
@@ -60,13 +63,22 @@ impl Anchor {
     /// On `range` of `text`; `None` when the range is empty (or not in
     /// `text`), since there is nothing there to comment on.
     pub fn on(text: &str, range: Range<usize>) -> Option<Anchor> {
-        let quote = text.get(range.clone()).filter(|q| !q.is_empty())?.to_string();
-        Some(Anchor { place: Place::On(range), quote })
+        let quote = text
+            .get(range.clone())
+            .filter(|q| !q.is_empty())?
+            .to_string();
+        Some(Anchor {
+            place: Place::On(range),
+            quote,
+        })
     }
 
     /// Deleted text, remembered by its quote, that was at `at`.
     pub fn detached(at: usize, quote: String) -> Anchor {
-        Anchor { place: Place::Detached(at), quote }
+        Anchor {
+            place: Place::Detached(at),
+            quote,
+        }
     }
 
     /// At `place` in `text`, with `quote` remembered in case it is
@@ -150,7 +162,11 @@ impl OffsetMap {
                 let sn = offsets(sub.iter_new_slices().map(str::len));
                 for sop in sub.ops() {
                     let (t, a, b) = sop.as_tag_tuple();
-                    ops.push((t, o.start + so[a.start]..o.start + so[a.end], n.start + sn[b.start]..n.start + sn[b.end]));
+                    ops.push((
+                        t,
+                        o.start + so[a.start]..o.start + so[a.end],
+                        n.start + sn[b.start]..n.start + sn[b.end],
+                    ));
                 }
             } else {
                 ops.push((tag, o, n));
@@ -203,7 +219,11 @@ impl OffsetMap {
             Place::On(r) => {
                 let start = self.map_start(r.start);
                 let end = self.map_end(r.end);
-                if start < end { Place::On(start..end) } else { Place::Detached(start.min(self.new_len)) }
+                if start < end {
+                    Place::On(start..end)
+                } else {
+                    Place::Detached(start.min(self.new_len))
+                }
             }
             Place::Detached(at) => Place::Detached(self.map_start(*at).min(self.new_len)),
         }
@@ -275,13 +295,14 @@ mod tests {
     #[test]
     fn survives_edits_elsewhere() {
         assert_eq!(
-            mapped("one two three four", "zero one two three four five", "two three"),
+            mapped(
+                "one two three four",
+                "zero one two three four five",
+                "two three"
+            ),
             Ok("two three".into())
         );
-        assert_eq!(
-            mapped("a b c d", "a c d", "c d"),
-            Ok("c d".into())
-        );
+        assert_eq!(mapped("a b c d", "a c d", "c d"), Ok("c d".into()));
     }
 
     #[test]
@@ -303,7 +324,11 @@ mod tests {
     #[test]
     fn grows_with_inner_insertions() {
         assert_eq!(
-            mapped("the quick fox jumps", "the quick brown fox jumps", "quick fox"),
+            mapped(
+                "the quick fox jumps",
+                "the quick brown fox jumps",
+                "quick fox"
+            ),
             Ok("quick brown fox".into())
         );
     }
@@ -324,7 +349,10 @@ mod tests {
         assert!(Anchor::on("abc", 2..9).is_none());
         let a = Anchor::on("abc", 1..3).unwrap();
         assert_eq!((a.quote(), a.range()), ("bc", Some(1..3)));
-        assert!(serde_json::from_str::<Anchor>(r#"{"place":{"on":{"start":2,"end":2}},"quote":""}"#).is_err());
+        assert!(
+            serde_json::from_str::<Anchor>(r#"{"place":{"on":{"start":2,"end":2}},"quote":""}"#)
+                .is_err()
+        );
         let back: Anchor = serde_json::from_str(&serde_json::to_string(&a).unwrap()).unwrap();
         assert_eq!(back, a);
     }

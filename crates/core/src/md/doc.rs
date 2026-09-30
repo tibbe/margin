@@ -24,7 +24,10 @@ pub enum Style {
     Raw,
     Quote,
     /// Left indentation from enclosing block quotes and list items.
-    Indent { quotes: u8, items: u8 },
+    Indent {
+        quotes: u8,
+        items: u8,
+    },
     /// Space above a line, in pixels at a 12pt body size. All vertical
     /// spacing is expressed as space *above* lines: GTK 4.22 aborts when a
     /// click lands in the space below a line that contains hidden text.
@@ -441,7 +444,10 @@ impl Builder<'_> {
                     });
                 }
                 let linkable = matches!(event, Event::Text(_))
-                    && matches!(self.leaf, None | Some((BlockKind::Paragraph | BlockKind::Heading(_), _)))
+                    && matches!(
+                        self.leaf,
+                        None | Some((BlockKind::Paragraph | BlockKind::Heading(_), _))
+                    )
                     && !self
                         .open_inlines
                         .iter()
@@ -457,7 +463,10 @@ impl Builder<'_> {
                 self.note_child(&range);
                 self.note_inline(&range);
                 let bytes = self.src.as_bytes();
-                let ticks = bytes[range.clone()].iter().take_while(|&&c| c == b'`').count();
+                let ticks = bytes[range.clone()]
+                    .iter()
+                    .take_while(|&&c| c == b'`')
+                    .count();
                 let open = range.start..range.start + ticks;
                 let close = range.end - ticks..range.end;
                 self.hidden.push(open.clone());
@@ -589,7 +598,11 @@ impl Builder<'_> {
                 let line = self.line_of(range.start);
                 self.row_start = range.start;
                 if let Some(t) = self.tables.last_mut() {
-                    t.rows.push(TableRow { line, cells: Vec::new(), trail: range.start..range.start });
+                    t.rows.push(TableRow {
+                        line,
+                        cells: Vec::new(),
+                        trail: range.start..range.start,
+                    });
                 }
             }
             Tag::TableCell => self.table_cell(range),
@@ -626,7 +639,9 @@ impl Builder<'_> {
             }
             Tag::Item => {
                 self.flush_implicit();
-                let Some(&list) = self.list_stack.last() else { return };
+                let Some(&list) = self.list_stack.last() else {
+                    return;
+                };
                 let index = self.lists[list].items.len() as u64;
                 let number = self.lists[list]
                     .ordered
@@ -657,7 +672,9 @@ impl Builder<'_> {
             | TagEnd::Strikethrough
             | TagEnd::Link
             | TagEnd::Image => {
-                let Some(o) = self.open_inlines.pop() else { return };
+                let Some(o) = self.open_inlines.pop() else {
+                    return;
+                };
                 let open_len = match o.kind {
                     InlineKind::Image => 2,
                     _ => 1,
@@ -691,7 +708,9 @@ impl Builder<'_> {
             | TagEnd::Table
             | TagEnd::HtmlBlock
             | TagEnd::MetadataBlock(_) => {
-                let Some((kind, start)) = self.leaf.take() else { return };
+                let Some((kind, start)) = self.leaf.take() else {
+                    return;
+                };
                 let range = start..range.end;
                 let first_line = self.line_of(range.start);
                 let last_line = self.last_line_of(&range);
@@ -707,7 +726,9 @@ impl Builder<'_> {
                 });
             }
             TagEnd::TableHead | TagEnd::TableRow => {
-                let Some(row) = self.tables.last_mut().and_then(|t| t.rows.last_mut()) else { return };
+                let Some(row) = self.tables.last_mut().and_then(|t| t.rows.last_mut()) else {
+                    return;
+                };
                 let from = row.cells.last().map_or(self.row_start, |c| c.content.end);
                 row.trail = from..self.lines[row.line].end.max(from);
             }
@@ -728,7 +749,9 @@ impl Builder<'_> {
     }
 
     fn table_cell(&mut self, raw: Range<usize>) {
-        let Some(row) = self.tables.last_mut().and_then(|t| t.rows.last_mut()) else { return };
+        let Some(row) = self.tables.last_mut().and_then(|t| t.rows.last_mut()) else {
+            return;
+        };
         // Cells the parser adds to short rows sit past the line's end.
         if raw.start > self.lines[row.line].end {
             return;
@@ -743,7 +766,10 @@ impl Builder<'_> {
             p..p
         };
         let from = row.cells.last().map_or(self.row_start, |c| c.content.end);
-        row.cells.push(TableCell { lead: from..content.start.max(from), content });
+        row.cells.push(TableCell {
+            lead: from..content.start.max(from),
+            content,
+        });
     }
 
     fn finish_code_block(&mut self, range: Range<usize>, first_line: usize, last_line: usize) {
@@ -876,7 +902,12 @@ impl Builder<'_> {
             let b = &self.blocks[bi];
             if let BlockKind::Heading(_) = b.kind
                 && b.first_line == b.last_line
-                && first_covered(covered, self.lines[b.first_line].start, self.lines[b.first_line].end).is_none()
+                && first_covered(
+                    covered,
+                    self.lines[b.first_line].start,
+                    self.lines[b.first_line].end,
+                )
+                .is_none()
                 && !self.line_text(b.first_line).ends_with([' ', '\t'])
             {
                 let l = b.first_line;
@@ -893,7 +924,9 @@ impl Builder<'_> {
             let l = &self.lines[line];
             let rest = &self.src[start.min(l.end)..l.end];
             let is_marker = !rest.is_empty()
-                && (rest == "-" || rest == "*" || rest == "+"
+                && (rest == "-"
+                    || rest == "*"
+                    || rest == "+"
                     || (rest.len() >= 2
                         && rest.ends_with(['.', ')'])
                         && rest[..rest.len() - 1].bytes().all(|c| c.is_ascii_digit())));
@@ -908,10 +941,12 @@ impl Builder<'_> {
         for bi in 0..self.blocks.len() {
             let b = self.blocks[bi].clone();
             match b.kind {
-                BlockKind::Paragraph => self.set_kind(b.first_line..=b.last_line, LineKind::Paragraph),
+                BlockKind::Paragraph => {
+                    self.set_kind(b.first_line..=b.last_line, LineKind::Paragraph)
+                }
                 BlockKind::Heading(level) => {
-                    let setext =
-                        b.last_line > b.first_line && is_setext_underline(self.line_text(b.last_line));
+                    let setext = b.last_line > b.first_line
+                        && is_setext_underline(self.line_text(b.last_line));
                     if setext {
                         self.set_kind(b.first_line..=b.last_line - 1, LineKind::Heading(level));
                         self.lines[b.last_line].kind = LineKind::SetextUnderline;
@@ -922,7 +957,8 @@ impl Builder<'_> {
                 BlockKind::Code(ci) => {
                     let cb = self.code_blocks[ci].clone();
                     for l in cb.first_line..=cb.last_line {
-                        self.lines[l].kind = if Some(l) == cb.open_line || Some(l) == cb.close_line {
+                        self.lines[l].kind = if Some(l) == cb.open_line || Some(l) == cb.close_line
+                        {
                             LineKind::Fence
                         } else {
                             LineKind::CodeContent
@@ -1044,7 +1080,9 @@ impl Builder<'_> {
     fn hide_uncovered(&mut self, covered: &[Range<usize>]) {
         let mut out = Vec::new();
         for (li, l) in self.lines.iter().enumerate() {
-            if !matches!(l.kind, LineKind::Paragraph | LineKind::Heading(_)) || self.bare_lines.contains(&li) {
+            if !matches!(l.kind, LineKind::Paragraph | LineKind::Heading(_))
+                || self.bare_lines.contains(&li)
+            {
                 continue;
             }
             let mut pos = l.content_start;
@@ -1120,7 +1158,10 @@ impl Builder<'_> {
                     continue;
                 };
                 let boundary_ok = start == 0
-                    || !text[..start].chars().next_back().is_some_and(|c| c.is_alphanumeric());
+                    || !text[..start]
+                        .chars()
+                        .next_back()
+                        .is_some_and(|c| c.is_alphanumeric());
                 let mut end = rest
                     .find(|c: char| c.is_whitespace() || c == '<' || c == '>' || c == '"')
                     .unwrap_or(rest.len());
@@ -1130,7 +1171,9 @@ impl Builder<'_> {
                     let c = rest[..end].chars().next_back().unwrap();
                     let unbalanced_paren = c == ')'
                         && rest[..end].matches('(').count() < rest[..end].matches(')').count();
-                    if matches!(c, '.' | ',' | ';' | ':' | '!' | '?' | '\'' | '*' | '_') || unbalanced_paren {
+                    if matches!(c, '.' | ',' | ';' | ':' | '!' | '?' | '\'' | '*' | '_')
+                        || unbalanced_paren
+                    {
                         end -= c.len_utf8();
                     } else {
                         break;
@@ -1173,22 +1216,34 @@ impl Builder<'_> {
                 LineKind::Raw => Some(Style::Raw),
             };
             if let Some(style) = style {
-                spans.push(Span { range: whole.clone(), style });
+                spans.push(Span {
+                    range: whole.clone(),
+                    style,
+                });
             }
             match l.kind {
                 LineKind::Blank | LineKind::SetextUnderline | LineKind::Fence => {
                     if !whole.is_empty() {
-                        spans.push(Span { range: whole.clone(), style: Style::Hidden });
+                        spans.push(Span {
+                            range: whole.clone(),
+                            style: Style::Hidden,
+                        });
                     }
                 }
                 _ => {
                     if l.content_start > l.start {
-                        spans.push(Span { range: l.start..l.content_start, style: Style::Hidden });
+                        spans.push(Span {
+                            range: l.start..l.content_start,
+                            style: Style::Hidden,
+                        });
                     }
                 }
             }
             if l.kind == LineKind::Rule && l.end > l.content_start {
-                spans.push(Span { range: l.content_start..l.end, style: Style::Hidden });
+                spans.push(Span {
+                    range: l.content_start..l.end,
+                    style: Style::Hidden,
+                });
             }
             if !l.containers.is_empty() && !matches!(l.kind, LineKind::Blank) {
                 let quotes = l
@@ -1197,22 +1252,34 @@ impl Builder<'_> {
                     .filter(|c| matches!(c, Container::Quote(_)))
                     .count() as u8;
                 let items = l.containers.len() as u8 - quotes;
-                spans.push(Span { range: whole.clone(), style: Style::Indent { quotes, items } });
+                spans.push(Span {
+                    range: whole.clone(),
+                    style: Style::Indent { quotes, items },
+                });
                 if quotes > 0 && matches!(l.kind, LineKind::Paragraph | LineKind::Heading(_)) {
-                    spans.push(Span { range: whole, style: Style::Quote });
+                    spans.push(Span {
+                        range: whole,
+                        style: Style::Quote,
+                    });
                 }
             }
         }
 
         for head in &self.table_heads {
-            spans.push(Span { range: head.clone(), style: Style::TableHeader });
+            spans.push(Span {
+                range: head.clone(),
+                style: Style::TableHeader,
+            });
         }
 
         for item in &self.items {
             if let Some((true, _)) = item.task {
                 let l = &self.lines[item.line];
                 if l.end > l.content_start {
-                    spans.push(Span { range: l.content_start..l.end, style: Style::TaskDone });
+                    spans.push(Span {
+                        range: l.content_start..l.end,
+                        style: Style::TaskDone,
+                    });
                 }
             }
         }
@@ -1228,13 +1295,19 @@ impl Builder<'_> {
             };
             let content = inline.content();
             if !content.is_empty() {
-                spans.push(Span { range: content, style });
+                spans.push(Span {
+                    range: content,
+                    style,
+                });
             }
         }
 
         for r in &self.hidden {
             if !r.is_empty() {
-                spans.push(Span { range: r.clone(), style: Style::Hidden });
+                spans.push(Span {
+                    range: r.clone(),
+                    style: Style::Hidden,
+                });
             }
         }
 
@@ -1251,7 +1324,12 @@ impl Builder<'_> {
         // End of the top-level list each list belongs to, computed once:
         // looking it up per block made this quadratic in long lists.
         let mut order: Vec<usize> = (0..self.lists.len()).collect();
-        order.sort_by_key(|&i| (self.lists[i].range.start, std::cmp::Reverse(self.lists[i].range.end)));
+        order.sort_by_key(|&i| {
+            (
+                self.lists[i].range.start,
+                std::cmp::Reverse(self.lists[i].range.end),
+            )
+        });
         let mut outer_end = vec![0; self.lists.len()];
         let mut top: Option<Range<usize>> = None;
         for &i in &order {
@@ -1268,7 +1346,10 @@ impl Builder<'_> {
         let in_list_gap = |item: Option<usize>, last_line: usize, lines: &[Line]| -> Option<u16> {
             let item = item?;
             let list_end = outermost_list_end(item);
-            let next = lines[last_line + 1..].iter().find(|l| l.kind != LineKind::Blank).map(|l| l.start);
+            let next = lines[last_line + 1..]
+                .iter()
+                .find(|l| l.kind != LineKind::Blank)
+                .map(|l| l.start);
             matches!(next, Some(p) if p < list_end).then_some(GAP_ITEM)
         };
         for b in &self.blocks {
@@ -1280,8 +1361,13 @@ impl Builder<'_> {
                     }
                     (lines.start, lines.end - 1)
                 }
-                BlockKind::Heading(_) if self.lines[b.last_line].kind == LineKind::SetextUnderline => {
-                    (b.first_line, b.last_line.saturating_sub(1).max(b.first_line))
+                BlockKind::Heading(_)
+                    if self.lines[b.last_line].kind == LineKind::SetextUnderline =>
+                {
+                    (
+                        b.first_line,
+                        b.last_line.saturating_sub(1).max(b.first_line),
+                    )
                 }
                 _ => (b.first_line, b.last_line),
             };
@@ -1292,13 +1378,23 @@ impl Builder<'_> {
                 BlockKind::Rule => (RULE_PAD, GAP_BLOCK + RULE_PAD, None),
                 _ => (0, list_gap.unwrap_or(GAP_BLOCK), None),
             };
-            visuals.push(Visual { first, gap_after, own, heading });
+            visuals.push(Visual {
+                first,
+                gap_after,
+                own,
+                heading,
+            });
         }
         for (ii, item) in self.items.iter().enumerate() {
             let l = &self.lines[item.line];
             if l.content_start >= l.end && !self.blocks.iter().any(|b| b.first_line == item.line) {
                 let gap_after = in_list_gap(Some(ii), item.line, &self.lines).unwrap_or(GAP_BLOCK);
-                visuals.push(Visual { first: item.line, gap_after, own: 0, heading: None });
+                visuals.push(Visual {
+                    first: item.line,
+                    gap_after,
+                    own: 0,
+                    heading: None,
+                });
             }
         }
         visuals.sort_by_key(|v| v.first);
@@ -1313,7 +1409,10 @@ impl Builder<'_> {
         }
         for (i, a) in above.iter().enumerate() {
             if *a > 0 {
-                spans.push(Span { range: with_newline(&self.lines[i]), style: Style::Above(*a) });
+                spans.push(Span {
+                    range: with_newline(&self.lines[i]),
+                    style: Style::Above(*a),
+                });
             }
         }
 
@@ -1347,7 +1446,10 @@ impl Builder<'_> {
         let hidden = merge(hidden);
         for l in &mut self.lines {
             let mut p = l.content_start.min(l.end);
-            while let Some(r) = hidden.get(hidden.partition_point(|r| r.end <= p)).filter(|r| r.start <= p) {
+            while let Some(r) = hidden
+                .get(hidden.partition_point(|r| r.end <= p))
+                .filter(|r| r.start <= p)
+            {
                 p = r.end;
             }
             l.visible_start = p.min(l.end);
@@ -1402,10 +1504,14 @@ impl Doc {
 
     /// The innermost list item containing `line`.
     pub fn innermost_item(&self, line: usize) -> Option<usize> {
-        self.lines[line].containers.iter().rev().find_map(|c| match c {
-            Container::Item(i) => Some(*i),
-            Container::Quote(_) => None,
-        })
+        self.lines[line]
+            .containers
+            .iter()
+            .rev()
+            .find_map(|c| match c {
+                Container::Item(i) => Some(*i),
+                Container::Quote(_) => None,
+            })
     }
 
     pub fn code_block_at_line(&self, line: usize) -> Option<usize> {
@@ -1459,15 +1565,28 @@ mod tests {
     #[test]
     fn lines_start_where_their_text_shows() {
         fn starts(src: &str) -> Vec<&str> {
-            parse(src).lines.iter().map(|l| &src[l.visible_start..l.end]).collect()
+            parse(src)
+                .lines
+                .iter()
+                .map(|l| &src[l.visible_start..l.end])
+                .collect()
         }
         // Bold text starting an item, a quote or a heading: past its `**`.
-        assert_eq!(starts("- **File** menu\n- plain\n"), ["File** menu", "plain", ""]);
+        assert_eq!(
+            starts("- **File** menu\n- plain\n"),
+            ["File** menu", "plain", ""]
+        );
         assert_eq!(starts("> **Note:** read\n"), ["Note:** read", ""]);
         assert_eq!(starts("# *Big* title\n"), ["Big* title", ""]);
-        assert_eq!(starts("1. [link](http://x) after\n"), ["link](http://x) after", ""]);
+        assert_eq!(
+            starts("1. [link](http://x) after\n"),
+            ["link](http://x) after", ""]
+        );
         // Nothing shown: blank lines, fences and rules show from their end.
-        assert_eq!(starts("a\n\n```\ncode\n```\n\n---\n"), ["a", "", "", "code", "", "", "", ""]);
+        assert_eq!(
+            starts("a\n\n```\ncode\n```\n\n---\n"),
+            ["a", "", "", "code", "", "", "", ""]
+        );
     }
 
     fn hidden_text(src: &str, doc: &Doc) -> String {
@@ -1508,7 +1627,11 @@ mod tests {
         let src = "Some **bold** and *it* and `code`.\n";
         let doc = parse(src);
         assert_eq!(hidden_text(src, &doc), "Some bold and it and code.\n");
-        let strong = doc.inlines.iter().find(|i| i.kind == InlineKind::Strong).unwrap();
+        let strong = doc
+            .inlines
+            .iter()
+            .find(|i| i.kind == InlineKind::Strong)
+            .unwrap();
         assert_eq!(strong.open, 5..7);
         assert_eq!(strong.close, 11..13);
     }
@@ -1640,7 +1763,16 @@ mod tests {
         let rows: Vec<(usize, Vec<(&str, &str)>, &str)> = t
             .rows
             .iter()
-            .map(|r| (r.line, r.cells.iter().map(|c| (text(&c.lead), text(&c.content))).collect(), text(&r.trail)))
+            .map(|r| {
+                (
+                    r.line,
+                    r.cells
+                        .iter()
+                        .map(|c| (text(&c.lead), text(&c.content)))
+                        .collect(),
+                    text(&r.trail),
+                )
+            })
             .collect();
         assert_eq!(
             rows,
@@ -1684,7 +1816,11 @@ mod tests {
         assert_eq!(above(&doc, 5), GAP_ITEM);
         assert_eq!(above(&doc, 7), GAP_BLOCK);
         assert_eq!(above(&doc, 9), HEADING_ABOVE[1]);
-        assert!(!doc.spans.iter().any(|s| matches!(s.style, Style::Above(_)) && s.range.start == doc.lines[1].start));
+        assert!(
+            !doc.spans
+                .iter()
+                .any(|s| matches!(s.style, Style::Above(_)) && s.range.start == doc.lines[1].start)
+        );
     }
 
     #[test]
@@ -1784,7 +1920,10 @@ mod tests {
             .filter_map(|i| i.url.clone())
             .collect();
         assert_eq!(urls, vec!["https://example.com/a_(b)", "https://z.w"]);
-        assert_eq!(hidden_text(src, &doc), "See https://example.com/a_(b). And http://x.y or t.\n");
+        assert_eq!(
+            hidden_text(src, &doc),
+            "See https://example.com/a_(b). And http://x.y or t.\n"
+        );
     }
 
     #[test]
