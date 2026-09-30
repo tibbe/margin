@@ -6,6 +6,8 @@ it does.
 
 ## Specs
 
+This project uses specification-driven development.
+
 - `docs/spec.md`: the product spec: problem, user stories, product
   decisions, and the UX the platforms share.
 - `docs/linux/design_system.md`: the Linux (GTK) editor's design system.
