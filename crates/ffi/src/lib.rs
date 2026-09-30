@@ -157,6 +157,9 @@ pub struct LineInfo {
     /// Excludes the newline.
     pub end: u32,
     pub content_start: u32,
+    /// The first character shown (see `margin_core::md::Line`): where
+    /// what is drawn beside the line goes.
+    pub visible_start: u32,
     pub kind: LineType,
     /// Enclosing block quotes and list items, for indentation.
     pub quotes: u8,
@@ -429,11 +432,11 @@ impl Analysis {
         out
     }
 
-    /// The lines packed for speed: six little-endian `u32`s each: start,
-    /// end, content start (UTF-16), kind (in [`LineType`]'s order), quotes
-    /// and items.
+    /// The lines packed for speed: seven little-endian `u32`s each: start,
+    /// end, content start, visible start (UTF-16), kind (in [`LineType`]'s
+    /// order), quotes and items.
     pub fn lines_packed(&self) -> Vec<u8> {
-        let mut out = Vec::with_capacity(self.doc.lines.len() * 24);
+        let mut out = Vec::with_capacity(self.doc.lines.len() * 28);
         for l in &self.doc.lines {
             let (quotes, items) = counts(&l.containers);
             let kind: u32 = match l.kind {
@@ -449,7 +452,7 @@ impl Analysis {
                 LineKind::Rule => 9,
                 LineKind::Raw => 10,
             };
-            for v in [self.u(l.start), self.u(l.end), self.u(l.content_start), kind, quotes as u32, items as u32] {
+            for v in [self.u(l.start), self.u(l.end), self.u(l.content_start), self.u(l.visible_start), kind, quotes as u32, items as u32] {
                 out.extend_from_slice(&v.to_le_bytes());
             }
         }
@@ -466,6 +469,7 @@ impl Analysis {
                     start: self.u(l.start),
                     end: self.u(l.end),
                     content_start: self.u(l.content_start),
+                    visible_start: self.u(l.visible_start),
                     kind: match l.kind {
                         LineKind::Blank => LineType::Blank,
                         LineKind::Paragraph => LineType::Paragraph,

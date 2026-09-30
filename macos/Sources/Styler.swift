@@ -62,15 +62,15 @@ extension LineInfo {
     /// Lines as the core packs them (see `Analysis.linesPacked`).
     static func decode(_ data: Data) -> [LineInfo] {
         var out: [LineInfo] = []
-        out.reserveCapacity(data.count / 24)
+        out.reserveCapacity(data.count / 28)
         data.withUnsafeBytes { (raw: UnsafeRawBufferPointer) in
             func u(_ i: Int, _ k: Int) -> UInt32 {
-                UInt32(littleEndian: raw.loadUnaligned(fromByteOffset: i * 24 + k * 4, as: UInt32.self))
+                UInt32(littleEndian: raw.loadUnaligned(fromByteOffset: i * 28 + k * 4, as: UInt32.self))
             }
-            for i in 0..<(raw.count / 24) {
-                out.append(LineInfo(start: u(i, 0), end: u(i, 1), contentStart: u(i, 2),
-                                    kind: kinds[min(Int(u(i, 3)), kinds.count - 1)],
-                                    quotes: UInt8(clamping: u(i, 4)), items: UInt8(clamping: u(i, 5))))
+            for i in 0..<(raw.count / 28) {
+                out.append(LineInfo(start: u(i, 0), end: u(i, 1), contentStart: u(i, 2), visibleStart: u(i, 3),
+                                    kind: kinds[min(Int(u(i, 4)), kinds.count - 1)],
+                                    quotes: UInt8(clamping: u(i, 5)), items: UInt8(clamping: u(i, 6))))
             }
         }
         return out

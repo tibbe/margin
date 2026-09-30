@@ -82,6 +82,12 @@ pub struct Line {
     /// First byte after block syntax (container markers, list bullets,
     /// heading hashes). Everything in `start..content_start` is hidden.
     pub content_start: usize,
+    /// First byte the rendered view shows: past the block syntax and any
+    /// hidden syntax after it, such as the `**` of bold text that starts
+    /// the line; `end` when it shows nothing. What a view draws beside a
+    /// line (list markers, quote bars) goes by it, not by `content_start`:
+    /// AppKit lays out hidden syntax that starts a line on the line before.
+    pub visible_start: usize,
     pub kind: LineKind,
     /// Enclosing block quotes and list items, outermost first.
     pub containers: Vec<Container>,
@@ -363,6 +369,7 @@ fn new_line(start: usize, end: usize) -> Line {
         start,
         end,
         content_start: start,
+        visible_start: start,
         kind: LineKind::Blank,
         containers: Vec::new(),
     }
@@ -785,6 +792,7 @@ impl Builder<'_> {
         self.hide_pending_hard_breaks();
         self.find_bare_urls();
         self.emit_spans();
+        self.assign_visible_starts();
 
         let mut hidden = std::mem::take(&mut self.hidden);
         hidden.retain(|r| !r.is_empty());
@@ -1325,6 +1333,28 @@ fn merge(ranges: Vec<Range<usize>>) -> Vec<Range<usize>> {
     out
 }
 
+impl Builder<'_> {
+    /// Each line's first shown byte ([`Line::visible_start`]): from its
+    /// content start, past what the hidden spans cover.
+    fn assign_visible_starts(&mut self) {
+        let mut hidden: Vec<Range<usize>> = self
+            .spans
+            .iter()
+            .filter(|s| s.style == Style::Hidden && !s.range.is_empty())
+            .map(|s| s.range.clone())
+            .collect();
+        hidden.sort_by_key(|r| r.start);
+        let hidden = merge(hidden);
+        for l in &mut self.lines {
+            let mut p = l.content_start.min(l.end);
+            while let Some(r) = hidden.get(hidden.partition_point(|r| r.end <= p)).filter(|r| r.start <= p) {
+                p = r.end;
+            }
+            l.visible_start = p.min(l.end);
+        }
+    }
+}
+
 /// First covered byte in `start..=end` (the newline position counts).
 fn first_covered(covered: &[Range<usize>], start: usize, end: usize) -> Option<usize> {
     let idx = covered.partition_point(|r| r.end <= start);
@@ -1425,6 +1455,20 @@ impl Doc {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn lines_start_where_their_text_shows() {
+        fn starts(src: &str) -> Vec<&str> {
+            parse(src).lines.iter().map(|l| &src[l.visible_start..l.end]).collect()
+        }
+        // Bold text starting an item, a quote or a heading: past its `**`.
+        assert_eq!(starts("- **File** menu\n- plain\n"), ["File** menu", "plain", ""]);
+        assert_eq!(starts("> **Note:** read\n"), ["Note:** read", ""]);
+        assert_eq!(starts("# *Big* title\n"), ["Big* title", ""]);
+        assert_eq!(starts("1. [link](http://x) after\n"), ["link](http://x) after", ""]);
+        // Nothing shown: blank lines, fences and rules show from their end.
+        assert_eq!(starts("a\n\n```\ncode\n```\n\n---\n"), ["a", "", "", "code", "", "", "", ""]);
+    }
 
     fn hidden_text(src: &str, doc: &Doc) -> String {
         // The text as rendered: hidden spans removed.

@@ -430,11 +430,13 @@ final class DocTextView: NSTextView, NSTextStorageDelegate, NSTextViewDelegate, 
         return lm.lineFragmentRect(forGlyphAt: g, effectiveRange: nil).offsetBy(dx: origin.x, dy: origin.y)
     }
 
-    /// A line's first visible character from its content start (or its
-    /// end): hidden syntax at the start of a line, such as the "**" of bold
-    /// text, is laid out on the line before, so positions are found here.
+    /// A line's first shown character (or its end), where what is drawn
+    /// beside it goes: hidden syntax that starts a line is laid out on the
+    /// line before. The core's `visibleStart` is past Markdown's hidden
+    /// syntax; this also passes what only this view hides, the leading `|`
+    /// of a table row shown as a grid.
     private func visibleStart(_ l: LineInfo) -> Int {
-        var ci = Int(min(l.contentStart, l.end))
+        var ci = Int(l.visibleStart)
         while ci < Int(l.end) && isHidden(ci) { ci += 1 }
         return ci
     }

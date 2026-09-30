@@ -491,7 +491,7 @@ impl DocView {
             }
             let fl = &doc.lines[lines.start];
             let ll = &doc.lines[lines.end - 1];
-            let top = at(fl.content_start.min(fl.end));
+            let top = at(fl.visible_start);
             let bottom = at(ll.end);
             let (pad_x, pad_y) = (12.0 * scale as f32, 8.0 * scale as f32);
             let x0 = g.left as f32 + indent_px(&fl.containers, scale) - pad_x;
@@ -529,7 +529,7 @@ impl DocView {
                 .position(|c| *c == Container::Quote(qi))
                 .unwrap_or(0);
             let x = g.left as f32 + indent_px(&lf.containers[..k], scale) + 2.0 * scale as f32;
-            let top = at(lf.content_start.min(lf.end));
+            let top = at(lf.visible_start);
             // The line's newline can be hidden, and GTK gives hidden text an
             // empty location, so take the bottom from the display line.
             let (by, bh) = self.line_yrange(&buf.iter_at_byte(doc.lines[ll].end));
@@ -577,7 +577,7 @@ impl DocView {
                 continue;
             };
             let x_text = g.left as f32 + indent_px(&line.containers[..=k], scale);
-            let rect = self.iter_location_of(buf, line.content_start.min(line.end));
+            let rect = self.iter_location_of(buf, line.visible_start);
             let (y, h) = (rect.y() as f32, rect.height() as f32);
             let gap = 8.0 * scale as f32;
             if let Some((checked, _)) = it.task {
