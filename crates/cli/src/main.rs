@@ -1,5 +1,8 @@
 mod cli;
 
+#[cfg(target_os = "macos")]
+mod macos;
+
 use clap::Parser;
 use margin_core::comments;
 use std::path::PathBuf;
@@ -42,8 +45,8 @@ fn launch(files: Vec<PathBuf>, foreground: bool) -> anyhow::Result<i32> {
     Ok(0)
 }
 
-/// Hands the files to Margin.app through Launch Services, which starts it
-/// or reuses the running one. With `foreground`, waits until it quits.
+/// Hands files to the containing app, or the installed Release app for a
+/// standalone CLI. With `foreground`, waits until the app quits.
 #[cfg(target_os = "macos")]
 fn launch(files: Vec<PathBuf>, foreground: bool) -> anyhow::Result<i32> {
     // Launch Services only opens files that exist; a new document starts
@@ -54,7 +57,11 @@ fn launch(files: Vec<PathBuf>, foreground: bool) -> anyhow::Result<i32> {
         }
     }
     let mut cmd = std::process::Command::new("/usr/bin/open");
-    cmd.args(["-b", "io.github.tibbe.Margin"]);
+    if let Some(bundle) = macos::app_bundle() {
+        cmd.arg("-a").arg(bundle);
+    } else {
+        cmd.args(["-b", "io.github.tibbe.Margin"]);
+    }
     if foreground {
         cmd.arg("-W");
     }

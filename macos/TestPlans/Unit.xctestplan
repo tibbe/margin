@@ -1,0 +1,24 @@
+{
+  "configurations": [
+    {
+      "id": "B1A00000-0000-0000-0000-000000000001",
+      "name": "Default",
+      "options": {}
+    }
+  ],
+  "defaultOptions": {
+    "codeCoverage": true,
+    "testLanguage": "en"
+  },
+  "testTargets": [
+    {
+      "parallelizable": false,
+      "target": {
+        "containerPath": "container:Margin.xcodeproj",
+        "identifier": "43D0679FCAE2BC5C91DBBD93",
+        "name": "MarginTests"
+      }
+    }
+  ],
+  "version": 1
+}

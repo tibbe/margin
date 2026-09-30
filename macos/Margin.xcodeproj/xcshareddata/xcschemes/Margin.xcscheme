@@ -27,28 +27,10 @@
       selectedDebuggerIdentifier = "Xcode.DebuggerFoundation.Debugger.LLDB"
       selectedLauncherIdentifier = "Xcode.DebuggerFoundation.Launcher.LLDB"
       shouldUseLaunchSchemeArgsEnv = "YES">
-      <Testables>
-         <TestableReference
-            skipped = "NO">
-            <BuildableReference
-               BuildableIdentifier = "primary"
-               BlueprintIdentifier = "43D0679FCAE2BC5C91DBBD93"
-               BuildableName = "MarginTests.xctest"
-               BlueprintName = "MarginTests"
-               ReferencedContainer = "container:Margin.xcodeproj">
-            </BuildableReference>
-         </TestableReference>
-         <TestableReference
-            skipped = "NO">
-            <BuildableReference
-               BuildableIdentifier = "primary"
-               BlueprintIdentifier = "57DE546903F18E7286C2F9C3"
-               BuildableName = "MarginUITests.xctest"
-               BlueprintName = "MarginUITests"
-               ReferencedContainer = "container:Margin.xcodeproj">
-            </BuildableReference>
-         </TestableReference>
-      </Testables>
+      <TestPlans>
+         <TestPlanReference reference="container:TestPlans/Unit.xctestplan" default="YES" />
+         <TestPlanReference reference="container:TestPlans/UI.xctestplan" />
+      </TestPlans>
    </TestAction>
    <LaunchAction
       buildConfiguration = "Debug"

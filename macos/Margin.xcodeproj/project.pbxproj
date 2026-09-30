@@ -83,6 +83,11 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		B1A000000000000000000003 /* Common.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Common.xcconfig; sourceTree = "<group>"; };
+		B1A000000000000000000005 /* Unit.xctestplan */ = {isa = PBXFileReference; lastKnownFileType = text; path = Unit.xctestplan; sourceTree = "<group>"; };
+		B1A000000000000000000006 /* UI.xctestplan */ = {isa = PBXFileReference; lastKnownFileType = text; path = UI.xctestplan; sourceTree = "<group>"; };
+		B1A000000000000000000001 /* Debug.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Debug.xcconfig; sourceTree = "<group>"; };
+		B1A000000000000000000002 /* Release.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Release.xcconfig; sourceTree = "<group>"; };
 		0E77DD546D625C11A095020A /* libMarginFFI.a */ = {
 			isa = PBXFileReference;
 			explicitFileType = archive.ar;
@@ -205,6 +210,25 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		B1A000000000000000000004 /* Configurations */ = {
+			isa = PBXGroup;
+			children = (
+				B1A000000000000000000003 /* Common.xcconfig */,
+				B1A000000000000000000001 /* Debug.xcconfig */,
+				B1A000000000000000000002 /* Release.xcconfig */,
+			);
+			path = Configurations;
+			sourceTree = "<group>";
+		};
+		B1A000000000000000000007 /* TestPlans */ = {
+			isa = PBXGroup;
+			children = (
+				B1A000000000000000000005 /* Unit.xctestplan */,
+				B1A000000000000000000006 /* UI.xctestplan */,
+			);
+			path = TestPlans;
+			sourceTree = "<group>";
+		};
 		2F3A6B1E78F896718625FF06 /* Products */ = {
 			isa = PBXGroup;
 			children = (
@@ -229,6 +253,8 @@
 		518DA81DB9B99529C0C0AEBE = {
 			isa = PBXGroup;
 			children = (
+				B1A000000000000000000004 /* Configurations */,
+				B1A000000000000000000007 /* TestPlans */,
 				AC681E5C16445843A81DB24C /* App */,
 				7E77067905F52F343F9BE198 /* Sources */,
 				887A6F90336FF23D95C3914B /* Resources */,
@@ -549,7 +575,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				PRODUCT_NAME = Margin;
-				PRODUCT_BUNDLE_IDENTIFIER = io.github.tibbe.Margin;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(MARGIN_APP_IDENTIFIER)";
 				INFOPLIST_FILE = Resources/Info.plist;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				COMBINE_HIDPI_IMAGES = YES;
@@ -563,7 +589,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				PRODUCT_NAME = MarginTests;
-				PRODUCT_BUNDLE_IDENTIFIER = io.github.tibbe.MarginTests;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(MARGIN_APP_IDENTIFIER).Tests";
 				GENERATE_INFOPLIST_FILE = YES;
 				OTHER_LDFLAGS = "$(inherited) $(PROJECT_DIR)/build/rust/$(CONFIGURATION)/libmargin_ffi.a";
 				OTHER_SWIFT_FLAGS = "$(inherited) -Xcc -fmodule-map-file=$(PROJECT_DIR)/build/gen/margin_ffiFFI.modulemap -enable-upcoming-feature NonisolatedNonsendingByDefault -enable-upcoming-feature InferIsolatedConformances -warnings-as-errors -Wwarning DeprecatedDeclaration";
@@ -572,6 +598,7 @@
 		};
 		4C95F91A6D5CD87BB5DB8FDD /* Release */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = B1A000000000000000000002 /* Release.xcconfig */;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				CLANG_ENABLE_MODULES = YES;
@@ -595,7 +622,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				PRODUCT_NAME = MarginUITests;
-				PRODUCT_BUNDLE_IDENTIFIER = io.github.tibbe.MarginUITests;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(MARGIN_APP_IDENTIFIER).UITests";
 				GENERATE_INFOPLIST_FILE = YES;
 				TEST_TARGET_NAME = Margin;
 				OTHER_SWIFT_FLAGS = "$(inherited) -Xcc -fmodule-map-file=$(PROJECT_DIR)/build/gen/margin_ffiFFI.modulemap -enable-upcoming-feature NonisolatedNonsendingByDefault -enable-upcoming-feature InferIsolatedConformances -warnings-as-errors -Wwarning DeprecatedDeclaration";
@@ -606,7 +633,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				PRODUCT_NAME = MarginTests;
-				PRODUCT_BUNDLE_IDENTIFIER = io.github.tibbe.MarginTests;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(MARGIN_APP_IDENTIFIER).Tests";
 				GENERATE_INFOPLIST_FILE = YES;
 				OTHER_LDFLAGS = "$(inherited) $(PROJECT_DIR)/build/rust/$(CONFIGURATION)/libmargin_ffi.a";
 				OTHER_SWIFT_FLAGS = "$(inherited) -Xcc -fmodule-map-file=$(PROJECT_DIR)/build/gen/margin_ffiFFI.modulemap -enable-upcoming-feature NonisolatedNonsendingByDefault -enable-upcoming-feature InferIsolatedConformances -warnings-as-errors -Wwarning DeprecatedDeclaration";
@@ -626,7 +653,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				PRODUCT_NAME = MarginUITests;
-				PRODUCT_BUNDLE_IDENTIFIER = io.github.tibbe.MarginUITests;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(MARGIN_APP_IDENTIFIER).UITests";
 				GENERATE_INFOPLIST_FILE = YES;
 				TEST_TARGET_NAME = Margin;
 				OTHER_SWIFT_FLAGS = "$(inherited) -Xcc -fmodule-map-file=$(PROJECT_DIR)/build/gen/margin_ffiFFI.modulemap -enable-upcoming-feature NonisolatedNonsendingByDefault -enable-upcoming-feature InferIsolatedConformances -warnings-as-errors -Wwarning DeprecatedDeclaration";
@@ -635,6 +662,7 @@
 		};
 		969595A508627F35A110362C /* Debug */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = B1A000000000000000000001 /* Debug.xcconfig */;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				CLANG_ENABLE_MODULES = YES;
@@ -670,7 +698,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				PRODUCT_NAME = Margin;
-				PRODUCT_BUNDLE_IDENTIFIER = io.github.tibbe.Margin;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(MARGIN_APP_IDENTIFIER)";
 				INFOPLIST_FILE = Resources/Info.plist;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				COMBINE_HIDPI_IMAGES = YES;

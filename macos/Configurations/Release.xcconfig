@@ -1,0 +1,4 @@
+#include "Common.xcconfig"
+
+MARGIN_APP_IDENTIFIER = io.github.tibbe.Margin
+MARGIN_DISPLAY_NAME = Margin
