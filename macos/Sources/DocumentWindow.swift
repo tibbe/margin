@@ -120,7 +120,7 @@ final class DocumentWindow: NSWindowController, NSWindowDelegate, NSToolbarDeleg
         window.toolbar = toolbar
 
         textView.onRetile = { [weak self] in
-            self?.page.needsLayout = true
+            self?.page.retile()
             self?.page.layoutSubtreeIfNeeded()
         }
         textView.onChange = { [weak self] in self?.textChanged() }

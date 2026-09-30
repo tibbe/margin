@@ -60,14 +60,27 @@ final class CommentLayer {
     private var gutter: GutterView { page.gutter }
     private(set) var store: CommentStore?
     private(set) var items: [ThreadItem] = []
-    private var draft: Draft?
+    /// What has the gutter's focus: a thread, or the draft of a new one,
+    /// never both.
+    private enum Focus {
+        case none
+        case thread(UInt64)
+        case draft(Draft)
+    }
+    private var focus = Focus.none
+    /// The focused thread.
+    var active: UInt64? {
+        if case .thread(let id) = focus { id } else { nil }
+    }
+    private var draft: Draft? {
+        if case .draft(let d) = focus { d } else { nil }
+    }
     /// The range the draft comments on, if one is open.
     var draftRange: NSRange? { draft.map { NSRange(location: $0.start, length: $0.end - $0.start) } }
-    private(set) var active: UInt64?
     var showsResolved = false {
         didSet {
             if !showsResolved, let a = active, items.contains(where: { $0.thread.id == a && $0.thread.resolved }) {
-                active = nil
+                focus = .none
             }
             sync()
         }
@@ -82,7 +95,6 @@ final class CommentLayer {
     var beforeAdd: (() -> Void)?
     /// Find matches, highlighted above comment highlights.
     var extraHighlights: (() -> [(NSRange, NSColor)])?
-    private var relayoutQueued = false
 
     static let cardGap: CGFloat = 10
 
@@ -90,6 +102,7 @@ final class CommentLayer {
         self.page = page
         view = page.textView
         page.gutter.onEmptyClick = { [weak self] in self?.leave() }
+        page.placeCards = { [weak self] in self?.placeCards() ?? 0 }
     }
 
     /// The number of open threads.
@@ -130,10 +143,10 @@ final class CommentLayer {
             // All of its text deleted: detached where it was.
             it.place = s < e ? .on(start: UInt32(s), end: UInt32(e)) : .detached(at: UInt32(s))
         }
-        if var d = draft {
+        if case .draft(var d) = focus {
             d.start = map(d.start, stickRight: true)
             d.end = map(d.end, stickRight: false)
-            draft = d
+            focus = .draft(d)
         }
     }
 
@@ -211,7 +224,6 @@ final class CommentLayer {
         // fires, so whatever is new here came from someone else (an agent).
         let activity = announce ? threadActivity(old: items.map(\.thread), new: threads) : []
         var keep = Set<UInt64>()
-        var added = false
         for t in threads {
             keep.insert(t.id)
             if let it = items.first(where: { $0.thread.id == t.id }) {
@@ -224,7 +236,6 @@ final class CommentLayer {
                 }
             } else {
                 items.append(makeItem(t))
-                added = true
             }
         }
         for it in items where !keep.contains(it.thread.id) {
@@ -232,12 +243,9 @@ final class CommentLayer {
         }
         items.removeAll { !keep.contains($0.thread.id) }
         if let a = active, !items.contains(where: { $0.thread.id == a && visible($0.thread) }) {
-            active = nil
+            focus = .none
         }
         sync()
-        // New cards start at the top of the gutter; place them before the
-        // window next draws.
-        if added { relayout() }
         onChange?()
         if !activity.isEmpty {
             toast?(activitySummary(activity: activity), nil)
@@ -285,13 +293,13 @@ final class CommentLayer {
         card.composer.onResize = { [weak self] in self?.queueRelayout() }
         card.onClick = { [weak card] in card?.composer.focus() }
         gutter.addSubview(card)
-        draft = Draft(start: Int(range.start), end: Int(range.end), card: card)
+        focus = .draft(Draft(start: Int(range.start), end: Int(range.end), card: card))
         // The highlight marks what is being commented on; a selection
         // would hide it.
         view.setSelectedRange(NSRange(location: Int(range.end), length: 0))
-        active = nil
         sync()
-        relayout()
+        // Placed before it takes the keyboard, which scrolls to it.
+        page.layoutSubtreeIfNeeded()
         card.composer.focus()
     }
 
@@ -302,8 +310,9 @@ final class CommentLayer {
     }
 
     private func removeDraft() {
-        draft?.card.removeFromSuperview()
-        draft = nil
+        guard let d = draft else { return }
+        d.card.removeFromSuperview()
+        focus = .none
     }
 
     private func postDraft(_ body: String) {
@@ -381,7 +390,7 @@ final class CommentLayer {
         var old = it.thread
         old.place = it.place
         guard update(.delete(id: id)) != nil else { return }
-        if active == id { active = nil }
+        if active == id { focus = .none }
         undoable("Delete Comment", banner: "Comment deleted") { $0.restore(old) }
         view.window?.makeFirstResponder(view)
     }
@@ -444,18 +453,24 @@ final class CommentLayer {
         it.card.beginEdit(0)
     }
 
-    /// Focuses a thread: its card moves beside its text and its highlight
-    /// darkens. With `scroll`, its text is scrolled into view.
+    /// Focuses a thread, which drops a draft: its card moves beside its
+    /// text and its highlight darkens. With `scroll`, its text is scrolled
+    /// into view. Focusing no thread leaves a draft as it is.
     func activate(_ id: UInt64?, scroll: Bool, focusCard: Bool = false) {
-        if id != nil && draft != nil { removeDraft() }
-        active = id
+        if let id {
+            removeDraft()
+            focus = .thread(id)
+        } else if active != nil {
+            focus = .none
+        }
         sync()
         guard let id, let it = items.first(where: { $0.thread.id == id }) else { return }
         if scroll {
             let r = it.range ?? NSRange(location: it.start, length: 0)
             view.scrollRangeToVisible(r)
+            // Moving the cursor may focus another thread's text.
             view.setSelectedRange(NSRange(location: NSMaxRange(r), length: 0))
-            active = id
+            focus = .thread(id)
             sync()
         }
         if focusCard && !it.thread.resolved {
@@ -577,13 +592,11 @@ final class CommentLayer {
         }
     }
 
+    /// Places the cards again in the page's next layout pass, which comes
+    /// before the window next draws.
     func queueRelayout() {
-        if relayoutQueued { return }
-        relayoutQueued = true
-        DispatchQueue.main.async { [weak self] in
-            self?.relayoutQueued = false
-            self?.relayout()
-        }
+        page.hasCards = draft != nil || items.contains { visible($0.thread) }
+        page.cardsChanged()
     }
 
     /// Where a character's line is, in the gutter's coordinates.
@@ -597,16 +610,11 @@ final class CommentLayer {
         items.filter { visible($0.thread) }.map { ($0.thread.id, $0.card.frame.minY - lineTop($0.start)) }
     }
 
-    /// Places cards beside their text. The focused card (or the draft) sits
-    /// exactly beside its anchor; the others stack above and below it
-    /// without overlapping.
-    func relayout() {
-        let hasCards = draft != nil || items.contains { visible($0.thread) }
-        if page.hasCards != hasCards {
-            // The text moves over to make room, or back to the middle.
-            page.hasCards = hasCards
-            page.layoutSubtreeIfNeeded()
-        }
+    /// Places cards beside their text, in the page's layout pass once the
+    /// text is laid out. The focused card (or the draft) sits exactly beside
+    /// its anchor; the others stack above and below it without overlapping.
+    /// Returns how far down the cards reach, in page coordinates.
+    private func placeCards() -> CGFloat {
         let g = view.geometry
         struct Entry { var y: CGFloat; var order: Int; var h: CGFloat; var card: GutterCard; var focused: Bool }
         var entries: [Entry] = []
@@ -640,6 +648,6 @@ final class CommentLayer {
         for (i, e) in entries.enumerated() {
             e.card.frame = NSRect(x: x, y: ys[i], width: width, height: e.h)
         }
-        page.gutterExtent = gutter.convert(NSPoint(x: 0, y: max(bottom, 0)), to: page).y
+        return gutter.convert(NSPoint(x: 0, y: max(bottom, 0)), to: page).y
     }
 }

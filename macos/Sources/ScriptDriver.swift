@@ -193,7 +193,9 @@ enum ScriptDriver {
             let keys = arg.split(separator: " ")
             for k in keys { key(String(k), win) }
             if cmd == "key-cards" {
-                // Before the window can draw: where cards first appear.
+                // Where cards first appear: after the layout pass AppKit
+                // runs before drawing, but before the window draws.
+                win.contentView?.layoutSubtreeIfNeeded()
                 for c in w.layer.cardOffsets() { print("card #\(c.id) \(c.offset == 0 ? "beside its text" : "off by \(c.offset)")") }
             }
             return 0.05 + 0.004 * Double(keys.count)
