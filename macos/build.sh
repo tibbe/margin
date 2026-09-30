@@ -36,7 +36,7 @@ native="$root/target/$(rust_target "$(uname -m)")/$cargo_dir"
 
 # Bindings come from the library's metadata; any architecture will do.
 rm -rf "$gen" && mkdir -p "$gen"
-cargo run -q $cargo_flag -p margin-ffi --bin uniffi-bindgen --manifest-path "$root/Cargo.toml" -- \
+cargo run -q -p margin-ffi --features cli --bin uniffi-bindgen --manifest-path "$root/Cargo.toml" -- \
     generate --library "$native/libmargin_ffi.dylib" --language swift --out-dir "$gen"
 
 rm -rf "$app" "$build/Margin.app.dSYM"
