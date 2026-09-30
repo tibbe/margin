@@ -25,6 +25,17 @@ not in the spec. Keep the specs, `margin --help` and
 - `crates/ffi`: the core for Swift, through UniFFI.
 - `macos/`: the macOS editor.
 
-## Testing
+## Checks
 
-`cargo test` covers the core.
+Before committing or handing work back, run the checks for what you
+changed. Warnings count as failures.
+
+- Rust: `cargo fmt --all`, then
+  `CARGO_BUILD_WARNINGS=deny cargo clippy --workspace --all-targets` and
+  `cargo test --workspace`, which covers the core. After changing doc
+  comments, also `CARGO_BUILD_WARNINGS=deny cargo doc --workspace --no-deps`.
+- On macOS, `margin-gtk` compiles to nothing, so the Rust checks skip it.
+  Changes to it, or to the core API it uses, need the checks on a Linux
+  machine; say so when you hand them back unchecked.
+- The macOS app: the checks in `macos/AGENTS.md`, also after changing
+  `crates/ffi` or the core API it uses.

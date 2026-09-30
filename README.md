@@ -111,8 +111,9 @@ workflow for coding agents.
 ## Development
 
 ```sh
+cargo fmt --all
+cargo clippy --all-targets     # warnings count as failures
 cargo test                     # Markdown analysis, editing semantics, store, anchors
-cargo clippy --all-targets
 ```
 
 The editor can be driven headlessly, which is how the UI is tested:
