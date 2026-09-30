@@ -485,7 +485,7 @@
 			outputPaths = (
 			);
 			shellPath = /bin/sh;
-			shellScript = "set -eu\n# The CLI agents use; `margin open` hands documents to this app.\nhelpers=\"$TARGET_BUILD_DIR/$CONTENTS_FOLDER_PATH/Helpers\"\nmkdir -p \"$helpers\"\ncp \"$PROJECT_DIR/build/rust/$CONFIGURATION/margin\" \"$helpers/margin\"\ncodesign --force --options runtime --sign \"${EXPANDED_CODE_SIGN_IDENTITY:--}\" \"$helpers/margin\"\n";
+			shellScript = "set -eu\n# The CLI agents use; `margin open` hands documents to this app.\nhelpers=\"$TARGET_BUILD_DIR/$CONTENTS_FOLDER_PATH/Helpers\"\nmkdir -p \"$helpers\"\n# Signed beside the build and moved into place: the kernel kills a running\n# binary whose file is rewritten, so a `margin wait` from this app keeps\n# running across rebuilds only if the file is replaced. codesign names the\n# signature after the file, so the copy is named margin too.\nmkdir -p \"$DERIVED_FILE_DIR\"\ncp \"$PROJECT_DIR/build/rust/$CONFIGURATION/margin\" \"$DERIVED_FILE_DIR/margin\"\ncodesign --force --options runtime --sign \"${EXPANDED_CODE_SIGN_IDENTITY:--}\" \"$DERIVED_FILE_DIR/margin\"\nmv -f \"$DERIVED_FILE_DIR/margin\" \"$helpers/margin\"\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 

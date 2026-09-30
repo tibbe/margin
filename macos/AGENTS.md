@@ -5,8 +5,10 @@ See `docs/macos/architecture.md`. Run these from the repository root.
 Several worktrees may run their builds at once, under one bundle ID, so
 address the app by its path, as below.
 
+- Build: `xcodebuild -project macos/Margin.xcodeproj -scheme Margin -derivedDataPath macos/build/DerivedData build`
 - Run: `open -g -n -a "$PWD/macos/build/DerivedData/Build/Products/Debug/Margin.app" FILE…`
-- Quit: `pkill -f "$PWD/macos/build/DerivedData/Build/Products/Debug/Margin.app/"`
+- Quit: `pkill -f "$PWD/macos/build/DerivedData/Build/Products/Debug/Margin.app/Contents/MacOS/Margin"`
+- CLI: `Contents/Helpers/margin` in the app.
 
 ## Checks
 
