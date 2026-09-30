@@ -13,9 +13,9 @@ it does.
 - `docs/macos/design_system.md`: the UX design spec for the macOS (AppKit)
   editor.
 
-Anything that differs by platform belongs in that platform's design system,
-not in the spec. Keep the specs, `margin --help` and
-`skills/margin/SKILL.md` in step with behavior changes.
+Platform-specific UX decisions belong in that platform’s design system.
+Keep the specs in step with user-visible behavior changes. Keep `margin --help` and
+`skills/margin/SKILL.md` in step with agent-facing behavior changes.
 
 ## Layout
 
