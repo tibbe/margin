@@ -1,4 +1,5 @@
 import AppKit
+import margin_ffi
 
 extension NSAttributedString.Key {
     /// Markdown syntax the rendered view hides (drawn as null glyphs).
@@ -10,6 +11,10 @@ extension NSAttributedString.Key {
     /// as space wide enough to reach the cell's column.
     static let marginTableGap = NSAttributedString.Key("marginTableGap")
 }
+
+/// The core's range. AppKit also brings in a `TextRange`, from the Apple
+/// Events headers, which this one shadows for the whole app.
+typealias TextRange = margin_ffi.TextRange
 
 extension NSRange {
     init(_ r: TextRange) {

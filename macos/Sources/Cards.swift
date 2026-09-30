@@ -1,4 +1,5 @@
 import AppKit
+import margin_ffi
 
 private let clockFormatter: DateFormatter = {
     let f = DateFormatter()

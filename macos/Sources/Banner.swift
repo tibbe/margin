@@ -58,9 +58,7 @@ final class Banner: NSVisualEffectView {
         isHidden = false
         alphaValue = 1
         hideTimer?.invalidate()
-        hideTimer = Timer.scheduledTimer(withTimeInterval: action == nil ? 3 : 6, repeats: false) { [weak self] _ in
-            self?.dismiss()
-        }
+        hideTimer = Timer.onMain(after: action == nil ? 3 : 6) { [weak self] in self?.dismiss() }
         NSAccessibility.post(
             element: self, notification: .announcementRequested,
             userInfo: [.announcement: text, .priority: NSAccessibilityPriorityLevel.medium.rawValue])
@@ -72,8 +70,9 @@ final class Banner: NSVisualEffectView {
                 ctx.duration = 0.2
                 animator().alphaValue = 0
             },
+            // AppKit calls this on the main thread.
             completionHandler: { [weak self] in
-                self?.isHidden = true
+                MainActor.assumeIsolated { self?.isHidden = true }
             })
     }
 

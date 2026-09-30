@@ -1,5 +1,6 @@
 import AppKit
 import UserNotifications
+import margin_ffi
 
 /// System notifications for agent activity on documents the person isn't
 /// looking at: one per thread change, grouped by document, removed once
@@ -65,7 +66,8 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
         }
         let path = w.path
         let title = w.displayName
-        center.getNotificationSettings { settings in
+        Task {
+            let settings = await center.notificationSettings()
             guard [.authorized, .provisional].contains(settings.authorizationStatus) else { return }
             for a in activity {
                 let content = UNMutableNotificationContent()
@@ -78,7 +80,8 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
                 var info: [String: Any] = ["path": path]
                 if a.kind != .deleted { info["thread"] = NSNumber(value: a.id) }
                 content.userInfo = info
-                self.center.add(UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil))
+                try? await center.add(
+                    UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil))
             }
         }
     }
@@ -86,9 +89,9 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
     /// Asks for permission if it hasn't been asked yet.
     private func askOnce() {
         guard !scripted else { return }
-        center.getNotificationSettings { settings in
-            guard settings.authorizationStatus == .notDetermined else { return }
-            self.center.requestAuthorization(options: [.alert, .sound]) { _, _ in }
+        Task {
+            guard await center.notificationSettings().authorizationStatus == .notDetermined else { return }
+            _ = try? await center.requestAuthorization(options: [.alert, .sound])
         }
     }
 
@@ -100,42 +103,39 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
             }
             return
         }
-        center.getDeliveredNotifications { delivered in
+        Task {
+            let delivered = await center.deliveredNotifications()
             let ids = delivered.filter { $0.request.content.threadIdentifier == path }.map(\.request.identifier)
-            if !ids.isEmpty { self.center.removeDeliveredNotifications(withIdentifiers: ids) }
+            if !ids.isEmpty { center.removeDeliveredNotifications(withIdentifiers: ids) }
         }
     }
 
     // MARK: - UNUserNotificationCenterDelegate
 
+    // The center may call these off the main thread; being async, they
+    // hop to the main actor rather than trap.
+
     /// Margin became frontmost after posting: show the notification unless
     /// its document's window is the one in front.
     func userNotificationCenter(
-        _ center: UNUserNotificationCenter, willPresent notification: UNNotification,
-        withCompletionHandler done: @escaping (UNNotificationPresentationOptions) -> Void
-    ) {
+        _ center: UNUserNotificationCenter, willPresent notification: UNNotification
+    ) async -> UNNotificationPresentationOptions {
         let path = notification.request.content.threadIdentifier
-        DispatchQueue.main.async {
-            let seen = AppDelegate.shared.windows.contains { $0.path == path && self.looking(at: $0) }
-            done(seen ? [] : [.banner, .list, .sound])
-        }
+        let seen = AppDelegate.shared.windows.contains { $0.path == path && looking(at: $0) }
+        return seen ? [] : [.banner, .list, .sound]
     }
 
     /// A click brings the document forward, focused on the thread it's about.
     func userNotificationCenter(
-        _ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse,
-        withCompletionHandler done: @escaping () -> Void
-    ) {
+        _ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse
+    ) async {
         let info = response.notification.request.content.userInfo
-        DispatchQueue.main.async {
-            defer { done() }
-            guard response.actionIdentifier == UNNotificationDefaultActionIdentifier,
-                let path = info["path"] as? String,
-                let w = AppDelegate.shared.open(path: path)
-            else { return }
-            w.window?.deminiaturize(nil)
-            NSApp.activate()
-            if let id = (info["thread"] as? NSNumber)?.uint64Value { w.layer.reveal(id) }
-        }
+        guard response.actionIdentifier == UNNotificationDefaultActionIdentifier,
+            let path = info["path"] as? String,
+            let w = AppDelegate.shared.open(path: path)
+        else { return }
+        w.window?.deminiaturize(nil)
+        NSApp.activate()
+        if let id = (info["thread"] as? NSNumber)?.uint64Value { w.layer.reveal(id) }
     }
 }

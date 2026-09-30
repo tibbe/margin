@@ -16,7 +16,7 @@ final class FileWatcher {
         watchFile()
     }
 
-    deinit { cancel() }
+    isolated deinit { cancel() }
 
     func cancel() {
         fileSource?.cancel()

@@ -1,4 +1,5 @@
 import AppKit
+import margin_ffi
 
 #if SCRIPTING
 

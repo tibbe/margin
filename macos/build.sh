@@ -45,15 +45,30 @@ apps=""
 clis=""
 for arch in $archs; do
     lib="$root/target/$(rust_target "$arch")/$cargo_dir"
-    # Compiled and linked separately, so the object file (which the dSYM
-    # is made from) stays.
+    mod="$build/obj/$arch"
+    mkdir -p "$mod"
+    # Compiled and linked separately, so the object files (which the dSYM
+    # is made from) stay.
+    # The bindings are a module of their own, so the app's default main
+    # actor isolation doesn't reach them: an imported module keeps its own.
+    (cd "$mod" && swiftc $swift_opt -wmo -g -swift-version 6 -target "$arch-apple-macos$min" \
+        -module-name margin_ffi -parse-as-library \
+        -Xcc -fmodule-map-file="$gen/margin_ffiFFI.modulemap" \
+        -emit-module -emit-module-path "$mod/margin_ffi.swiftmodule" \
+        "$gen/margin_ffi.swift" -c -o "$mod/margin_ffi.o")
+    # Swift 6 on the main actor, as Xcode sets up new apps. Warnings fail
+    # the build, except deprecations, so a new SDK doesn't break it.
     # Run from build/obj, where swiftc leaves its module files.
-    (cd "$build/obj" && swiftc $swift_opt -wmo -g -swift-version 5 -target "$arch-apple-macos$min" \
+    (cd "$build/obj" && swiftc $swift_opt -wmo -g -swift-version 6 -target "$arch-apple-macos$min" \
+        -default-isolation MainActor \
+        -enable-upcoming-feature NonisolatedNonsendingByDefault \
+        -enable-upcoming-feature InferIsolatedConformances \
+        -warnings-as-errors -Wwarning DeprecatedDeclaration \
         -module-name Margin -parse-as-library \
-        -I "$gen" -Xcc -fmodule-map-file="$gen/margin_ffiFFI.modulemap" \
-        "$gen/margin_ffi.swift" "$OLDPWD"/Sources/*.swift \
+        -I "$mod" -Xcc -fmodule-map-file="$gen/margin_ffiFFI.modulemap" \
+        "$OLDPWD"/Sources/*.swift \
         -c -o "$build/obj/Margin-$arch.o")
-    swiftc -g -target "$arch-apple-macos$min" "$build/obj/Margin-$arch.o" "$lib/libmargin_ffi.a" \
+    swiftc -g -target "$arch-apple-macos$min" "$build/obj/Margin-$arch.o" "$mod/margin_ffi.o" "$lib/libmargin_ffi.a" \
         -framework AppKit -framework UniformTypeIdentifiers -framework UserNotifications \
         -o "$build/obj/Margin-$arch"
     apps="$apps $build/obj/Margin-$arch"

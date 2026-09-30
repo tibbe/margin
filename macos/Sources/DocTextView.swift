@@ -1,4 +1,5 @@
 import AppKit
+import margin_ffi
 
 /// The document view. Its text is exactly the Markdown file. Keystrokes and
 /// every other edit go through the core's editing rules, which answer with

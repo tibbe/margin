@@ -1,5 +1,6 @@
 import AppKit
 import UniformTypeIdentifiers
+import margin_ffi
 
 /// The test script this run follows (see `ScriptDriver`). Only test builds
 /// (`build.sh debug`) can be scripted.

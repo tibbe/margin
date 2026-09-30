@@ -1,8 +1,20 @@
 import AppKit
 import UniformTypeIdentifiers
+import margin_ffi
 
 extension UTType {
     static let markdown = UTType("net.daringfireball.markdown") ?? UTType(filenameExtension: "md") ?? .plainText
+}
+
+extension Timer {
+    /// A timer whose `body` runs on the main actor. It's scheduled on the
+    /// current run loop, which on the main actor is the main one, so it
+    /// fires on the main thread.
+    static func onMain(
+        after seconds: TimeInterval, repeats: Bool = false, _ body: @escaping @MainActor () -> Void
+    ) -> Timer {
+        scheduledTimer(withTimeInterval: seconds, repeats: repeats) { _ in MainActor.assumeIsolated(body) }
+    }
 }
 
 /// Where untitled documents live until they are saved somewhere.
@@ -236,9 +248,7 @@ final class DocumentWindow: NSWindowController, NSWindowDelegate, NSToolbarDeleg
     private func followAgents() {
         agents = isDraft ? nil : DocAgents(document: path)
         if agentTimer == nil {
-            agentTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
-                self?.updateAgent()
-            }
+            agentTimer = Timer.onMain(after: 1, repeats: true) { [weak self] in self?.updateAgent() }
         }
         updateAgent()
     }
@@ -310,9 +320,7 @@ final class DocumentWindow: NSWindowController, NSWindowDelegate, NSToolbarDeleg
     private func scheduleSave() {
         holdTermination(sync.needsSave())
         saveTimer?.invalidate()
-        saveTimer = Timer.scheduledTimer(withTimeInterval: 0.7, repeats: false) { [weak self] _ in
-            self?.save()
-        }
+        saveTimer = Timer.onMain(after: 0.7) { [weak self] in self?.save() }
     }
 
     /// Replaces the file's contents with `text` (in the file's newlines),
@@ -423,7 +431,7 @@ final class DocumentWindow: NSWindowController, NSWindowDelegate, NSToolbarDeleg
         _ f: @escaping (DocumentWindow) -> Void
     ) {
         self[keyPath: slot]?.invalidate()
-        self[keyPath: slot] = Timer.scheduledTimer(withTimeInterval: seconds, repeats: false) { [weak self] _ in
+        self[keyPath: slot] = Timer.onMain(after: seconds) { [weak self] in
             guard let self else { return }
             self[keyPath: slot] = nil
             f(self)
