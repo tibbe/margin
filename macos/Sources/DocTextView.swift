@@ -42,7 +42,9 @@ final class DocTextView: NSTextView, NSTextStorageDelegate, NSTextViewDelegate, 
     var reflowsParagraphs = false {
         didSet {
             if oldValue != reflowsParagraphs, let lm = layoutManager {
-                lm.invalidateLayout(forCharacterRange: NSRange(location: 0, length: (string as NSString).length), actualCharacterRange: nil)
+                lm.invalidateLayout(
+                    forCharacterRange: NSRange(location: 0, length: (string as NSString).length),
+                    actualCharacterRange: nil)
                 needsDisplay = true
             }
         }
@@ -150,7 +152,10 @@ final class DocTextView: NSTextView, NSTextStorageDelegate, NSTextViewDelegate, 
         didChangeText()
     }
 
-    func textStorage(_ textStorage: NSTextStorage, didProcessEditing editedMask: NSTextStorageEditActions, range editedRange: NSRange, changeInLength delta: Int) {
+    func textStorage(
+        _ textStorage: NSTextStorage, didProcessEditing editedMask: NSTextStorageEditActions,
+        range editedRange: NSRange, changeInLength delta: Int
+    ) {
         guard editedMask.contains(.editedCharacters) else { return }
         stale = true
         let loc = editedRange.location
@@ -239,7 +244,9 @@ final class DocTextView: NSTextView, NSTextStorageDelegate, NSTextViewDelegate, 
         var info: TableInfo
         var columnX: [CGFloat]
         var columnWidths: [CGFloat]
-        var width: CGFloat { columnWidths.reduce(0, +) + 2 * Theme.tableCellPad * Theme.scale * CGFloat(columnWidths.count) }
+        var width: CGFloat {
+            columnWidths.reduce(0, +) + 2 * Theme.tableCellPad * Theme.scale * CGFloat(columnWidths.count)
+        }
     }
 
     /// Tables show as grids: the delimiter row is hidden, and so are each
@@ -369,7 +376,8 @@ final class DocTextView: NSTextView, NSTextStorageDelegate, NSTextViewDelegate, 
         var skip = false
         storage.enumerateAttributes(in: range, options: []) { attrs, _, stop in
             if attrs[.marginHidden] != nil || attrs[.underlineStyle] != nil || attrs[.backgroundColor] != nil
-                || (attrs[.font] as? NSFont)?.isFixedPitch == true {
+                || (attrs[.font] as? NSFont)?.isFixedPitch == true
+            {
                 skip = true
                 stop.pointee = true
             }
@@ -491,8 +499,10 @@ final class DocTextView: NSTextView, NSTextStorageDelegate, NSTextViewDelegate, 
         let s = Theme.scale
         let left = geometry.left
         let shown = lines(in: rect)
-        for cb in codeBlocks where cb.endContentLine > cb.firstContentLine
-            && Int(cb.endContentLine) > shown.lowerBound && Int(cb.firstContentLine) <= shown.upperBound {
+        for cb in codeBlocks
+        where cb.endContentLine > cb.firstContentLine
+            && Int(cb.endContentLine) > shown.lowerBound && Int(cb.firstContentLine) <= shown.upperBound
+        {
             let top = textTop(line: Int(cb.firstContentLine)) - 8 * s
             let bottom = textBottom(line: Int(cb.endContentLine) - 1) + 8 * s
             if bottom < rect.minY || top > rect.maxY { continue }
@@ -520,7 +530,10 @@ final class DocTextView: NSTextView, NSTextStorageDelegate, NSTextViewDelegate, 
             if bottom < rect.minY || top > rect.maxY { continue }
             let x = left + indent(quotes: q.quotes, items: q.items) + 2 * s
             Theme.border.setFill()
-            NSBezierPath(roundedRect: NSRect(x: x, y: top, width: 3 * s, height: bottom - top), xRadius: 1.5 * s, yRadius: 1.5 * s).fill()
+            NSBezierPath(
+                roundedRect: NSRect(x: x, y: top, width: 3 * s, height: bottom - top), xRadius: 1.5 * s,
+                yRadius: 1.5 * s
+            ).fill()
         }
         for li in shown where lines[li].kind == .rule {
             let l = lines[li]
@@ -591,7 +604,9 @@ final class DocTextView: NSTextView, NSTextStorageDelegate, NSTextViewDelegate, 
         let font = Theme.font(size: Theme.bodySize)
         let (baseline, xText) = markerPosition(it)
         let size = (14 * Theme.scale).rounded()
-        return NSRect(x: xText - size - 8 * Theme.scale, y: (baseline - font.xHeight / 2 - size / 2).rounded(), width: size, height: size)
+        return NSRect(
+            x: xText - size - 8 * Theme.scale, y: (baseline - font.xHeight / 2 - size / 2).rounded(), width: size,
+            height: size)
     }
 
     /// The task whose checkbox is under `p`, as an index for `toggleTask`.
@@ -613,7 +628,8 @@ final class DocTextView: NSTextView, NSTextStorageDelegate, NSTextViewDelegate, 
             let (baseline, xText) = markerPosition(it)
             if let checked = it.task {
                 let box = checkboxBox(it)
-                let path = NSBezierPath(roundedRect: box.insetBy(dx: 0.75, dy: 0.75), xRadius: 3.5 * s, yRadius: 3.5 * s)
+                let path = NSBezierPath(
+                    roundedRect: box.insetBy(dx: 0.75, dy: 0.75), xRadius: 3.5 * s, yRadius: 3.5 * s)
                 if checked {
                     Theme.accent.setFill()
                     path.fill()
@@ -633,7 +649,9 @@ final class DocTextView: NSTextView, NSTextStorageDelegate, NSTextViewDelegate, 
                 }
             } else {
                 let label = (it.number.map { "\($0)." } ?? bullet(depth: Int(it.depth))) as NSString
-                let attrs: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: Theme.text.withAlphaComponent(0.85)]
+                let attrs: [NSAttributedString.Key: Any] = [
+                    .font: font, .foregroundColor: Theme.text.withAlphaComponent(0.85),
+                ]
                 let w = label.size(withAttributes: attrs).width
                 label.draw(at: NSPoint(x: xText - w - 8 * s, y: baseline - font.ascender), withAttributes: attrs)
             }
@@ -683,13 +701,17 @@ final class DocTextView: NSTextView, NSTextStorageDelegate, NSTextViewDelegate, 
         let origin = textContainerOrigin
         for r in linkRanges where NSMaxRange(r) >= first && r.location <= last {
             let glyphs = lm.glyphRange(forCharacterRange: r, actualCharacterRange: nil)
-            lm.enumerateEnclosingRects(forGlyphRange: glyphs, withinSelectedGlyphRange: NSRange(location: NSNotFound, length: 0), in: tc) { rect, _ in
+            lm.enumerateEnclosingRects(
+                forGlyphRange: glyphs, withinSelectedGlyphRange: NSRange(location: NSNotFound, length: 0), in: tc
+            ) { rect, _ in
                 self.addToolTip(rect.offsetBy(dx: origin.x, dy: origin.y), owner: self, userData: nil)
             }
         }
     }
 
-    func view(_ view: NSView, stringForToolTip tag: NSView.ToolTipTag, point: NSPoint, userData data: UnsafeMutableRawPointer?) -> String {
+    func view(
+        _ view: NSView, stringForToolTip tag: NSView.ToolTipTag, point: NSPoint, userData data: UnsafeMutableRawPointer?
+    ) -> String {
         link(at: point).map { "\($0)\n⌘-click to open" } ?? ""
     }
 
@@ -839,7 +861,8 @@ final class DocTextView: NSTextView, NSTextStorageDelegate, NSTextViewDelegate, 
     private func moveInTable(forward: Bool, extending: Bool) {
         let sel = selectedRange()
         if !extending {
-            let p = sel.length > 0 ? (forward ? NSMaxRange(sel) : sel.location) : step(from: sel.location, forward: forward)
+            let p =
+                sel.length > 0 ? (forward ? NSMaxRange(sel) : sel.location) : step(from: sel.location, forward: forward)
             setSelectedRange(NSRange(location: p, length: 0))
         } else {
             let anchor = tableAnchor.flatMap { $0.selection == sel ? $0.anchor : nil } ?? sel.location
@@ -873,14 +896,18 @@ final class DocTextView: NSTextView, NSTextStorageDelegate, NSTextViewDelegate, 
     /// lands there continues in its direction, anything else snaps to where
     /// the text starts. Margin edits one range at a time, so a multiple
     /// selection becomes its first range.
-    func textView(_ textView: NSTextView, willChangeSelectionFromCharacterRanges old: [NSValue], toCharacterRanges new: [NSValue]) -> [NSValue] {
+    func textView(
+        _ textView: NSTextView, willChangeSelectionFromCharacterRanges old: [NSValue], toCharacterRanges new: [NSValue]
+    ) -> [NSValue] {
         guard raw == 0, !sourceMode, !stale, !hasMarkedText(),
-              let r = new.first?.rangeValue, let o = old.first?.rangeValue else { return new }
+            let r = new.first?.rangeValue, let o = old.first?.rangeValue
+        else { return new }
         if r.length == 0 {
             let p = r.location
             if isStop(p) { return new }
             let stepped = o.length == 0 && abs(p - o.location) <= 2
-            var q = stepped || inCollapsedLine(p)
+            var q =
+                stepped || inCollapsedLine(p)
                 ? step(from: p, forward: p > o.location)
                 : Int(analysis.visualPos(pos: UInt32(p)))
             // In a table's hidden padding, which the core does not know of.
@@ -1017,8 +1044,9 @@ final class DocTextView: NSTextView, NSTextStorageDelegate, NSTextViewDelegate, 
             // Plain typing: let the text view insert it, which keeps its
             // native undo coalescing.
             if plan.changes.count == 1, plan.selection == nil,
-               Int(plan.changes[0].start) == p, Int(plan.changes[0].end) == p,
-               plan.changes[0].text == text, Int(plan.cursor) == p + n {
+                Int(plan.changes[0].start) == p, Int(plan.changes[0].end) == p,
+                plan.changes[0].text == text, Int(plan.cursor) == p + n
+            {
                 raw += 1
                 super.insertText(text, replacementRange: NSRange(location: NSNotFound, length: 0))
                 raw -= 1
@@ -1070,8 +1098,9 @@ final class DocTextView: NSTextView, NSTextStorageDelegate, NSTextViewDelegate, 
         let s = string as NSString
         let char = s.rangeOfComposedCharacterSequence(at: p - 1)
         if plan.changes.count == 1, plan.selection == nil, plan.changes[0].text.isEmpty,
-           Int(plan.changes[0].start) == char.location, Int(plan.changes[0].end) == p,
-           Int(plan.cursor) == char.location {
+            Int(plan.changes[0].start) == char.location, Int(plan.changes[0].end) == p,
+            Int(plan.cursor) == char.location
+        {
             raw += 1
             super.deleteBackward(sender)
             raw -= 1
@@ -1106,7 +1135,9 @@ final class DocTextView: NSTextView, NSTextStorageDelegate, NSTextViewDelegate, 
                 // A replacement (a spelling correction, Writing Tools) is
                 // typing over a selection.
                 if range.length > 0, !text.isEmpty {
-                    run { a, _, _ in a.replaceRange(start: UInt32(range.location), end: UInt32(NSMaxRange(range)), text: text) }
+                    run { a, _, _ in
+                        a.replaceRange(start: UInt32(range.location), end: UInt32(NSMaxRange(range)), text: text)
+                    }
                     continue
                 }
                 if range.length > 0 {
@@ -1128,7 +1159,8 @@ final class DocTextView: NSTextView, NSTextStorageDelegate, NSTextViewDelegate, 
         guard !editsAreRaw, replacementString != nil else {
             return super.shouldChangeText(in: affectedCharRange, replacementString: replacementString)
         }
-        return shouldChangeText(inRanges: [NSValue(range: affectedCharRange)], replacementStrings: replacementString.map { [$0] })
+        return shouldChangeText(
+            inRanges: [NSValue(range: affectedCharRange)], replacementStrings: replacementString.map { [$0] })
     }
 
     // MARK: - Clipboard
@@ -1136,7 +1168,8 @@ final class DocTextView: NSTextView, NSTextStorageDelegate, NSTextViewDelegate, 
     override func copy(_ sender: Any?) {
         guard let sel = selection else { return }
         ensureFresh()
-        let text = sourceMode
+        let text =
+            sourceMode
             ? (string as NSString).substring(with: sel)
             : analysis.copySource(start: UInt32(sel.location), end: UInt32(NSMaxRange(sel)))
         let pb = NSPasteboard.general
@@ -1182,7 +1215,8 @@ final class DocTextView: NSTextView, NSTextStorageDelegate, NSTextViewDelegate, 
     override func writeSelection(to pboard: NSPasteboard, type: NSPasteboard.PasteboardType) -> Bool {
         guard type == .string, let sel = selection else { return super.writeSelection(to: pboard, type: type) }
         ensureFresh()
-        let text = sourceMode
+        let text =
+            sourceMode
             ? (string as NSString).substring(with: sel)
             : analysis.copySource(start: UInt32(sel.location), end: UInt32(NSMaxRange(sel)))
         return pboard.setString(text, forType: .string)
@@ -1292,7 +1326,10 @@ final class DocTextView: NSTextView, NSTextStorageDelegate, NSTextViewDelegate, 
     /// Pages and Preview.
     override func menu(for event: NSEvent) -> NSMenu? {
         let menu = super.menu(for: event) ?? NSMenu()
-        menu.insertItem(NSMenuItem(title: "Comment on Selection", action: #selector(DocumentWindow.marginCommentOnSelection(_:)), keyEquivalent: ""), at: 0)
+        menu.insertItem(
+            NSMenuItem(
+                title: "Comment on Selection", action: #selector(DocumentWindow.marginCommentOnSelection(_:)),
+                keyEquivalent: ""), at: 0)
         menu.insertItem(.separator(), at: 1)
         return menu
     }
@@ -1300,10 +1337,10 @@ final class DocTextView: NSTextView, NSTextStorageDelegate, NSTextViewDelegate, 
     override func validateMenuItem(_ item: NSMenuItem) -> Bool {
         switch item.action {
         case #selector(marginBold(_:)), #selector(marginItalic(_:)), #selector(marginStrikethrough(_:)),
-             #selector(marginInlineCode(_:)), #selector(marginNormalText(_:)), #selector(marginHeading(_:)),
-             #selector(marginBulletedList(_:)), #selector(marginNumberedList(_:)), #selector(marginChecklist(_:)),
-             #selector(marginQuote(_:)), #selector(marginCodeBlock(_:)), #selector(marginIndent(_:)),
-             #selector(marginOutdent(_:)), #selector(marginToggleTask(_:)), #selector(marginLink(_:)):
+            #selector(marginInlineCode(_:)), #selector(marginNormalText(_:)), #selector(marginHeading(_:)),
+            #selector(marginBulletedList(_:)), #selector(marginNumberedList(_:)), #selector(marginChecklist(_:)),
+            #selector(marginQuote(_:)), #selector(marginCodeBlock(_:)), #selector(marginIndent(_:)),
+            #selector(marginOutdent(_:)), #selector(marginToggleTask(_:)), #selector(marginLink(_:)):
             return formattingAllowed
         default:
             return super.validateMenuItem(item)
@@ -1333,7 +1370,11 @@ final class DocTextView: NSTextView, NSTextStorageDelegate, NSTextViewDelegate, 
 final class HidingLayoutDelegate: NSObject, NSLayoutManagerDelegate {
     weak var view: DocTextView?
 
-    func layoutManager(_ layoutManager: NSLayoutManager, shouldGenerateGlyphs glyphs: UnsafePointer<CGGlyph>, properties props: UnsafePointer<NSLayoutManager.GlyphProperty>, characterIndexes charIndexes: UnsafePointer<Int>, font aFont: NSFont, forGlyphRange glyphRange: NSRange) -> Int {
+    func layoutManager(
+        _ layoutManager: NSLayoutManager, shouldGenerateGlyphs glyphs: UnsafePointer<CGGlyph>,
+        properties props: UnsafePointer<NSLayoutManager.GlyphProperty>,
+        characterIndexes charIndexes: UnsafePointer<Int>, font aFont: NSFont, forGlyphRange glyphRange: NSRange
+    ) -> Int {
         guard let storage = layoutManager.textStorage, glyphRange.length > 0 else { return 0 }
         let n = glyphRange.length
         let first = charIndexes[0]
@@ -1359,12 +1400,17 @@ final class HidingLayoutDelegate: NSObject, NSLayoutManagerDelegate {
             }
         }
         newProps.withUnsafeBufferPointer { buf in
-            layoutManager.setGlyphs(glyphs, properties: buf.baseAddress!, characterIndexes: charIndexes, font: aFont, forGlyphRange: glyphRange)
+            layoutManager.setGlyphs(
+                glyphs, properties: buf.baseAddress!, characterIndexes: charIndexes, font: aFont,
+                forGlyphRange: glyphRange)
         }
         return n
     }
 
-    func layoutManager(_ layoutManager: NSLayoutManager, shouldUse action: NSLayoutManager.ControlCharacterAction, forControlCharacterAt charIndex: Int) -> NSLayoutManager.ControlCharacterAction {
+    func layoutManager(
+        _ layoutManager: NSLayoutManager, shouldUse action: NSLayoutManager.ControlCharacterAction,
+        forControlCharacterAt charIndex: Int
+    ) -> NSLayoutManager.ControlCharacterAction {
         if let v = view, v.reflowsParagraphs, !v.sourceMode, v.softBreaks.contains(charIndex) {
             return .whitespace
         }
@@ -1376,16 +1422,26 @@ final class HidingLayoutDelegate: NSObject, NSLayoutManagerDelegate {
 
     /// A newline laid out as whitespace (Reflow Paragraphs) is as wide as a
     /// space; a table cell's gap reaches to where the cell's text starts.
-    func layoutManager(_ layoutManager: NSLayoutManager, boundingBoxForControlGlyphAt glyphIndex: Int, for textContainer: NSTextContainer, proposedLineFragment proposedRect: NSRect, glyphPosition: NSPoint, characterIndex charIndex: Int) -> NSRect {
+    func layoutManager(
+        _ layoutManager: NSLayoutManager, boundingBoxForControlGlyphAt glyphIndex: Int,
+        for textContainer: NSTextContainer, proposedLineFragment proposedRect: NSRect, glyphPosition: NSPoint,
+        characterIndex charIndex: Int
+    ) -> NSRect {
         if let x = view?.tableGaps[charIndex] {
             return NSRect(x: glyphPosition.x, y: 0, width: max(0, x - glyphPosition.x), height: 0)
         }
-        let font = layoutManager.textStorage?.attribute(.font, at: charIndex, effectiveRange: nil) as? NSFont ?? Theme.font(size: Theme.bodySize)
+        let font =
+            layoutManager.textStorage?.attribute(.font, at: charIndex, effectiveRange: nil) as? NSFont
+            ?? Theme.font(size: Theme.bodySize)
         let width = (" " as NSString).size(withAttributes: [.font: font]).width
         return NSRect(x: glyphPosition.x, y: 0, width: width, height: 0)
     }
 
-    func layoutManager(_ layoutManager: NSLayoutManager, shouldSetLineFragmentRect lineFragmentRect: UnsafeMutablePointer<NSRect>, lineFragmentUsedRect: UnsafeMutablePointer<NSRect>, baselineOffset: UnsafeMutablePointer<CGFloat>, in textContainer: NSTextContainer, forGlyphRange glyphRange: NSRange) -> Bool {
+    func layoutManager(
+        _ layoutManager: NSLayoutManager, shouldSetLineFragmentRect lineFragmentRect: UnsafeMutablePointer<NSRect>,
+        lineFragmentUsedRect: UnsafeMutablePointer<NSRect>, baselineOffset: UnsafeMutablePointer<CGFloat>,
+        in textContainer: NSTextContainer, forGlyphRange glyphRange: NSRange
+    ) -> Bool {
         guard let storage = layoutManager.textStorage, glyphRange.length > 0 else { return false }
         let chars = layoutManager.characterRange(forGlyphRange: glyphRange, actualGlyphRange: nil)
         guard chars.length > 0, NSMaxRange(chars) <= storage.length else { return false }
@@ -1393,7 +1449,8 @@ final class HidingLayoutDelegate: NSObject, NSLayoutManagerDelegate {
         // hidden prefix and any hidden blank lines before it end the
         // previous line's fragment, or make one of their own: collapse that.
         var effective = NSRange()
-        let hidden = storage.attribute(.marginHidden, at: chars.location, longestEffectiveRange: &effective, in: chars) != nil
+        let hidden =
+            storage.attribute(.marginHidden, at: chars.location, longestEffectiveRange: &effective, in: chars) != nil
         if hidden && NSMaxRange(effective) >= NSMaxRange(chars) {
             lineFragmentRect.pointee.size.height = 0
             lineFragmentUsedRect.pointee.size.height = 0
@@ -1409,7 +1466,8 @@ final class HidingLayoutDelegate: NSObject, NSLayoutManagerDelegate {
         let line = v.lines[li]
         let above = v.styler.metrics[li].spaceAbove
         guard above > 0, chars.location > Int(line.start) else { return false }
-        for i in Int(line.start)..<chars.location where storage.attribute(.marginHidden, at: i, effectiveRange: nil) == nil {
+        for i in Int(line.start)..<chars.location
+        where storage.attribute(.marginHidden, at: i, effectiveRange: nil) == nil {
             return false
         }
         lineFragmentRect.pointee.size.height += above

@@ -36,7 +36,8 @@ func timeLabel(ms: Int64) -> String {
 final class CardText: NSTextField {
     override func mouseDown(with event: NSEvent) {
         guard event.clickCount == 1, let window,
-              let next = window.nextEvent(matching: [.leftMouseUp, .leftMouseDragged]) else {
+            let next = window.nextEvent(matching: [.leftMouseUp, .leftMouseDragged])
+        else {
             return super.mouseDown(with: event)
         }
         if next.type == .leftMouseUp {
@@ -76,7 +77,9 @@ final class ComposerTextView: NSTextView {
     override var intrinsicContentSize: NSSize {
         let line = ceil((font ?? NSFont.systemFont(ofSize: NSFont.systemFontSize)).boundingRectForFont.height)
         let least = line + 2 * textContainerInset.height
-        guard let lm = layoutManager, let tc = textContainer else { return NSSize(width: NSView.noIntrinsicMetric, height: least) }
+        guard let lm = layoutManager, let tc = textContainer else {
+            return NSSize(width: NSView.noIntrinsicMetric, height: least)
+        }
         lm.ensureLayout(for: tc)
         let h = ceil(lm.usedRect(for: tc).height + 2 * textContainerInset.height)
         return NSSize(width: NSView.noIntrinsicMetric, height: max(least, h))
@@ -91,7 +94,8 @@ final class ComposerTextView: NSTextView {
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
         let mods = event.modifierFlags.intersection([.command, .shift, .option, .control])
         if window?.firstResponder === self, mods == [.command],
-           event.keyCode == 36 || event.keyCode == 76 {
+            event.keyCode == 36 || event.keyCode == 76
+        {
             onSubmit?()
             return true
         }
@@ -322,7 +326,9 @@ class GutterCard: NSView {
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
         for t in trackingAreas { removeTrackingArea(t) }
-        addTrackingArea(NSTrackingArea(rect: .zero, options: [.mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect], owner: self))
+        addTrackingArea(
+            NSTrackingArea(
+                rect: .zero, options: [.mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect], owner: self))
         if let w = window {
             hovered = bounds.contains(convert(w.mouseLocationOutsideOfEventStream, from: nil))
         }
@@ -404,7 +410,9 @@ private func byline(_ m: ThreadMessage) -> NSAttributedString {
         s.append(NSAttributedString(string: "You", attributes: author))
     case .agent:
         let config = NSImage.SymbolConfiguration(pointSize: NSFont.smallSystemFontSize, weight: .semibold)
-        if let image = NSImage(systemSymbolName: "sparkles", accessibilityDescription: nil)?.withSymbolConfiguration(config) {
+        if let image = NSImage(systemSymbolName: "sparkles", accessibilityDescription: nil)?.withSymbolConfiguration(
+            config)
+        {
             let a = NSTextAttachment()
             a.image = image
             s.append(NSAttributedString(attachment: a))
@@ -413,9 +421,12 @@ private func byline(_ m: ThreadMessage) -> NSAttributedString {
         }
         s.append(NSAttributedString(string: "Agent", attributes: author))
     }
-    s.append(NSAttributedString(string: " · \(timeLabel(ms: m.atMs))", attributes: [
-        .font: small, .foregroundColor: NSColor.secondaryLabelColor,
-    ]))
+    s.append(
+        NSAttributedString(
+            string: " · \(timeLabel(ms: m.atMs))",
+            attributes: [
+                .font: small, .foregroundColor: NSColor.secondaryLabelColor,
+            ]))
     return s
 }
 
@@ -462,7 +473,9 @@ private final class MessageText {
     /// How many lines the whole text takes at `width`.
     private func lineCount(width: CGFloat) -> Int {
         // The plain text: the field's own carries its truncation.
-        let storage = NSTextStorage(string: body.stringValue, attributes: [.font: body.font ?? NSFont.systemFont(ofSize: NSFont.systemFontSize)])
+        let storage = NSTextStorage(
+            string: body.stringValue, attributes: [.font: body.font ?? NSFont.systemFont(ofSize: NSFont.systemFontSize)]
+        )
         let layout = NSLayoutManager()
         let container = NSTextContainer(size: NSSize(width: width, height: .greatestFiniteMagnitude))
         container.lineFragmentPadding = 0
@@ -470,7 +483,9 @@ private final class MessageText {
         storage.addLayoutManager(layout)
         layout.ensureLayout(for: container)
         var lines = 0
-        layout.enumerateLineFragments(forGlyphRange: NSRange(location: 0, length: layout.numberOfGlyphs)) { _, _, _, _, _ in lines += 1 }
+        layout.enumerateLineFragments(forGlyphRange: NSRange(location: 0, length: layout.numberOfGlyphs)) {
+            _, _, _, _, _ in lines += 1
+        }
         return lines
     }
 
@@ -570,8 +585,9 @@ final class ThreadCard: GutterCard {
             bylines.append(time)
             row.addArrangedSubview(NSView())
             if i == 0 {
-                let resolve = rowButton(thread.resolved ? "arrow.uturn.backward.circle" : "checkmark.circle",
-                                        thread.resolved ? "Reopen" : "Resolve", self, #selector(resolveClicked))
+                let resolve = rowButton(
+                    thread.resolved ? "arrow.uturn.backward.circle" : "checkmark.circle",
+                    thread.resolved ? "Reopen" : "Resolve", self, #selector(resolveClicked))
                 resolveButton = resolve
                 row.addArrangedSubview(resolve)
                 rowButtons.append(resolve)
@@ -579,7 +595,8 @@ final class ThreadCard: GutterCard {
             let more = rowButton("ellipsis.circle", "More", self, #selector(moreClicked(_:)))
             if let resolve = resolveButton, i == 0 {
                 // Spacing is between symbols; keep the targets from overlapping.
-                row.setCustomSpacing(resolve.alignmentRectInsets.right + more.alignmentRectInsets.left + row.spacing, after: resolve)
+                row.setCustomSpacing(
+                    resolve.alignmentRectInsets.right + more.alignmentRectInsets.left + row.spacing, after: resolve)
             }
             more.tag = i
             row.addArrangedSubview(more)
@@ -589,13 +606,16 @@ final class ThreadCard: GutterCard {
             views.append(row)
 
             if i == 0 && thread.place.isDetached {
-                let q = cardText("“\(thread.quote.trimmingCharacters(in: .whitespacesAndNewlines))”",
-                                      font: NSFontManager.shared.convert(small, toHaveTrait: .italicFontMask),
-                                      color: .secondaryLabelColor)
-                q.attributedStringValue = NSAttributedString(string: q.stringValue, attributes: [
-                    .font: q.font!, .foregroundColor: NSColor.secondaryLabelColor,
-                    .strikethroughStyle: NSUnderlineStyle.single.rawValue,
-                ])
+                let q = cardText(
+                    "“\(thread.quote.trimmingCharacters(in: .whitespacesAndNewlines))”",
+                    font: NSFontManager.shared.convert(small, toHaveTrait: .italicFontMask),
+                    color: .secondaryLabelColor)
+                q.attributedStringValue = NSAttributedString(
+                    string: q.stringValue,
+                    attributes: [
+                        .font: q.font!, .foregroundColor: NSColor.secondaryLabelColor,
+                        .strikethroughStyle: NSUnderlineStyle.single.rawValue,
+                    ])
                 q.toolTip = "The commented text was deleted"
                 stack.addArrangedSubview(q)
                 views.append(q)
@@ -642,7 +662,9 @@ final class ThreadCard: GutterCard {
 
     /// Each message's author as shown, without the time.
     var authors: [String] {
-        bylines.map { String($0.stringValue.replacingOccurrences(of: "\u{FFFC} ", with: "✦ ").split(separator: " · ")[0]) }
+        bylines.map {
+            String($0.stringValue.replacingOccurrences(of: "\u{FFFC} ", with: "✦ ").split(separator: " · ")[0])
+        }
     }
 
     /// Each message's text: "short", "collapsed", "expanded" or "editing".
@@ -705,7 +727,8 @@ final class ThreadCard: GutterCard {
         guard index < thread.messages.count else { return }
         onFocusThread?()
         if editing?.index != index {
-            let c = Composer(placeholder: index == 0 ? "Comment" : "Reply", submitLabel: "Save", alwaysShowButtons: true)
+            let c = Composer(
+                placeholder: index == 0 ? "Comment" : "Reply", submitLabel: "Save", alwaysShowButtons: true)
             c.text = thread.messages[index].body
             c.onSubmit = { [weak self] body in
                 guard let self else { return }
@@ -746,7 +769,8 @@ final class ThreadCard: GutterCard {
     /// Where message `index` is, in the card's coordinates.
     func messageRect(_ index: Int) -> NSRect? {
         guard index < messageViews.count else { return nil }
-        return messageViews[index].filter { !$0.isHidden }.map { stack.convert($0.frame, to: self) }.reduce(NSRect.null) { $0.union($1) }
+        return messageViews[index].filter { !$0.isHidden }.map { stack.convert($0.frame, to: self) }.reduce(NSRect.null)
+        { $0.union($1) }
     }
 
     /// A message's commands: Edit, and Delete (the thread, for the comment).
@@ -769,7 +793,8 @@ final class ThreadCard: GutterCard {
             reply.target = self
             menu.addItem(reply)
         }
-        let resolve = NSMenuItem(title: resolved ? "Reopen" : "Resolve", action: #selector(resolveClicked), keyEquivalent: "")
+        let resolve = NSMenuItem(
+            title: resolved ? "Reopen" : "Resolve", action: #selector(resolveClicked), keyEquivalent: "")
         resolve.target = self
         menu.addItem(resolve)
         menu.addItem(.separator())

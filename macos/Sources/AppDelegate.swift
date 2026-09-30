@@ -12,7 +12,10 @@ let scriptPath: String? = nil
 /// Recent documents open through Margin's own windows (there are no
 /// NSDocument subclasses).
 final class MarginDocumentController: NSDocumentController {
-    override func openDocument(withContentsOf url: URL, display displayDocument: Bool, completionHandler: @escaping (NSDocument?, Bool, Error?) -> Void) {
+    override func openDocument(
+        withContentsOf url: URL, display displayDocument: Bool,
+        completionHandler: @escaping (NSDocument?, Bool, Error?) -> Void
+    ) {
         AppDelegate.shared.open(path: url.path)
         completionHandler(nil, false, nil)
     }
@@ -20,13 +23,17 @@ final class MarginDocumentController: NSDocumentController {
 
 /// Restores document windows after a relaunch, by path.
 final class DocumentRestoration: NSObject, NSWindowRestoration {
-    static func restoreWindow(withIdentifier identifier: NSUserInterfaceItemIdentifier, state: NSCoder, completionHandler: @escaping (NSWindow?, Error?) -> Void) {
+    static func restoreWindow(
+        withIdentifier identifier: NSUserInterfaceItemIdentifier, state: NSCoder,
+        completionHandler: @escaping (NSWindow?, Error?) -> Void
+    ) {
         // Test runs share the app's identity, and with it the windows a
         // person left open; a test must never open those.
         guard scriptPath == nil,
-              let path = state.decodeObject(of: NSString.self, forKey: DocumentWindow.restorationPathKey) as String?,
-              FileManager.default.fileExists(atPath: path),
-              let w = AppDelegate.shared.open(path: path, show: false) else {
+            let path = state.decodeObject(of: NSString.self, forKey: DocumentWindow.restorationPathKey) as String?,
+            FileManager.default.fileExists(atPath: path),
+            let w = AppDelegate.shared.open(path: path, show: false)
+        else {
             completionHandler(nil, NSError(domain: NSCocoaErrorDomain, code: NSFileNoSuchFileError))
             return
         }
@@ -139,7 +146,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             let w = DocumentWindow(path: canonical, text: text)
             w.onClose = { [weak self] closed in self?.windows.removeAll { $0 === closed } }
             if let last = windows.last?.window {
-                w.window?.setFrameTopLeftPoint(last.cascadeTopLeft(from: NSPoint(x: last.frame.minX, y: last.frame.maxY)))
+                w.window?.setFrameTopLeftPoint(
+                    last.cascadeTopLeft(from: NSPoint(x: last.frame.minX, y: last.frame.maxY)))
             }
             windows.append(w)
             if show {
@@ -277,7 +285,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
 // MARK: - Menus
 
-private func item(_ title: String, _ action: Selector?, _ key: String = "", _ mods: NSEvent.ModifierFlags = [.command], tag: Int = 0) -> NSMenuItem {
+private func item(
+    _ title: String, _ action: Selector?, _ key: String = "", _ mods: NSEvent.ModifierFlags = [.command], tag: Int = 0
+) -> NSMenuItem {
     let i = NSMenuItem(title: title, action: action, keyEquivalent: key)
     i.keyEquivalentModifierMask = key.isEmpty ? [] : mods
     i.tag = tag
@@ -302,130 +312,163 @@ func buildMainMenu() -> NSMenu {
     NSApp.servicesMenu = services
     let servicesItem = NSMenuItem(title: "Services", action: nil, keyEquivalent: "")
     servicesItem.submenu = services
-    main.addItem(submenu("Margin", [
-        item("About Margin", #selector(NSApplication.orderFrontStandardAboutPanel(_:))),
-        .separator(),
-        servicesItem,
-        .separator(),
-        item("Hide Margin", #selector(NSApplication.hide(_:)), "h"),
-        item("Hide Others", #selector(NSApplication.hideOtherApplications(_:)), "h", [.command, .option]),
-        item("Show All", #selector(NSApplication.unhideAllApplications(_:))),
-        .separator(),
-        item("Quit Margin", #selector(NSApplication.terminate(_:)), "q"),
-    ]))
+    main.addItem(
+        submenu(
+            "Margin",
+            [
+                item("About Margin", #selector(NSApplication.orderFrontStandardAboutPanel(_:))),
+                .separator(),
+                servicesItem,
+                .separator(),
+                item("Hide Margin", #selector(NSApplication.hide(_:)), "h"),
+                item("Hide Others", #selector(NSApplication.hideOtherApplications(_:)), "h", [.command, .option]),
+                item("Show All", #selector(NSApplication.unhideAllApplications(_:))),
+                .separator(),
+                item("Quit Margin", #selector(NSApplication.terminate(_:)), "q"),
+            ]))
 
     let recent = NSMenu(title: "Open Recent")
     recent.addItem(item("Clear Menu", #selector(NSDocumentController.clearRecentDocuments(_:))))
     let recentItem = NSMenuItem(title: "Open Recent", action: nil, keyEquivalent: "")
     recentItem.submenu = recent
-    main.addItem(submenu("File", [
-        item("New", #selector(AppDelegate.marginNew(_:)), "n"),
-        item("Open…", #selector(AppDelegate.marginOpen(_:)), "o"),
-        recentItem,
-        .separator(),
-        item("Close", #selector(NSWindow.performClose(_:)), "w"),
-        item("Save", #selector(DocumentWindow.saveDocument(_:)), "s"),
-        item("Save As…", #selector(DocumentWindow.saveDocumentAs(_:)), "s", [.command, .shift]),
-        item("Duplicate", #selector(DocumentWindow.marginDuplicate(_:))),
-        item("Rename…", #selector(DocumentWindow.marginRename(_:))),
-        item("Move To…", #selector(DocumentWindow.marginMoveTo(_:))),
-        item("Revert to Last Opened", #selector(DocumentWindow.marginRevertToLastOpened(_:))),
-        .separator(),
-        item("Page Setup…", #selector(NSApplication.runPageLayout(_:)), "p", [.command, .shift]),
-        item("Print…", #selector(DocumentWindow.printDocument(_:)), "p"),
-    ]))
+    main.addItem(
+        submenu(
+            "File",
+            [
+                item("New", #selector(AppDelegate.marginNew(_:)), "n"),
+                item("Open…", #selector(AppDelegate.marginOpen(_:)), "o"),
+                recentItem,
+                .separator(),
+                item("Close", #selector(NSWindow.performClose(_:)), "w"),
+                item("Save", #selector(DocumentWindow.saveDocument(_:)), "s"),
+                item("Save As…", #selector(DocumentWindow.saveDocumentAs(_:)), "s", [.command, .shift]),
+                item("Duplicate", #selector(DocumentWindow.marginDuplicate(_:))),
+                item("Rename…", #selector(DocumentWindow.marginRename(_:))),
+                item("Move To…", #selector(DocumentWindow.marginMoveTo(_:))),
+                item("Revert to Last Opened", #selector(DocumentWindow.marginRevertToLastOpened(_:))),
+                .separator(),
+                item("Page Setup…", #selector(NSApplication.runPageLayout(_:)), "p", [.command, .shift]),
+                item("Print…", #selector(DocumentWindow.printDocument(_:)), "p"),
+            ]))
 
-    main.addItem(submenu("Edit", [
-        item("Undo", Selector(("undo:")), "z"),
-        item("Redo", Selector(("redo:")), "z", [.command, .shift]),
-        .separator(),
-        item("Cut", #selector(NSText.cut(_:)), "x"),
-        item("Copy", #selector(NSText.copy(_:)), "c"),
-        item("Paste", #selector(NSText.paste(_:)), "v"),
-        item("Select All", #selector(NSText.selectAll(_:)), "a"),
-        .separator(),
-        submenu("Find", [
-            item("Find…", #selector(DocumentWindow.marginFind(_:)), "f"),
-            item("Find and Replace…", #selector(DocumentWindow.marginFindAndReplace(_:)), "f", [.command, .option]),
-            item("Find Next", #selector(DocumentWindow.marginFindNext(_:)), "g"),
-            item("Find Previous", #selector(DocumentWindow.marginFindPrevious(_:)), "g", [.command, .shift]),
-            item("Use Selection for Find", #selector(DocumentWindow.marginUseSelectionForFind(_:)), "e"),
-        ]),
-        submenu("Spelling", [
-            item("Show Spelling and Grammar", #selector(NSText.showGuessPanel(_:)), ":"),
-            item("Check Document Now", #selector(NSText.checkSpelling(_:)), ";"),
-            item("Check Spelling While Typing", #selector(NSTextView.toggleContinuousSpellChecking(_:))),
-        ]),
-    ]))
+    main.addItem(
+        submenu(
+            "Edit",
+            [
+                item("Undo", Selector(("undo:")), "z"),
+                item("Redo", Selector(("redo:")), "z", [.command, .shift]),
+                .separator(),
+                item("Cut", #selector(NSText.cut(_:)), "x"),
+                item("Copy", #selector(NSText.copy(_:)), "c"),
+                item("Paste", #selector(NSText.paste(_:)), "v"),
+                item("Select All", #selector(NSText.selectAll(_:)), "a"),
+                .separator(),
+                submenu(
+                    "Find",
+                    [
+                        item("Find…", #selector(DocumentWindow.marginFind(_:)), "f"),
+                        item(
+                            "Find and Replace…", #selector(DocumentWindow.marginFindAndReplace(_:)), "f",
+                            [.command, .option]),
+                        item("Find Next", #selector(DocumentWindow.marginFindNext(_:)), "g"),
+                        item(
+                            "Find Previous", #selector(DocumentWindow.marginFindPrevious(_:)), "g", [.command, .shift]),
+                        item("Use Selection for Find", #selector(DocumentWindow.marginUseSelectionForFind(_:)), "e"),
+                    ]),
+                submenu(
+                    "Spelling",
+                    [
+                        item("Show Spelling and Grammar", #selector(NSText.showGuessPanel(_:)), ":"),
+                        item("Check Document Now", #selector(NSText.checkSpelling(_:)), ";"),
+                        item("Check Spelling While Typing", #selector(NSTextView.toggleContinuousSpellChecking(_:))),
+                    ]),
+            ]))
 
     var headings = [item("Normal Text", #selector(DocTextView.marginNormalText(_:)), "0", [.command, .option])]
     for n in 1...6 {
-        headings.append(item("Heading \(n)", #selector(DocTextView.marginHeading(_:)), "\(n)", [.command, .option], tag: n))
+        headings.append(
+            item("Heading \(n)", #selector(DocTextView.marginHeading(_:)), "\(n)", [.command, .option], tag: n))
     }
-    main.addItem(submenu("Format", headings + [
-        .separator(),
-        // Matched by physical key in DocTextView; shown here.
-        item("Bulleted List", #selector(DocTextView.marginBulletedList(_:)), "8", [.command, .shift]),
-        item("Numbered List", #selector(DocTextView.marginNumberedList(_:)), "7", [.command, .shift]),
-        item("Checklist", #selector(DocTextView.marginChecklist(_:)), "9", [.command, .shift]),
-        item("Quote", #selector(DocTextView.marginQuote(_:)), "q", [.command, .option]),
-        item("Code Block", #selector(DocTextView.marginCodeBlock(_:)), "c", [.command, .option]),
-        .separator(),
-        item("Bold", #selector(DocTextView.marginBold(_:)), "b"),
-        item("Italic", #selector(DocTextView.marginItalic(_:)), "i"),
-        item("Strikethrough", #selector(DocTextView.marginStrikethrough(_:)), "x", [.command, .shift]),
-        item("Inline Code", #selector(DocTextView.marginInlineCode(_:)), "e", [.command, .shift]),
-        item("Link…", #selector(DocTextView.marginLink(_:)), "k"),
-        .separator(),
-        item("Indent", #selector(DocTextView.marginIndent(_:)), "]"),
-        item("Outdent", #selector(DocTextView.marginOutdent(_:)), "["),
-        item("Toggle Task", #selector(DocTextView.marginToggleTask(_:)), ret),
-        item("Open Link", #selector(DocTextView.marginOpenLink(_:)), ret, [.command, .option]),
-    ]))
+    main.addItem(
+        submenu(
+            "Format",
+            headings + [
+                .separator(),
+                // Matched by physical key in DocTextView; shown here.
+                item("Bulleted List", #selector(DocTextView.marginBulletedList(_:)), "8", [.command, .shift]),
+                item("Numbered List", #selector(DocTextView.marginNumberedList(_:)), "7", [.command, .shift]),
+                item("Checklist", #selector(DocTextView.marginChecklist(_:)), "9", [.command, .shift]),
+                item("Quote", #selector(DocTextView.marginQuote(_:)), "q", [.command, .option]),
+                item("Code Block", #selector(DocTextView.marginCodeBlock(_:)), "c", [.command, .option]),
+                .separator(),
+                item("Bold", #selector(DocTextView.marginBold(_:)), "b"),
+                item("Italic", #selector(DocTextView.marginItalic(_:)), "i"),
+                item("Strikethrough", #selector(DocTextView.marginStrikethrough(_:)), "x", [.command, .shift]),
+                item("Inline Code", #selector(DocTextView.marginInlineCode(_:)), "e", [.command, .shift]),
+                item("Link…", #selector(DocTextView.marginLink(_:)), "k"),
+                .separator(),
+                item("Indent", #selector(DocTextView.marginIndent(_:)), "]"),
+                item("Outdent", #selector(DocTextView.marginOutdent(_:)), "["),
+                item("Toggle Task", #selector(DocTextView.marginToggleTask(_:)), ret),
+                item("Open Link", #selector(DocTextView.marginOpenLink(_:)), ret, [.command, .option]),
+            ]))
 
-    main.addItem(submenu("Comments", [
-        item("Comment on Selection", #selector(DocumentWindow.marginCommentOnSelection(_:)), "m", [.command, .option]),
-        item("Reply", #selector(DocumentWindow.marginReply(_:)), "r", [.command, .option]),
-        item("Next Comment", #selector(DocumentWindow.marginNextComment(_:)), down, [.command, .option]),
-        item("Previous Comment", #selector(DocumentWindow.marginPreviousComment(_:)), up, [.command, .option]),
-        .separator(),
-        item("Resolve", #selector(DocumentWindow.marginResolveComment(_:))),
-        item("Edit", #selector(DocumentWindow.marginEditComment(_:))),
-        item("Delete", #selector(DocumentWindow.marginDeleteComment(_:))),
-        .separator(),
-        item("Copy Open Comments", #selector(DocumentWindow.marginCopyOpenComments(_:)), "c", [.command, .shift]),
-        item("Send to Agent", #selector(DocumentWindow.marginSendToAgent(_:)), ret, [.command, .shift]),
-        item("Resolve All", #selector(DocumentWindow.marginResolveAll(_:))),
-        item("Show Resolved", #selector(DocumentWindow.marginToggleShowResolved(_:))),
-    ]))
+    main.addItem(
+        submenu(
+            "Comments",
+            [
+                item(
+                    "Comment on Selection", #selector(DocumentWindow.marginCommentOnSelection(_:)), "m",
+                    [.command, .option]),
+                item("Reply", #selector(DocumentWindow.marginReply(_:)), "r", [.command, .option]),
+                item("Next Comment", #selector(DocumentWindow.marginNextComment(_:)), down, [.command, .option]),
+                item("Previous Comment", #selector(DocumentWindow.marginPreviousComment(_:)), up, [.command, .option]),
+                .separator(),
+                item("Resolve", #selector(DocumentWindow.marginResolveComment(_:))),
+                item("Edit", #selector(DocumentWindow.marginEditComment(_:))),
+                item("Delete", #selector(DocumentWindow.marginDeleteComment(_:))),
+                .separator(),
+                item(
+                    "Copy Open Comments", #selector(DocumentWindow.marginCopyOpenComments(_:)), "c", [.command, .shift]),
+                item("Send to Agent", #selector(DocumentWindow.marginSendToAgent(_:)), ret, [.command, .shift]),
+                item("Resolve All", #selector(DocumentWindow.marginResolveAll(_:))),
+                item("Show Resolved", #selector(DocumentWindow.marginToggleShowResolved(_:))),
+            ]))
 
     let largerAlt = item("Zoom In", #selector(AppDelegate.marginLarger(_:)), "=")
     largerAlt.isHidden = true
     largerAlt.allowsKeyEquivalentWhenHidden = true
-    main.addItem(submenu("View", [
-        item("Show Markdown", #selector(DocumentWindow.marginToggleShowMarkdown(_:)), "/"),
-        item("Reflow Paragraphs", #selector(AppDelegate.marginToggleReflow(_:)), "z", [.command, .option]),
-        .separator(),
-        item("Zoom In", #selector(AppDelegate.marginLarger(_:)), "+"),
-        largerAlt,
-        item("Zoom Out", #selector(AppDelegate.marginSmaller(_:)), "-"),
-        item("Actual Size", #selector(AppDelegate.marginActualSize(_:)), "0"),
-        .separator(),
-        item("Enter Full Screen", #selector(NSWindow.toggleFullScreen(_:)), "f", [.command, .control]),
-    ]))
+    main.addItem(
+        submenu(
+            "View",
+            [
+                item("Show Markdown", #selector(DocumentWindow.marginToggleShowMarkdown(_:)), "/"),
+                item("Reflow Paragraphs", #selector(AppDelegate.marginToggleReflow(_:)), "z", [.command, .option]),
+                .separator(),
+                item("Zoom In", #selector(AppDelegate.marginLarger(_:)), "+"),
+                largerAlt,
+                item("Zoom Out", #selector(AppDelegate.marginSmaller(_:)), "-"),
+                item("Actual Size", #selector(AppDelegate.marginActualSize(_:)), "0"),
+                .separator(),
+                item("Enter Full Screen", #selector(NSWindow.toggleFullScreen(_:)), "f", [.command, .control]),
+            ]))
 
-    let window = submenu("Window", [
-        item("Minimize", #selector(NSWindow.performMiniaturize(_:)), "m"),
-        item("Zoom", #selector(NSWindow.performZoom(_:))),
-        .separator(),
-        item("Bring All to Front", #selector(NSApplication.arrangeInFront(_:))),
-    ])
+    let window = submenu(
+        "Window",
+        [
+            item("Minimize", #selector(NSWindow.performMiniaturize(_:)), "m"),
+            item("Zoom", #selector(NSWindow.performZoom(_:))),
+            .separator(),
+            item("Bring All to Front", #selector(NSApplication.arrangeInFront(_:))),
+        ])
     NSApp.windowsMenu = window.submenu
     main.addItem(window)
 
-    let help = submenu("Help", [
-        item("Keyboard Shortcuts", #selector(AppDelegate.marginShowShortcuts(_:))),
-    ])
+    let help = submenu(
+        "Help",
+        [
+            item("Keyboard Shortcuts", #selector(AppDelegate.marginShowShortcuts(_:)))
+        ])
     NSApp.helpMenu = help.submenu
     main.addItem(help)
     return main
@@ -450,8 +493,12 @@ private func makeShortcutsWindow(menu: NSMenu) -> NSWindow {
         return s
     }
     let out = NSMutableAttributedString()
-    let head: [NSAttributedString.Key: Any] = [.font: NSFont.boldSystemFont(ofSize: 13), .foregroundColor: NSColor.labelColor]
-    let body: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: 13), .foregroundColor: NSColor.labelColor]
+    let head: [NSAttributedString.Key: Any] = [
+        .font: NSFont.boldSystemFont(ofSize: 13), .foregroundColor: NSColor.labelColor,
+    ]
+    let body: [NSAttributedString.Key: Any] = [
+        .font: NSFont.systemFont(ofSize: 13), .foregroundColor: NSColor.labelColor,
+    ]
     let para = NSMutableParagraphStyle()
     para.tabStops = [NSTextTab(textAlignment: .left, location: 230)]
     func section(_ title: String, _ rows: [(String, String)]) {
@@ -466,7 +513,9 @@ private func makeShortcutsWindow(menu: NSMenu) -> NSWindow {
     func collect(_ m: NSMenu) -> [(String, String)] {
         var rows: [(String, String)] = []
         for i in m.items where !i.isHidden {
-            if let sub = i.submenu { rows += collect(sub) } else if !i.keyEquivalent.isEmpty {
+            if let sub = i.submenu {
+                rows += collect(sub)
+            } else if !i.keyEquivalent.isEmpty {
                 rows.append((i.title.replacingOccurrences(of: "…", with: ""), keys(i)))
             }
         }
@@ -476,13 +525,15 @@ private func makeShortcutsWindow(menu: NSMenu) -> NSWindow {
         guard let sub = top.submenu, top.title != "Margin", top.title != "Window" else { continue }
         section(top.title, collect(sub))
     }
-    section("Editing", [
-        ("Line break in paragraph", "⇧↩"),
-        ("Indent, outdent list item", "⇥, ⇧⇥"),
-        ("Open link under the pointer", "⌘-click"),
-        ("Leave comment, close Find", "Esc"),
-        ("Post comment or reply", "⌘↩"),
-    ])
+    section(
+        "Editing",
+        [
+            ("Line break in paragraph", "⇧↩"),
+            ("Indent, outdent list item", "⇥, ⇧⇥"),
+            ("Open link under the pointer", "⌘-click"),
+            ("Leave comment, close Find", "Esc"),
+            ("Post comment or reply", "⌘↩"),
+        ])
     let tv = NSTextView(frame: NSRect(x: 0, y: 0, width: 420, height: 600))
     tv.isEditable = false
     tv.textContainerInset = NSSize(width: 16, height: 16)
@@ -491,7 +542,9 @@ private func makeShortcutsWindow(menu: NSMenu) -> NSWindow {
     scroll.documentView = tv
     scroll.hasVerticalScroller = true
     tv.autoresizingMask = [.width]
-    let w = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 420, height: 600), styleMask: [.titled, .closable, .resizable, .utilityWindow], backing: .buffered, defer: false)
+    let w = NSPanel(
+        contentRect: NSRect(x: 0, y: 0, width: 420, height: 600),
+        styleMask: [.titled, .closable, .resizable, .utilityWindow], backing: .buffered, defer: false)
     w.title = "Keyboard Shortcuts"
     w.contentView = scroll
     w.isReleasedWhenClosed = false

@@ -140,7 +140,9 @@ final class FindBar: NSView, NSSearchFieldDelegate, NSTextFieldDelegate {
         guard isOpen else { return }
         view.ensureFresh()
         let needle = search.stringValue
-        matches = needle.isEmpty ? [] : view.analysis.findAll(needle: needle, matchCase: matchCase.state == .on).map { NSRange($0) }
+        matches =
+            needle.isEmpty
+            ? [] : view.analysis.findAll(needle: needle, matchCase: matchCase.state == .on).map { NSRange($0) }
         if matches.isEmpty {
             current = nil
         } else if goingToMatchAtOrAfterCursor || current == nil {
@@ -176,7 +178,9 @@ final class FindBar: NSView, NSSearchFieldDelegate, NSTextFieldDelegate {
 
     func step(forward: Bool) {
         if !isOpen {
-            if let s = findPasteboard.string(forType: .string), !s.isEmpty, view.selection == nil { search.stringValue = s }
+            if let s = findPasteboard.string(forType: .string), !s.isEmpty, view.selection == nil {
+                search.stringValue = s
+            }
             open(showingReplaceField: false)
         }
         guard !matches.isEmpty else { return }
@@ -211,7 +215,9 @@ final class FindBar: NSView, NSSearchFieldDelegate, NSTextFieldDelegate {
 
     func replaceAll() {
         view.ensureFresh()
-        if let plan = view.analysis.replaceAll(needle: search.stringValue, matchCase: matchCase.state == .on, with: replaceField.stringValue) {
+        if let plan = view.analysis.replaceAll(
+            needle: search.stringValue, matchCase: matchCase.state == .on, with: replaceField.stringValue)
+        {
             view.apply(plan)
         }
         refresh(goingToMatchAtOrAfterCursor: false)

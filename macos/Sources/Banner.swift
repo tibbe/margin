@@ -61,17 +61,20 @@ final class Banner: NSVisualEffectView {
         hideTimer = Timer.scheduledTimer(withTimeInterval: action == nil ? 3 : 6, repeats: false) { [weak self] _ in
             self?.dismiss()
         }
-        NSAccessibility.post(element: self, notification: .announcementRequested,
-                             userInfo: [.announcement: text, .priority: NSAccessibilityPriorityLevel.medium.rawValue])
+        NSAccessibility.post(
+            element: self, notification: .announcementRequested,
+            userInfo: [.announcement: text, .priority: NSAccessibilityPriorityLevel.medium.rawValue])
     }
 
     func dismiss() {
-        NSAnimationContext.runAnimationGroup({ ctx in
-            ctx.duration = 0.2
-            animator().alphaValue = 0
-        }, completionHandler: { [weak self] in
-            self?.isHidden = true
-        })
+        NSAnimationContext.runAnimationGroup(
+            { ctx in
+                ctx.duration = 0.2
+                animator().alphaValue = 0
+            },
+            completionHandler: { [weak self] in
+                self?.isHidden = true
+            })
     }
 
     @objc private func undoClicked() {

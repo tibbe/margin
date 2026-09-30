@@ -37,11 +37,14 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
         guard !scripted else { return }
         center.delegate = self
         let kinds: [ActivityKind] = [.added, .replied, .resolved, .reopened, .deleted]
-        center.setNotificationCategories(Set(kinds.map { kind in
-            let (id, placeholder) = Notifier.category(kind)
-            return UNNotificationCategory(identifier: id, actions: [], intentIdentifiers: [],
-                                          hiddenPreviewsBodyPlaceholder: placeholder, options: [])
-        }))
+        center.setNotificationCategories(
+            Set(
+                kinds.map { kind in
+                    let (id, placeholder) = Notifier.category(kind)
+                    return UNNotificationCategory(
+                        identifier: id, actions: [], intentIdentifiers: [],
+                        hiddenPreviewsBodyPlaceholder: placeholder, options: [])
+                }))
     }
 
     /// Margin is active and `w` is its key window.
@@ -60,7 +63,8 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
             }
             return
         }
-        let path = w.path, title = w.displayName
+        let path = w.path
+        let title = w.displayName
         center.getNotificationSettings { settings in
             guard [.authorized, .provisional].contains(settings.authorizationStatus) else { return }
             for a in activity {
@@ -106,8 +110,10 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
 
     /// Margin became frontmost after posting: show the notification unless
     /// its document's window is the one in front.
-    func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification,
-                                withCompletionHandler done: @escaping (UNNotificationPresentationOptions) -> Void) {
+    func userNotificationCenter(
+        _ center: UNUserNotificationCenter, willPresent notification: UNNotification,
+        withCompletionHandler done: @escaping (UNNotificationPresentationOptions) -> Void
+    ) {
         let path = notification.request.content.threadIdentifier
         DispatchQueue.main.async {
             let seen = AppDelegate.shared.windows.contains { $0.path == path && self.looking(at: $0) }
@@ -116,14 +122,17 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
     }
 
     /// A click brings the document forward, focused on the thread it's about.
-    func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse,
-                                withCompletionHandler done: @escaping () -> Void) {
+    func userNotificationCenter(
+        _ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse,
+        withCompletionHandler done: @escaping () -> Void
+    ) {
         let info = response.notification.request.content.userInfo
         DispatchQueue.main.async {
             defer { done() }
             guard response.actionIdentifier == UNNotificationDefaultActionIdentifier,
-                  let path = info["path"] as? String,
-                  let w = AppDelegate.shared.open(path: path) else { return }
+                let path = info["path"] as? String,
+                let w = AppDelegate.shared.open(path: path)
+            else { return }
             w.window?.deminiaturize(nil)
             NSApp.activate()
             if let id = (info["thread"] as? NSNumber)?.uint64Value { w.layer.reveal(id) }

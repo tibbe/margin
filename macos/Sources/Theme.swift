@@ -87,7 +87,8 @@ enum Theme {
 
     /// `top` painted over `bottom`, as one color, in `appearance`.
     static func composite(_ top: NSColor, over bottom: NSColor, in appearance: NSAppearance) -> NSColor {
-        var t: NSColor?, b: NSColor?
+        var t: NSColor?
+        var b: NSColor?
         appearance.performAsCurrentDrawingAppearance {
             t = top.usingColorSpace(.sRGB)
             b = bottom.usingColorSpace(.sRGB)
@@ -98,8 +99,9 @@ enum Theme {
         func mix(_ x: CGFloat, _ y: CGFloat) -> CGFloat {
             (x * t.alphaComponent + y * b.alphaComponent * (1 - t.alphaComponent)) / a
         }
-        return NSColor(srgbRed: mix(t.redComponent, b.redComponent), green: mix(t.greenComponent, b.greenComponent),
-                       blue: mix(t.blueComponent, b.blueComponent), alpha: a)
+        return NSColor(
+            srgbRed: mix(t.redComponent, b.redComponent), green: mix(t.greenComponent, b.greenComponent),
+            blue: mix(t.blueComponent, b.blueComponent), alpha: a)
     }
 
     static func findMatch(current: Bool) -> NSColor {
@@ -115,10 +117,15 @@ enum Theme {
 
     private static var fonts: [FontKey: NSFont] = [:]
 
-    static func font(size: CGFloat, weight: NSFont.Weight = .regular, italic: Bool = false, mono: Bool = false) -> NSFont {
+    static func font(size: CGFloat, weight: NSFont.Weight = .regular, italic: Bool = false, mono: Bool = false)
+        -> NSFont
+    {
         let key = FontKey(size: size, weight: weight.rawValue, italic: italic, mono: mono)
         if let f = fonts[key] { return f }
-        var f = mono ? NSFont.monospacedSystemFont(ofSize: size, weight: weight) : NSFont.systemFont(ofSize: size, weight: weight)
+        var f =
+            mono
+            ? NSFont.monospacedSystemFont(ofSize: size, weight: weight)
+            : NSFont.systemFont(ofSize: size, weight: weight)
         if italic {
             let d = f.fontDescriptor.withSymbolicTraits(f.fontDescriptor.symbolicTraits.union(.italic))
             f = NSFont(descriptor: d, size: size) ?? f

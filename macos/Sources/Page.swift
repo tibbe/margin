@@ -30,7 +30,8 @@ final class PageView: NSView {
         textView.postsFrameChangedNotifications = true
         addSubview(textView)
         addSubview(gutter)
-        NotificationCenter.default.addObserver(self, selector: #selector(contentChanged), name: NSView.frameDidChangeNotification, object: textView)
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(contentChanged), name: NSView.frameDidChangeNotification, object: textView)
     }
 
     required init?(coder: NSCoder) { fatalError() }
@@ -47,10 +48,12 @@ final class PageView: NSView {
     override func viewDidMoveToSuperview() {
         super.viewDidMoveToSuperview()
         NotificationCenter.default.removeObserver(self, name: NSView.frameDidChangeNotification, object: nil)
-        NotificationCenter.default.addObserver(self, selector: #selector(contentChanged), name: NSView.frameDidChangeNotification, object: textView)
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(contentChanged), name: NSView.frameDidChangeNotification, object: textView)
         if let clip = superview as? NSClipView {
             clip.postsFrameChangedNotifications = true
-            NotificationCenter.default.addObserver(self, selector: #selector(contentChanged), name: NSView.frameDidChangeNotification, object: clip)
+            NotificationCenter.default.addObserver(
+                self, selector: #selector(contentChanged), name: NSView.frameDidChangeNotification, object: clip)
         }
         retile()
     }

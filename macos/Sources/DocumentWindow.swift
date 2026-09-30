@@ -58,9 +58,10 @@ final class DocumentWindow: NSWindowController, NSWindowDelegate, NSToolbarDeleg
         self.path = path
         isDraft = isDraftPath(path)
         sync = FileSync(opened: text)
-        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1240, height: 860),
-                              styleMask: [.titled, .closable, .miniaturizable, .resizable],
-                              backing: .buffered, defer: false)
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 1240, height: 860),
+            styleMask: [.titled, .closable, .miniaturizable, .resizable],
+            backing: .buffered, defer: false)
         window.minSize = NSSize(width: 520, height: 320)
         window.toolbarStyle = .unified
         window.titlebarSeparatorStyle = .automatic
@@ -145,7 +146,8 @@ final class DocumentWindow: NSWindowController, NSWindowDelegate, NSToolbarDeleg
         findBar.onChange = { [weak self] in
             guard let self else { return }
             if self.scrollView.isFindBarVisible != self.findBar.isOpen || self.findBar.isOpen {
-                self.findBar.setFrameSize(NSSize(width: self.scrollView.frame.width, height: self.findBar.fittingSize.height))
+                self.findBar.setFrameSize(
+                    NSSize(width: self.scrollView.frame.width, height: self.findBar.fittingSize.height))
                 self.scrollView.isFindBarVisible = self.findBar.isOpen
                 self.scrollView.tile()
             }
@@ -168,7 +170,9 @@ final class DocumentWindow: NSWindowController, NSWindowDelegate, NSToolbarDeleg
         toolbarDefaultItemIdentifiers(toolbar)
     }
 
-    func toolbar(_ toolbar: NSToolbar, itemForItemIdentifier id: NSToolbarItem.Identifier, willBeInsertedIntoToolbar flag: Bool) -> NSToolbarItem? {
+    func toolbar(
+        _ toolbar: NSToolbar, itemForItemIdentifier id: NSToolbarItem.Identifier, willBeInsertedIntoToolbar flag: Bool
+    ) -> NSToolbarItem? {
         switch id {
         case DocumentWindow.countItem:
             let item = NSToolbarItem(itemIdentifier: id)
@@ -257,8 +261,13 @@ final class DocumentWindow: NSWindowController, NSWindowDelegate, NSToolbarDeleg
 
     /// The comment count, and what the agent is doing, in the toolbar.
     private func showAgent() {
-        let open = layer.openCount, resolved = layer.resolvedCount
-        var parts = [open == 0 ? (resolved == 0 ? "" : "\(resolved) resolved") : (open == 1 ? "1 open comment" : "\(open) open comments")]
+        let open = layer.openCount
+        let resolved = layer.resolvedCount
+        var parts = [
+            open == 0
+                ? (resolved == 0 ? "" : "\(resolved) resolved")
+                : (open == 1 ? "1 open comment" : "\(open) open comments")
+        ]
         if agentState == .working { parts.append("Agent working") }
         countLabel.stringValue = parts.filter { !$0.isEmpty }.joined(separator: " · ")
         countLabel.sizeToFit()
@@ -266,7 +275,10 @@ final class DocumentWindow: NSWindowController, NSWindowDelegate, NSToolbarDeleg
         item.isEnabled = canSend
         switch agentState {
         case .waiting:
-            item.toolTip = layer.openCount > 0 ? "Send Open Comments to the Agent (⇧⌘↩)" : "An agent is waiting, but there are no open comments to send."
+            item.toolTip =
+                layer.openCount > 0
+                ? "Send Open Comments to the Agent (⇧⌘↩)"
+                : "An agent is waiting, but there are no open comments to send."
         case .working:
             item.toolTip = "The agent is working on the comments you sent."
         case .none:
@@ -313,13 +325,16 @@ final class DocumentWindow: NSWindowController, NSWindowDelegate, NSToolbarDeleg
         let fm = FileManager.default
         var coordinationError: NSError?
         var writeError: Error?
-        NSFileCoordinator(filePresenter: nil).coordinate(writingItemAt: url, options: .forReplacing, error: &coordinationError) { url in
+        NSFileCoordinator(filePresenter: nil).coordinate(
+            writingItemAt: url, options: .forReplacing, error: &coordinationError
+        ) { url in
             do {
                 guard fm.fileExists(atPath: url.path) else {
                     try data.write(to: url, options: .atomic)
                     return
                 }
-                let dir = try fm.url(for: .itemReplacementDirectory, in: .userDomainMask, appropriateFor: url, create: true)
+                let dir = try fm.url(
+                    for: .itemReplacementDirectory, in: .userDomainMask, appropriateFor: url, create: true)
                 defer { try? fm.removeItem(at: dir) }
                 let temp = dir.appendingPathComponent(url.lastPathComponent)
                 try data.write(to: temp)
@@ -377,14 +392,17 @@ final class DocumentWindow: NSWindowController, NSWindowDelegate, NSToolbarDeleg
         }
         if let store = layer.store {
             let p = store.path()
-            try? FileManager.default.createDirectory(atPath: (p as NSString).deletingLastPathComponent, withIntermediateDirectories: true)
+            try? FileManager.default.createDirectory(
+                atPath: (p as NSString).deletingLastPathComponent, withIntermediateDirectories: true)
             storeStamp = stamp(p)
             // The folder holds every document's store: reload only when
             // this one changed.
             storeWatcher = FileWatcher(path: p) { [weak self] in
                 self?.debounce(\.storeTimer, 0.08) { w in
                     let now = w.stamp(p)
-                    if now.map({ [$0.0.timeIntervalSince1970, Double($0.1)] }) != w.storeStamp.map({ [$0.0.timeIntervalSince1970, Double($0.1)] }) {
+                    if now.map({ [$0.0.timeIntervalSince1970, Double($0.1)] })
+                        != w.storeStamp.map({ [$0.0.timeIntervalSince1970, Double($0.1)] })
+                    {
                         w.storeStamp = now
                         w.layer.reload()
                     }
@@ -395,11 +413,15 @@ final class DocumentWindow: NSWindowController, NSWindowDelegate, NSToolbarDeleg
 
     private func stamp(_ p: String) -> (Date, Int)? {
         guard let a = try? FileManager.default.attributesOfItem(atPath: p),
-              let d = a[.modificationDate] as? Date, let n = a[.size] as? Int else { return nil }
+            let d = a[.modificationDate] as? Date, let n = a[.size] as? Int
+        else { return nil }
         return (d, n)
     }
 
-    private func debounce(_ slot: ReferenceWritableKeyPath<DocumentWindow, Timer?>, _ seconds: TimeInterval, _ f: @escaping (DocumentWindow) -> Void) {
+    private func debounce(
+        _ slot: ReferenceWritableKeyPath<DocumentWindow, Timer?>, _ seconds: TimeInterval,
+        _ f: @escaping (DocumentWindow) -> Void
+    ) {
         self[keyPath: slot]?.invalidate()
         self[keyPath: slot] = Timer.scheduledTimer(withTimeInterval: seconds, repeats: false) { [weak self] _ in
             guard let self else { return }
@@ -448,12 +470,14 @@ final class DocumentWindow: NSWindowController, NSWindowDelegate, NSToolbarDeleg
         guard let window, sync.inConflict() else { return }
         if window.attachedSheet != nil {
             // Asked once the sheet showing now (Rename, Save As…) is gone.
-            NotificationCenter.default.addObserver(self, selector: #selector(sheetEnded), name: NSWindow.didEndSheetNotification, object: window)
+            NotificationCenter.default.addObserver(
+                self, selector: #selector(sheetEnded), name: NSWindow.didEndSheetNotification, object: window)
             return
         }
         let alert = NSAlert()
         alert.messageText = "Document Changed on Disk"
-        alert.informativeText = "\(displayName) was changed by another program while you had unsaved edits, and the changes overlap."
+        alert.informativeText =
+            "\(displayName) was changed by another program while you had unsaved edits, and the changes overlap."
         alert.addButton(withTitle: "Keep My Version")
         let load = alert.addButton(withTitle: "Load Disk Version")
         load.hasDestructiveAction = true
@@ -482,8 +506,12 @@ final class DocumentWindow: NSWindowController, NSWindowDelegate, NSToolbarDeleg
     /// default app, anything else (web, mail) with the system.
     private func follow(link: String) {
         let base = URL(fileURLWithPath: path)
-        guard !link.hasPrefix("#"), let url = URL(string: link, relativeTo: base)?.absoluteURL
-                ?? URL(string: link.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? "", relativeTo: base)?.absoluteURL else { return }
+        guard !link.hasPrefix("#"),
+            let url = URL(string: link, relativeTo: base)?.absoluteURL
+                ?? URL(
+                    string: link.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? "", relativeTo: base)?
+                .absoluteURL
+        else { return }
         guard url.isFileURL else {
             NSWorkspace.shared.open(url)
             return
@@ -621,7 +649,8 @@ final class DocumentWindow: NSWindowController, NSWindowDelegate, NSToolbarDeleg
     /// own file is removed either way.
     func relocate(to newPath: String, moving: Bool) throws {
         guard save() else {
-            throw NSError(domain: "Margin", code: 1, userInfo: [NSLocalizedDescriptionKey: "Could not save the document first"])
+            throw NSError(
+                domain: "Margin", code: 1, userInfo: [NSLocalizedDescriptionKey: "Could not save the document first"])
         }
         let target = (newPath as NSString).pathExtension.isEmpty ? newPath + ".md" : newPath
         if try canonicalPath(path: target) == path { return }
@@ -631,14 +660,18 @@ final class DocumentWindow: NSWindowController, NSWindowDelegate, NSToolbarDeleg
         let fm = FileManager.default
         if moving && !wasDraft {
             if fm.fileExists(atPath: target) {
-                throw NSError(domain: NSCocoaErrorDomain, code: NSFileWriteFileExistsError,
-                              userInfo: [NSLocalizedDescriptionKey: "“\((target as NSString).lastPathComponent)” already exists."])
+                throw NSError(
+                    domain: NSCocoaErrorDomain, code: NSFileWriteFileExistsError,
+                    userInfo: [NSLocalizedDescriptionKey: "“\((target as NSString).lastPathComponent)” already exists."]
+                )
             }
             var coordinationError: NSError?
             var moveError: Error?
-            NSFileCoordinator(filePresenter: nil).coordinate(writingItemAt: URL(fileURLWithPath: old), options: .forMoving,
-                                                             writingItemAt: URL(fileURLWithPath: target), options: .forReplacing,
-                                                             error: &coordinationError) { from, to in
+            NSFileCoordinator(filePresenter: nil).coordinate(
+                writingItemAt: URL(fileURLWithPath: old), options: .forMoving,
+                writingItemAt: URL(fileURLWithPath: target), options: .forReplacing,
+                error: &coordinationError
+            ) { from, to in
                 do { try fm.moveItem(at: from, to: to) } catch { moveError = error }
             }
             if let e = coordinationError ?? moveError { throw e }
@@ -799,7 +832,8 @@ final class DocumentWindow: NSWindowController, NSWindowDelegate, NSToolbarDeleg
             let n = try agents.send(nowMs: DocumentWindow.nowMs())
             let open = layer.openCount
             let what = open == 1 ? "1 open comment" : "\(open) open comments"
-            banner.show(n == 0 ? "No agent is waiting" : "Sent \(what) to \(n == 1 ? "the agent" : "\(n) agents")", undo: nil)
+            banner.show(
+                n == 0 ? "No agent is waiting" : "Sent \(what) to \(n == 1 ? "the agent" : "\(n) agents")", undo: nil)
         } catch {
             banner.show("Could not send: \(error.localizedDescription)", undo: nil)
         }

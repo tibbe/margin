@@ -25,7 +25,10 @@ final class FileWatcher {
         dirSource = nil
     }
 
-    private func source(for p: String, mask: DispatchSource.FileSystemEvent, on event: @escaping (DispatchSource.FileSystemEvent) -> Void) -> DispatchSourceFileSystemObject? {
+    private func source(
+        for p: String, mask: DispatchSource.FileSystemEvent,
+        on event: @escaping (DispatchSource.FileSystemEvent) -> Void
+    ) -> DispatchSourceFileSystemObject? {
         let fd = open(p, O_EVTONLY)
         guard fd >= 0 else { return nil }
         let s = DispatchSource.makeFileSystemObjectSource(fileDescriptor: fd, eventMask: mask, queue: .main)

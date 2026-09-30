@@ -56,8 +56,10 @@ struct Span {
 }
 
 extension LineInfo {
-    private static let kinds: [LineType] = [.blank, .paragraph, .heading, .setextUnderline, .codeContent, .fence,
-                                            .table, .html, .frontMatter, .rule, .raw]
+    private static let kinds: [LineType] = [
+        .blank, .paragraph, .heading, .setextUnderline, .codeContent, .fence,
+        .table, .html, .frontMatter, .rule, .raw,
+    ]
 
     /// Lines as the core packs them (see `Analysis.linesPacked`).
     static func decode(_ data: Data) -> [LineInfo] {
@@ -68,9 +70,11 @@ extension LineInfo {
                 UInt32(littleEndian: raw.loadUnaligned(fromByteOffset: i * 28 + k * 4, as: UInt32.self))
             }
             for i in 0..<(raw.count / 28) {
-                out.append(LineInfo(start: u(i, 0), end: u(i, 1), contentStart: u(i, 2), visibleStart: u(i, 3),
-                                    kind: kinds[min(Int(u(i, 4)), kinds.count - 1)],
-                                    quotes: UInt8(clamping: u(i, 5)), items: UInt8(clamping: u(i, 6))))
+                out.append(
+                    LineInfo(
+                        start: u(i, 0), end: u(i, 1), contentStart: u(i, 2), visibleStart: u(i, 3),
+                        kind: kinds[min(Int(u(i, 4)), kinds.count - 1)],
+                        quotes: UInt8(clamping: u(i, 5)), items: UInt8(clamping: u(i, 6))))
             }
         }
         return out
@@ -106,7 +110,8 @@ final class Styler {
         guard n > 0 else { metrics = []; return }
         let starts = lines.map { Int($0.start) }
         func lineOf(_ p: Int) -> Int {
-            var lo = 0, hi = n
+            var lo = 0
+            var hi = n
             while lo < hi {
                 let mid = (lo + hi) / 2
                 if starts[mid] <= p { lo = mid + 1 } else { hi = mid }
@@ -165,10 +170,13 @@ final class Styler {
             }
             let sig = h.finalize()
             if !dirtyLines.contains(i),
-               let old = storage.attribute(.marginLineSig, at: start, effectiveRange: nil) as? Int, old == sig {
+                let old = storage.attribute(.marginLineSig, at: start, effectiveRange: nil) as? Int, old == sig
+            {
                 continue
             }
-            for (r, attrs) in runs(range: range, spans: lineSpans, block: block, revealed: revealed, sourceMode: options.sourceMode) where r.length > 0 {
+            for (r, attrs) in runs(
+                range: range, spans: lineSpans, block: block, revealed: revealed, sourceMode: options.sourceMode)
+            where r.length > 0 {
                 storage.setAttributes(attrs, range: r)
             }
             storage.addAttribute(.marginLineSig, value: sig, range: NSRange(location: start, length: 1))
@@ -218,7 +226,8 @@ final class Styler {
             case .frontMatter:
                 st.mono = true; st.size = 0.82; st.height = 1.2
             case .indent:
-                let q = CGFloat(s.param >> 8), it = CGFloat(s.param & 0xff)
+                let q = CGFloat(s.param >> 8)
+                let it = CGFloat(s.param & 0xff)
                 st.indent = (q * Theme.quoteStep + it * Theme.itemStep) * Theme.scale
             case .above:
                 st.above = CGFloat(s.param) * Theme.scale
@@ -252,7 +261,9 @@ final class Styler {
         return st
     }
 
-    private func runs(range: NSRange, spans: [Span], block: LineStyle, revealed: [NSRange], sourceMode: Bool) -> [(NSRange, [NSAttributedString.Key: Any])] {
+    private func runs(range: NSRange, spans: [Span], block: LineStyle, revealed: [NSRange], sourceMode: Bool) -> [(
+        NSRange, [NSAttributedString.Key: Any]
+    )] {
         let start = range.location
         let end = NSMaxRange(range)
         var points = Set([start, end])
@@ -268,7 +279,8 @@ final class Styler {
         let ordered = spans.sorted { $0.code.rawValue < $1.code.rawValue }
         var out: [(NSRange, [NSAttributedString.Key: Any])] = []
         for k in 0..<(sorted.count - 1) {
-            let a = sorted[k], b = sorted[k + 1]
+            let a = sorted[k]
+            let b = sorted[k + 1]
             if a >= b { continue }
             var size = block.size
             var weight = block.weight

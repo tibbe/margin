@@ -227,7 +227,9 @@ final class CommentLayer {
         for t in threads {
             keep.insert(t.id)
             if let it = items.first(where: { $0.thread.id == t.id }) {
-                let changed = it.thread.resolved != t.resolved || it.thread.messages != t.messages || it.thread.place.isDetached != t.place.isDetached
+                let changed =
+                    it.thread.resolved != t.resolved || it.thread.messages != t.messages
+                    || it.thread.place.isDetached != t.place.isDetached
                 if changed {
                     let keepAnchor = !t.place.isDetached && !it.thread.place.isDetached
                     it.thread = t
@@ -281,7 +283,8 @@ final class CommentLayer {
         guard store != nil else { return }
         view.ensureFresh()
         let a = view.analysis
-        let sel = view.selection.map { TextRange(start: UInt32($0.location), end: UInt32(NSMaxRange($0))) }
+        let sel =
+            view.selection.map { TextRange(start: UInt32($0.location), end: UInt32(NSMaxRange($0))) }
             ?? a.wordAt(pos: UInt32(view.cursor))
         guard let s = sel, let range = a.trimSegment(start: s.start, end: s.end) else {
             toast?("Select the text you want to comment on", nil)
@@ -492,7 +495,9 @@ final class CommentLayer {
             target = order[(i + (forward ? 1 : order.count - 1)) % order.count]
         } else {
             let c = view.cursor
-            target = forward ? (order.first { $0.start > c } ?? order[0]) : (order.last { $0.start < c } ?? order[order.count - 1])
+            target =
+                forward
+                ? (order.first { $0.start > c } ?? order[0]) : (order.last { $0.start < c } ?? order[order.count - 1])
         }
         activate(target.thread.id, scroll: true)
     }
@@ -535,7 +540,8 @@ final class CommentLayer {
     func cursorMoved() {
         if view.selection != nil || draft != nil { return }
         let c = view.cursor
-        let hit = items
+        let hit =
+            items
             .compactMap { it in it.range.map { (it, $0) } }
             .filter { it, r in visible(it.thread) && r.location <= c && c <= NSMaxRange(r) }
             .min { ($0.1.length, $0.0.thread.id) < ($1.1.length, $1.0.thread.id) }?.0
@@ -570,16 +576,21 @@ final class CommentLayer {
         // before, which a see-through highlight then shows doubled.
         let appearance = view.effectiveAppearance
         func mark(_ a: Int, _ b: Int, _ color: NSColor) {
-            let s = max(0, min(a, len)), e = max(0, min(b, len))
+            let s = max(0, min(a, len))
+            let e = max(0, min(b, len))
             guard s < e, let storage = view.textStorage else { return }
             storage.enumerateAttributes(in: NSRange(location: s, length: e - s)) { attrs, r, _ in
                 if attrs[.marginHidden] != nil { return }
-                let c = (attrs[.backgroundColor] as? NSColor).map { Theme.composite($0, over: color, in: appearance) } ?? color
+                let c =
+                    (attrs[.backgroundColor] as? NSColor).map { Theme.composite($0, over: color, in: appearance) }
+                    ?? color
                 lm.addTemporaryAttribute(.backgroundColor, value: c, forCharacterRange: r)
             }
         }
         for it in items where visible(it.thread) && it.thread.id != active {
-            if let r = it.range { mark(r.location, NSMaxRange(r), Theme.commentHighlightColor(active: false, dark: dark)) }
+            if let r = it.range {
+                mark(r.location, NSMaxRange(r), Theme.commentHighlightColor(active: false, dark: dark))
+            }
         }
         if let a = active, let r = items.first(where: { $0.thread.id == a })?.range {
             mark(r.location, NSMaxRange(r), Theme.commentHighlightColor(active: true, dark: dark))
@@ -621,10 +632,14 @@ final class CommentLayer {
         let width = g.cardWidth
         func top(_ ci: Int) -> CGFloat { lineTop(ci) }
         for it in items where visible(it.thread) {
-            entries.append(Entry(y: top(it.start), order: it.start, h: it.card.height(forWidth: width), card: it.card, focused: it.thread.id == active))
+            entries.append(
+                Entry(
+                    y: top(it.start), order: it.start, h: it.card.height(forWidth: width), card: it.card,
+                    focused: it.thread.id == active))
         }
         if let d = draft {
-            entries.append(Entry(y: top(d.start), order: d.start, h: d.card.height(forWidth: width), card: d.card, focused: true))
+            entries.append(
+                Entry(y: top(d.start), order: d.start, h: d.card.height(forWidth: width), card: d.card, focused: true))
         }
         entries.sort { ($0.y, $0.order) < ($1.y, $1.order) }
         let n = entries.count
@@ -635,7 +650,9 @@ final class CommentLayer {
                 for i in (a + 1)..<n { ys[i] = max(entries[i].y, ys[i - 1] + entries[i - 1].h + CommentLayer.cardGap) }
             }
             if a > 0 {
-                for i in stride(from: a - 1, through: 0, by: -1) { ys[i] = min(entries[i].y, ys[i + 1] - CommentLayer.cardGap - entries[i].h) }
+                for i in stride(from: a - 1, through: 0, by: -1) {
+                    ys[i] = min(entries[i].y, ys[i + 1] - CommentLayer.cardGap - entries[i].h)
+                }
             }
         }
         var bottom = -CommentLayer.cardGap

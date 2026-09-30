@@ -58,7 +58,8 @@ enum ScriptDriver {
 
     static func start(window w: DocumentWindow) {
         guard let path = ProcessInfo.processInfo.environment["MARGIN_SCRIPT"],
-              let text = try? String(contentsOfFile: path, encoding: .utf8) else { return }
+            let text = try? String(contentsOfFile: path, encoding: .utf8)
+        else { return }
         steps = text.components(separatedBy: "\n")
         // Output goes out line by line: with sudden termination, quitting
         // ends the process without flushing buffers.
@@ -100,7 +101,8 @@ enum ScriptDriver {
 
     private static func poll(_ what: String, _ text: String, deadline: Date, then: @escaping () -> Void) {
         guard let w = window else { return then() }
-        let done = what == "wait-banner" ? (w.banner.message?.contains(text) ?? false) : w.textView.string.contains(text)
+        let done =
+            what == "wait-banner" ? (w.banner.message?.contains(text) ?? false) : w.textView.string.contains(text)
         if done || Date() > deadline {
             if !done { print("script: timed out waiting for \(text)") }
             return then()
@@ -117,14 +119,22 @@ enum ScriptDriver {
         guard let w = window, let win = w.window else { return nil }
         let view = w.textView
         let (cmd, arg) = { () -> (String, String) in
-            if let sp = line.firstIndex(of: " ") { return (String(line[..<sp]), String(line[line.index(after: sp)...])) }
+            if let sp = line.firstIndex(of: " ") {
+                return (String(line[..<sp]), String(line[line.index(after: sp)...]))
+            }
             return (line, "")
         }()
         switch cmd {
         case "type":
             let text = unescape(arg)
             for ch in text {
-                if ch == "\n" { key("enter", win) } else if ch == "\t" { key("tab", win) } else { typeChar(String(ch), win) }
+                if ch == "\n" {
+                    key("enter", win)
+                } else if ch == "\t" {
+                    key("tab", win)
+                } else {
+                    typeChar(String(ch), win)
+                }
             }
             return 0.05 + 0.004 * Double(text.count)
         case "bench-type":
@@ -139,22 +149,29 @@ enum ScriptDriver {
                 worst = max(worst, CFAbsoluteTimeGetCurrent() - t)
             }
             let avg = (CFAbsoluteTimeGetCurrent() - t0) / Double(max(chars.count, 1))
-            print(String(format: "bench-type %d keys: %.1f ms per key, worst %.1f ms", chars.count, avg * 1000, worst * 1000))
+            print(
+                String(
+                    format: "bench-type %d keys: %.1f ms per key, worst %.1f ms", chars.count, avg * 1000, worst * 1000)
+            )
         case "ime-mark":
             // What an input method does while composing, through the same
             // NSTextInputClient calls.
             let t = unescape(arg)
-            view.setMarkedText(t, selectedRange: NSRange(location: (t as NSString).length, length: 0),
-                               replacementRange: NSRange(location: NSNotFound, length: 0))
+            view.setMarkedText(
+                t, selectedRange: NSRange(location: (t as NSString).length, length: 0),
+                replacementRange: NSRange(location: NSNotFound, length: 0))
         case "ime-mark-attributed":
             // As input methods send it: underlined clauses.
             let t = unescape(arg)
-            let a = NSAttributedString(string: t, attributes: [
-                .underlineStyle: NSUnderlineStyle.single.rawValue,
-                .markedClauseSegment: 0,
-            ])
-            view.setMarkedText(a, selectedRange: NSRange(location: (t as NSString).length, length: 0),
-                               replacementRange: NSRange(location: NSNotFound, length: 0))
+            let a = NSAttributedString(
+                string: t,
+                attributes: [
+                    .underlineStyle: NSUnderlineStyle.single.rawValue,
+                    .markedClauseSegment: 0,
+                ])
+            view.setMarkedText(
+                a, selectedRange: NSRange(location: (t as NSString).length, length: 0),
+                replacementRange: NSRange(location: NSNotFound, length: 0))
         case "os-key":
             // A keyboard event with only a key code, posted to ourselves, so
             // macOS translates it through the keyboard layout (dead keys
@@ -166,11 +183,14 @@ enum ScriptDriver {
             if parts.contains("shift") { flags.insert(.maskShift) }
             if parts.contains("cmd") { flags.insert(.maskCommand) }
             if flags.contains(.maskCommand) && !NSApp.isActive,
-               let e = CGEvent(keyboardEventSource: nil, virtualKey: code, keyDown: true), let ev = NSEvent(cgEvent: e) {
+                let e = CGEvent(keyboardEventSource: nil, virtualKey: code, keyDown: true), let ev = NSEvent(cgEvent: e)
+            {
                 // Shortcuts need the key window; see `dispatchShortcut`.
                 e.flags = flags
                 let mods = NSEvent(cgEvent: e)?.modifierFlags.intersection([.command, .shift, .option, .control]) ?? []
-                _ = dispatchShortcut(NSEvent(cgEvent: e) ?? ev, base: (NSEvent(cgEvent: e)?.charactersIgnoringModifiers ?? ""), mods: mods, win)
+                _ = dispatchShortcut(
+                    NSEvent(cgEvent: e) ?? ev, base: (NSEvent(cgEvent: e)?.charactersIgnoringModifiers ?? ""),
+                    mods: mods, win)
                 return 0.2
             }
             for down in [true, false] {
@@ -196,13 +216,17 @@ enum ScriptDriver {
                 // Where cards first appear: after the layout pass AppKit
                 // runs before drawing, but before the window draws.
                 win.contentView?.layoutSubtreeIfNeeded()
-                for c in w.layer.cardOffsets() { print("card #\(c.id) \(c.offset == 0 ? "beside its text" : "off by \(c.offset)")") }
+                for c in w.layer.cardOffsets() {
+                    print("card #\(c.id) \(c.offset == 0 ? "beside its text" : "off by \(c.offset)")")
+                }
             }
             return 0.05 + 0.004 * Double(keys.count)
         case "find", "find-before", "select":
             let s = view.string as NSString
             let r = s.range(of: unescape(arg))
-            if r.location == NSNotFound { print("script: \(arg) not found") } else {
+            if r.location == NSNotFound {
+                print("script: \(arg) not found")
+            } else {
                 win.makeFirstResponder(view)
                 switch cmd {
                 case "find": view.setSelectedRange(NSRange(location: NSMaxRange(r), length: 0))
@@ -234,7 +258,9 @@ enum ScriptDriver {
                 for s in v.subviews { if let f = find(s, title) { return f } }
                 return nil
             }
-            if p.count == 2, let it = w.layer.items.first(where: { $0.thread.id == UInt64(p[0]) ?? 0 }), let b = find(it.card, p[1]) {
+            if p.count == 2, let it = w.layer.items.first(where: { $0.thread.id == UInt64(p[0]) ?? 0 }),
+                let b = find(it.card, p[1])
+            {
                 click(b, at: NSPoint(x: b.bounds.midX, y: b.bounds.midY))
             } else {
                 print("script: no button \(arg)")
@@ -265,14 +291,18 @@ enum ScriptDriver {
                 return nil
             }
             if let it = w.layer.items.first(where: { $0.thread.id == UInt64(arg) ?? 0 }), let b = find(it.card),
-               let frame = win.contentView?.superview {
+                let frame = win.contentView?.superview
+            {
                 let p = b.convert(NSPoint(x: b.bounds.maxX - 1, y: b.bounds.midY), to: nil)
                 let inPadding = !it.card.stack.bounds.contains(it.card.stack.convert(p, from: nil))
                 let hit = frame.hitTest(frame.convert(p, from: nil))
-                print("hit-more \(arg): \(hit === b ? "button" : String(describing: hit.map { type(of: $0) }))\(inPadding ? " (in padding)" : "")")
+                print(
+                    "hit-more \(arg): \(hit === b ? "button" : String(describing: hit.map { type(of: $0) }))\(inPadding ? " (in padding)" : "")"
+                )
             }
         case "click-resolve":
-            if let it = w.layer.items.first(where: { $0.thread.id == UInt64(arg) ?? 0 }), let b = it.card.resolveButton {
+            if let it = w.layer.items.first(where: { $0.thread.id == UInt64(arg) ?? 0 }), let b = it.card.resolveButton
+            {
                 click(b, at: NSPoint(x: b.bounds.midX, y: b.bounds.midY))
             }
         case "card-menu", "card-context":
@@ -280,18 +310,24 @@ enum ScriptDriver {
             // prints its items, and with ITEM chooses it as AppKit would.
             let p = arg.split(separator: " ", maxSplits: 2).map(String.init)
             guard p.count >= 2, let it = w.layer.items.first(where: { $0.thread.id == UInt64(p[0]) ?? 0 }),
-                  let n = Int(p[1]), let r = it.card.messageRect(n) else { print("script: no message \(arg)"); break }
+                let n = Int(p[1]), let r = it.card.messageRect(n)
+            else { print("script: no message \(arg)"); break }
             let menu: NSMenu?
             if cmd == "card-menu" {
                 menu = it.card.messageMenu(n)
             } else {
                 let at = it.card.convert(NSPoint(x: r.midX, y: r.midY), to: nil)
-                menu = NSEvent.mouseEvent(with: .rightMouseDown, location: at, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
-                                          windowNumber: win.windowNumber, context: nil, eventNumber: 1, clickCount: 1, pressure: 1)
-                    .flatMap { it.card.menu(for: $0) }
+                menu = NSEvent.mouseEvent(
+                    with: .rightMouseDown, location: at, modifierFlags: [],
+                    timestamp: ProcessInfo.processInfo.systemUptime,
+                    windowNumber: win.windowNumber, context: nil, eventNumber: 1, clickCount: 1, pressure: 1
+                )
+                .flatMap { it.card.menu(for: $0) }
             }
             guard let menu else { break }
-            print("\(cmd) \(p[0]) \(n): \(menu.items.map { $0.isSeparatorItem ? "—" : $0.title }.joined(separator: ", "))")
+            print(
+                "\(cmd) \(p[0]) \(n): \(menu.items.map { $0.isSeparatorItem ? "—" : $0.title }.joined(separator: ", "))"
+            )
             if p.count == 3, let item = menu.items.first(where: { $0.title == p[2] }), let action = item.action {
                 NSApp.sendAction(action, to: item.target, from: item)
             }
@@ -299,7 +335,8 @@ enum ScriptDriver {
             // Clicks (or drags across) the message text TEXT on card ID.
             let p = arg.split(separator: " ", maxSplits: 1).map(String.init)
             guard p.count == 2, let it = w.layer.items.first(where: { $0.thread.id == UInt64(p[0]) ?? 0 }),
-                  let text = texts(in: it.card).first(where: { $0.stringValue.contains(p[1]) }) else {
+                let text = texts(in: it.card).first(where: { $0.stringValue.contains(p[1]) })
+            else {
                 print("script: no card text \(arg)"); break
             }
             let b = text.bounds
@@ -323,8 +360,10 @@ enum ScriptDriver {
             // The pointer moves onto (or off) card ID; prints whether its buttons show.
             let p = arg.split(separator: " ").map(String.init)
             if let it = w.layer.items.first(where: { $0.thread.id == UInt64(p.first ?? "") ?? 0 }) {
-                let e = NSEvent.enterExitEvent(with: p.last == "off" ? .mouseExited : .mouseEntered, location: .zero, modifierFlags: [],
-                                               timestamp: 0, windowNumber: win.windowNumber, context: nil, eventNumber: 0, trackingNumber: 0, userData: nil)!
+                let e = NSEvent.enterExitEvent(
+                    with: p.last == "off" ? .mouseExited : .mouseEntered, location: .zero, modifierFlags: [],
+                    timestamp: 0, windowNumber: win.windowNumber, context: nil, eventNumber: 0, trackingNumber: 0,
+                    userData: nil)!
                 if p.last == "off" { it.card.mouseExited(with: e) } else { it.card.mouseEntered(with: e) }
                 print("buttons \(p[0]) \(it.card.showsButtons ? "shown" : "hidden")")
             }
@@ -333,17 +372,27 @@ enum ScriptDriver {
             // items, and with an argument chooses that item as AppKit would.
             let at = view.firstRect(forCharacterRange: view.selectedRange(), actualRange: nil)
             let p = win.convertPoint(fromScreen: NSPoint(x: at.midX, y: at.midY))
-            guard let e = NSEvent.mouseEvent(with: .rightMouseDown, location: p, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
-                                             windowNumber: win.windowNumber, context: nil, eventNumber: 1, clickCount: 1, pressure: 1),
-                  let menu = view.menu(for: e) else { print("script: no context menu"); break }
-            print("context menu: \(menu.items.prefix(2).map { $0.isSeparatorItem ? "—" : "\($0.title)\(validate($0, in: win) ? "" : " (disabled)")" }.joined(separator: ", "))")
+            guard
+                let e = NSEvent.mouseEvent(
+                    with: .rightMouseDown, location: p, modifierFlags: [],
+                    timestamp: ProcessInfo.processInfo.systemUptime,
+                    windowNumber: win.windowNumber, context: nil, eventNumber: 1, clickCount: 1, pressure: 1),
+                let menu = view.menu(for: e)
+            else { print("script: no context menu"); break }
+            print(
+                "context menu: \(menu.items.prefix(2).map { $0.isSeparatorItem ? "—" : "\($0.title)\(validate($0, in: win) ? "" : " (disabled)")" }.joined(separator: ", "))"
+            )
             if !arg.isEmpty, let item = menu.items.first(where: { $0.title == arg }), let action = item.action {
                 NSApp.sendAction(action, to: NSApp.isActive ? nil : target(for: action, in: win), from: item)
             }
         case "click-checkbox":
             let n = Int(arg) ?? 0
             view.display()
-            if let r = view.checkboxRect(n) { click(view, at: NSPoint(x: r.midX, y: r.midY)) } else { print("script: no checkbox \(n)") }
+            if let r = view.checkboxRect(n) {
+                click(view, at: NSPoint(x: r.midX, y: r.midY))
+            } else {
+                print("script: no checkbox \(n)")
+            }
         case "action":
             let action = Selector(arg)
             NSApp.sendAction(action, to: NSApp.isActive ? nil : target(for: action, in: win), from: nil)
@@ -353,14 +402,17 @@ enum ScriptDriver {
             return 0.05 + 0.004 * Double(text.count)
         case "change-spelling":
             // What the Spelling panel's Change button sends.
-            let m = NSMatrix(frame: .zero, mode: .radioModeMatrix, cellClass: NSCell.self, numberOfRows: 1, numberOfColumns: 1)
+            let m = NSMatrix(
+                frame: .zero, mode: .radioModeMatrix, cellClass: NSCell.self, numberOfRows: 1, numberOfColumns: 1)
             m.cells.first?.stringValue = unescape(arg)
             m.selectCell(atRow: 0, column: 0)
             NSApp.sendAction(#selector(NSTextView.changeSpelling(_:)), to: view, from: m)
         case "select-ranges":
             // A multiple selection (as Command-drag makes): each TEXT, `|`-separated.
             let s = view.string as NSString
-            let ranges = unescape(arg).components(separatedBy: "|").map { s.range(of: $0) }.filter { $0.location != NSNotFound }
+            let ranges = unescape(arg).components(separatedBy: "|").map { s.range(of: $0) }.filter {
+                $0.location != NSNotFound
+            }
             win.makeFirstResponder(view)
             view.selectedRanges = ranges.map { NSValue(range: $0) }
         case "size":
@@ -371,7 +423,9 @@ enum ScriptDriver {
             // The page's layout: the text column and the cards' width.
             w.page.layoutSubtreeIfNeeded()
             let g = view.geometry
-            print("page left \(Int(g.left)) text \(Int(g.docWidth)) cards \(w.page.hasCards ? "\(Int(g.cardWidth))" : "none")")
+            print(
+                "page left \(Int(g.left)) text \(Int(g.docWidth)) cards \(w.page.hasCards ? "\(Int(g.cardWidth))" : "none")"
+            )
         case "wait":
             return (Double(arg) ?? 200) / 1000
         case "appearance":
@@ -396,7 +450,11 @@ enum ScriptDriver {
             // An agent editing the file behind the editor's back.
             try? unescape(arg).write(toFile: w.path, atomically: true, encoding: .utf8)
         case "rename":
-            do { try w.relocate(to: ((w.path as NSString).deletingLastPathComponent as NSString).appendingPathComponent(arg), moving: true) } catch {
+            do {
+                try w.relocate(
+                    to: ((w.path as NSString).deletingLastPathComponent as NSString).appendingPathComponent(arg),
+                    moving: true)
+            } catch {
                 print("script: rename failed: \(error.localizedDescription)")
             }
         case "path":
@@ -408,7 +466,9 @@ enum ScriptDriver {
             let n = (try? CommentStore(document: w.path).load(text: view.string).count) ?? -1
             print("stored \(n) threads")
         case "windows":
-            let names = AppDelegate.shared.windows.map { $0.isDraft ? "Untitled" : ($0.path as NSString).lastPathComponent }
+            let names = AppDelegate.shared.windows.map {
+                $0.isDraft ? "Untitled" : ($0.path as NSString).lastPathComponent
+            }
             print("windows \(names.joined(separator: ", "))")
         case "reset":
             view.setContents(unescape(arg))
@@ -423,7 +483,9 @@ enum ScriptDriver {
             if r.location != NSNotFound, let st = view.textStorage {
                 let ps = st.attribute(.paragraphStyle, at: r.location, effectiveRange: nil) as? NSParagraphStyle
                 let f = view.fragmentRect(at: r.location)
-                print("attrs \(arg): before=\(ps?.paragraphSpacingBefore ?? -1) spacing=\(ps?.lineSpacing ?? -1) indent=\(ps?.headIndent ?? -1) frag=\(f)")
+                print(
+                    "attrs \(arg): before=\(ps?.paragraphSpacingBefore ?? -1) spacing=\(ps?.lineSpacing ?? -1) indent=\(ps?.headIndent ?? -1) frag=\(f)"
+                )
             }
         case "frags":
             let lm = view.layoutManager!
@@ -435,7 +497,8 @@ enum ScriptDriver {
                 var r = NSRange()
                 let rect = lm.lineFragmentRect(forGlyphAt: g, effectiveRange: &r)
                 let chars = lm.characterRange(forGlyphRange: r, actualGlyphRange: nil)
-                print("frag y=\(rect.minY) h=\(rect.height) chars=\(chars) \(s.substring(with: chars).debugDescription)")
+                print(
+                    "frag y=\(rect.minY) h=\(rect.height) chars=\(chars) \(s.substring(with: chars).debugDescription)")
                 g = NSMaxRange(r)
                 n += 1
             }
@@ -447,9 +510,11 @@ enum ScriptDriver {
             for it in view.items {
                 let line = view.lines[Int(it.line)]
                 let last = max(Int(line.contentStart), Int(line.end) - 1)
-                let text = view.fragmentRect(at: last).minY + lm.location(forGlyphAt: lm.glyphIndexForCharacter(at: last)).y
+                let text =
+                    view.fragmentRect(at: last).minY + lm.location(forGlyphAt: lm.glyphIndexForCharacter(at: last)).y
                 let off = view.markerPosition(it).baseline - text
-                let body = view.visibleText(NSRange(location: Int(line.contentStart), length: Int(line.end - line.contentStart)))
+                let body = view.visibleText(
+                    NSRange(location: Int(line.contentStart), length: Int(line.end - line.contentStart)))
                 print("marker \(body.debugDescription): \(abs(off) < 0.5 ? "on its text" : "off by \(off)")")
             }
         case "undo-name":
@@ -465,13 +530,19 @@ enum ScriptDriver {
                 print("caret hidden")
                 break
             }
-            let at = view.convert(win.convertFromScreen(view.firstRect(forCharacterRange: NSRange(location: view.cursor, length: 0), actualRange: nil)), from: nil)
-            let dx = ind.frame.midX - at.midX, dy = ind.frame.midY - at.midY
+            let at = view.convert(
+                win.convertFromScreen(
+                    view.firstRect(forCharacterRange: NSRange(location: view.cursor, length: 0), actualRange: nil)),
+                from: nil)
+            let dx = ind.frame.midX - at.midX
+            let dy = ind.frame.midY - at.midY
             print(abs(dx) < 2 && abs(dy) < 2 ? "caret at cursor" : "caret off by \(Int(dx)), \(Int(dy))")
         case "comments":
             for it in w.layer.items {
                 let t = it.thread
-                print("#\(t.id) \(t.resolved ? "resolved" : "open")\(it.detached ? " detached" : "") [\(it.start),\(it.range.map(NSMaxRange) ?? it.start)) \(t.messages.map { $0.body })")
+                print(
+                    "#\(t.id) \(t.resolved ? "resolved" : "open")\(it.detached ? " detached" : "") [\(it.start),\(it.range.map(NSMaxRange) ?? it.start)) \(t.messages.map { $0.body })"
+                )
             }
             if let d = w.layer.draftRange { print("draft [\(d.location),\(NSMaxRange(d)))") }
             print("active \(w.layer.active.map(String.init) ?? "none")")
@@ -502,7 +573,9 @@ enum ScriptDriver {
             }
         case "agent":
             w.updateAgentNow()
-            print("agent \(w.agentState) | send \(w.sendButtonEnabled ? "enabled" : "disabled") | count \(w.countText.isEmpty ? "-" : w.countText)")
+            print(
+                "agent \(w.agentState) | send \(w.sendButtonEnabled ? "enabled" : "disabled") | count \(w.countText.isEmpty ? "-" : w.countText)"
+            )
         case "banner":
             print("banner \(w.banner.message ?? "none")")
         case "focus":
@@ -615,25 +688,38 @@ enum ScriptDriver {
     /// focus from the app you are using): the window's views get it first,
     /// then the menu item with that key equivalent, sent up the window's
     /// responder chain, as AppKit does for the key window.
-    private static func dispatchShortcut(_ e: NSEvent, base: String, mods: NSEvent.ModifierFlags, _ win: NSWindow) -> Bool {
+    private static func dispatchShortcut(_ e: NSEvent, base: String, mods: NSEvent.ModifierFlags, _ win: NSWindow)
+        -> Bool
+    {
         if win.contentView?.performKeyEquivalent(with: e) == true { return true }
-        guard let item = menuItem(key: base, mods: mods, in: NSApp.mainMenu!), let action = item.action else { return false }
+        guard let item = menuItem(key: base, mods: mods, in: NSApp.mainMenu!), let action = item.action else {
+            return false
+        }
         if validate(item, in: win), let t = target(for: action, in: win) {
             NSApp.sendAction(action, to: t, from: item)
         }
         return true
     }
 
-    private static func send(keyDown chars: String, ignoring: String, code: UInt16, mods: NSEvent.ModifierFlags, _ win: NSWindow, now: Bool = false) {
+    private static func send(
+        keyDown chars: String, ignoring: String, code: UInt16, mods: NSEvent.ModifierFlags, _ win: NSWindow,
+        now: Bool = false
+    ) {
         for type in [NSEvent.EventType.keyDown, .keyUp] {
-            if let e = NSEvent.keyEvent(with: type, location: .zero, modifierFlags: mods, timestamp: ProcessInfo.processInfo.systemUptime,
-                                        windowNumber: win.windowNumber, context: nil, characters: chars,
-                                        charactersIgnoringModifiers: ignoring, isARepeat: false, keyCode: code) {
+            if let e = NSEvent.keyEvent(
+                with: type, location: .zero, modifierFlags: mods, timestamp: ProcessInfo.processInfo.systemUptime,
+                windowNumber: win.windowNumber, context: nil, characters: chars,
+                charactersIgnoringModifiers: ignoring, isARepeat: false, keyCode: code)
+            {
                 let shortcut = mods.contains(.command) || (mods.contains(.control) && mods.contains(.option))
                 if type == .keyDown && shortcut && !NSApp.isActive {
                     let base = named.first(where: { $0.value.0 == chars })?.key ?? ignoring
                     let key = base == "enter" ? "\r" : (base.count == 1 ? base : chars)
-                    if dispatchShortcut(e, base: key, mods: mods.intersection([.command, .shift, .option, .control]), win) { return }
+                    if dispatchShortcut(
+                        e, base: key, mods: mods.intersection([.command, .shift, .option, .control]), win)
+                    {
+                        return
+                    }
                 }
                 if now { NSApp.sendEvent(e) } else { NSApp.postEvent(e, atStart: false) }
             }
@@ -652,10 +738,13 @@ enum ScriptDriver {
         let (pa, pb) = (v.convert(a, to: nil), v.convert(b, to: nil))
         let t = ProcessInfo.processInfo.systemUptime
         func ev(_ type: NSEvent.EventType, _ p: NSPoint, _ dt: Double) -> NSEvent? {
-            NSEvent.mouseEvent(with: type, location: p, modifierFlags: [], timestamp: t + dt, windowNumber: win.windowNumber,
-                               context: nil, eventNumber: 1, clickCount: 1, pressure: type == .leftMouseUp ? 0 : 1)
+            NSEvent.mouseEvent(
+                with: type, location: p, modifierFlags: [], timestamp: t + dt, windowNumber: win.windowNumber,
+                context: nil, eventNumber: 1, clickCount: 1, pressure: type == .leftMouseUp ? 0 : 1)
         }
-        for e in [ev(.leftMouseDragged, pb, 0.05), ev(.leftMouseUp, pb, 0.1)].compactMap({ $0 }) { NSApp.postEvent(e, atStart: false) }
+        for e in [ev(.leftMouseDragged, pb, 0.05), ev(.leftMouseUp, pb, 0.1)].compactMap({ $0 }) {
+            NSApp.postEvent(e, atStart: false)
+        }
         if let d = ev(.leftMouseDown, pa, 0) { NSApp.sendEvent(d) }
     }
 
@@ -663,10 +752,12 @@ enum ScriptDriver {
         guard let win = v.window else { return }
         let inWindow = v.convert(p, to: nil)
         let t = ProcessInfo.processInfo.systemUptime
-        let upEvent = NSEvent.mouseEvent(with: .leftMouseUp, location: inWindow, modifierFlags: mods, timestamp: t + 0.05,
-                                         windowNumber: win.windowNumber, context: nil, eventNumber: 1, clickCount: 1, pressure: 0)
-        let downEvent = NSEvent.mouseEvent(with: .leftMouseDown, location: inWindow, modifierFlags: mods, timestamp: t,
-                                           windowNumber: win.windowNumber, context: nil, eventNumber: 1, clickCount: 1, pressure: 1)
+        let upEvent = NSEvent.mouseEvent(
+            with: .leftMouseUp, location: inWindow, modifierFlags: mods, timestamp: t + 0.05,
+            windowNumber: win.windowNumber, context: nil, eventNumber: 1, clickCount: 1, pressure: 0)
+        let downEvent = NSEvent.mouseEvent(
+            with: .leftMouseDown, location: inWindow, modifierFlags: mods, timestamp: t,
+            windowNumber: win.windowNumber, context: nil, eventNumber: 1, clickCount: 1, pressure: 1)
         if let u = upEvent { NSApp.postEvent(u, atStart: false) }
         guard let d = downEvent else { return }
         if NSApp.isActive {
@@ -695,7 +786,9 @@ enum ScriptDriver {
     /// above its x-height (so pick letters without ascenders), as runs of
     /// characters filled alike: `"oov":a " now":b`.
     private static func fills(_ view: DocTextView, _ r: NSRange) -> String {
-        guard let lm = view.layoutManager, let tc = view.textContainer, let storage = view.textStorage else { return "" }
+        guard let lm = view.layoutManager, let tc = view.textContainer, let storage = view.textStorage else {
+            return ""
+        }
         lm.ensureLayout(for: tc)
         let b = view.visibleRect
         guard let rep = view.bitmapImageRepForCachingDisplay(in: b) else { return "" }
@@ -705,21 +798,35 @@ enum ScriptDriver {
         let s = storage.string as NSString
         var seen: [[Int]] = []
         var runs: [(text: String, fill: Int)] = []
-        for ci in r.location..<NSMaxRange(r) where storage.attribute(.marginHidden, at: ci, effectiveRange: nil) == nil {
+        for ci in r.location..<NSMaxRange(r) where storage.attribute(.marginHidden, at: ci, effectiveRange: nil) == nil
+        {
             let g = lm.glyphIndexForCharacter(at: ci)
             let glyph = lm.boundingRect(forGlyphRange: NSRange(location: g, length: 1), in: tc)
             let frag = lm.lineFragmentRect(forGlyphAt: g, effectiveRange: nil)
-            let font = storage.attribute(.font, at: ci, effectiveRange: nil) as? NSFont ?? Theme.font(size: Theme.bodySize)
+            let font =
+                storage.attribute(.font, at: ci, effectiveRange: nil) as? NSFont ?? Theme.font(size: Theme.bodySize)
             let baseline = frag.minY + lm.location(forGlyphAt: g).y
             let p = NSPoint(x: origin.x + glyph.midX, y: origin.y + baseline - font.xHeight - 2)
-            guard let c = rep.colorAt(x: Int((p.x - b.minX) * scale), y: Int((p.y - b.minY) * scale))?.usingColorSpace(.sRGB) else { continue }
+            guard
+                let c = rep.colorAt(x: Int((p.x - b.minX) * scale), y: Int((p.y - b.minY) * scale))?.usingColorSpace(
+                    .sRGB)
+            else { continue }
             let rgb = [c.redComponent, c.greenComponent, c.blueComponent].map { Int(($0 * 255).rounded()) }
             // Within a step or two is the same fill.
-            let fill = seen.firstIndex { zip($0, rgb).allSatisfy { abs($0 - $1) <= 2 } } ?? { seen.append(rgb); return seen.count - 1 }()
+            let fill =
+                seen.firstIndex { zip($0, rgb).allSatisfy { abs($0 - $1) <= 2 } }
+                ?? {
+                    seen.append(rgb); return seen.count - 1
+                }()
             let ch = s.substring(with: NSRange(location: ci, length: 1))
-            if let last = runs.last, last.fill == fill { runs[runs.count - 1].text += ch } else { runs.append((ch, fill)) }
+            if let last = runs.last, last.fill == fill {
+                runs[runs.count - 1].text += ch
+            } else {
+                runs.append((ch, fill))
+            }
         }
-        return runs.map { "\($0.text.debugDescription):\(Character(UnicodeScalar(UInt8(97 + $0.fill))))" }.joined(separator: " ")
+        return runs.map { "\($0.text.debugDescription):\(Character(UnicodeScalar(UInt8(97 + $0.fill))))" }.joined(
+            separator: " ")
     }
 }
 #endif

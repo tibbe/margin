@@ -2,7 +2,8 @@
 //   swift macos/tools/render-icon.swift
 import AppKit
 
-let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+    .deletingLastPathComponent()
 let svg = root.appendingPathComponent("data/io.github.tibbe.Margin.svg")
 let out = root.appendingPathComponent("macos/Resources/Assets.xcassets/AppIcon.appiconset")
 guard let image = NSImage(contentsOf: svg) else { fatalError("cannot read \(svg.path)") }
@@ -11,9 +12,10 @@ var images: [[String: String]] = []
 for points in [16, 32, 128, 256, 512] {
     for scale in [1, 2] {
         let px = points * scale
-        let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: px, pixelsHigh: px, bitsPerSample: 8,
-                                   samplesPerPixel: 4, hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB,
-                                   bytesPerRow: 0, bitsPerPixel: 0)!
+        let rep = NSBitmapImageRep(
+            bitmapDataPlanes: nil, pixelsWide: px, pixelsHigh: px, bitsPerSample: 8,
+            samplesPerPixel: 4, hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB,
+            bytesPerRow: 0, bitsPerPixel: 0)!
         NSGraphicsContext.saveGraphicsState()
         NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
         image.draw(in: NSRect(x: 0, y: 0, width: px, height: px))
