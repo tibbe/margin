@@ -189,8 +189,14 @@ Every editor produces the same source for the same keys. The choices:
   selection it takes the word at the cursor. The document is saved first.
   If its text is deleted before it is posted, it doesn't post (there is
   nothing to comment on) and the draft stays, so its words aren't lost.
-- Cards never overlap: the focused card sits beside its text and the rest
-  stack around it. When threads overlap, the cursor focuses the innermost.
+- Cards never overlap. With no thread focused, each card sits beside its
+  text, or just below the card above it if that one reaches further down.
+- The focused card (or the draft) always sits beside its text, as in
+  Google Docs. The other cards move out of its way, off the page if need
+  be, until the focus moves.
+- The page grows to fit cards that reach below the text. A clicked card that
+  moves out of view is scrolled back into it.
+- When threads overlap, the cursor focuses the innermost.
 - Clicks in the gutter never move the text cursor, and document commands do
   nothing while focus is in a card.
 - A message longer than seven lines is cut off at three, with Show More

@@ -488,8 +488,14 @@ final class CommentLayer {
             focus = .thread(id)
             sync()
         }
-        if focusCard && !it.thread.resolved {
-            it.card.composer.focus()
+        if focusCard {
+            // Moved beside its text, the clicked card may have left the view;
+            // its top comes back into it.
+            page.layoutSubtreeIfNeeded()
+            let shown = page.enclosingScrollView?.contentView.bounds.height ?? it.card.bounds.height
+            it.card.scrollToVisible(
+                NSRect(x: 0, y: 0, width: it.card.bounds.width, height: min(it.card.bounds.height, shown)))
+            if !it.thread.resolved { it.card.composer.focus() }
         }
     }
 
@@ -630,8 +636,10 @@ final class CommentLayer {
 
     /// Places cards beside their text, in the page's layout pass once the
     /// text is laid out. The focused card (or the draft) sits exactly beside
-    /// its anchor; the others stack above and below it without overlapping.
-    /// Returns how far down the cards reach, in page coordinates.
+    /// its anchor; the others stack above and below it without overlapping,
+    /// those above past the top of the page if need be, where the gutter
+    /// clips them. Without one, cards stack down from the top. Returns how
+    /// far down the cards reach, in page coordinates.
     private func placeCards() -> CGFloat {
         let g = view.geometry
         struct Entry { var y: CGFloat; var order: Int; var h: CGFloat; var card: GutterCard; var focused: Bool }
@@ -651,23 +659,19 @@ final class CommentLayer {
         entries.sort { ($0.y, $0.order) < ($1.y, $1.order) }
         let n = entries.count
         var ys = entries.map { $0.y }
-        if let a = entries.firstIndex(where: { $0.focused }) {
-            ys[a] = entries[a].y
-            if a + 1 < n {
-                for i in (a + 1)..<n { ys[i] = max(entries[i].y, ys[i - 1] + entries[i - 1].h + CommentLayer.cardGap) }
-            }
-            if a > 0 {
-                for i in stride(from: a - 1, through: 0, by: -1) {
-                    ys[i] = min(entries[i].y, ys[i + 1] - CommentLayer.cardGap - entries[i].h)
-                }
+        // Down from the focused card, or from the top without one.
+        let a = entries.firstIndex { $0.focused }
+        let first = a ?? 0
+        if a == nil && n > 0 { ys[0] = max(ys[0], view.textContainerInset.height) }
+        if first + 1 < n {
+            for i in (first + 1)..<n { ys[i] = max(ys[i], ys[i - 1] + entries[i - 1].h + CommentLayer.cardGap) }
+        }
+        if first > 0 {
+            for i in stride(from: first - 1, through: 0, by: -1) {
+                ys[i] = min(ys[i], ys[i + 1] - CommentLayer.cardGap - entries[i].h)
             }
         }
-        var bottom = -CommentLayer.cardGap
-        let minTop = view.textContainerInset.height
-        for i in 0..<n {
-            ys[i] = max(ys[i], bottom + CommentLayer.cardGap, minTop)
-            bottom = ys[i] + entries[i].h
-        }
+        let bottom = n > 0 ? ys[n - 1] + entries[n - 1].h : 0
         let x = gutter.convert(NSPoint(x: g.gutterX, y: 0), from: page).x
         for (i, e) in entries.enumerated() {
             e.card.frame = NSRect(x: x, y: ys[i], width: width, height: e.h)

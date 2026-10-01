@@ -29,6 +29,9 @@ final class PageView: NSView {
         textView.autoresizingMask = []
         textView.postsFrameChangedNotifications = true
         addSubview(textView)
+        // Cards pushed up past the top of the page stay out of sight, also
+        // when the scroll bounces.
+        gutter.clipsToBounds = true
         addSubview(gutter)
         NotificationCenter.default.addObserver(
             self, selector: #selector(contentChanged), name: NSView.frameDidChangeNotification, object: textView)

@@ -69,6 +69,8 @@ impl CommentLayer {
         add_button.set_focus_on_click(false);
         let gutter = gtk::Fixed::new();
         gutter.set_cursor_from_name(Some("default"));
+        // Cards pushed up past the top of the page stay out of sight.
+        gutter.set_overflow(gtk::Overflow::Hidden);
         // Clicks in the gutter belong to the cards. GtkButton only claims a
         // click on release, so without this the press bubbles up to the text
         // view, which moves the cursor (dropping the selection the add
@@ -924,7 +926,9 @@ impl CommentLayer {
 
     /// Places cards next to their text. The focused card (or the draft)
     /// sits exactly beside its anchor; the others stack above and below it
-    /// without overlapping.
+    /// without overlapping, those above past the top of the page if need
+    /// be, where the gutter clips them. Without one, cards stack down from
+    /// the top.
     pub fn relayout(&self) {
         let g = self.view.geometry();
         if g.width == 0 {
@@ -970,26 +974,20 @@ impl CommentLayer {
         }
         items.sort_by_key(|i| (i.y, i.order));
         let n = items.len();
-        let mut ys = vec![0; n];
-        if let Some(a) = items.iter().position(|i| i.focused) {
-            ys[a] = items[a].y;
-            for i in a + 1..n {
-                ys[i] = items[i].y.max(ys[i - 1] + items[i - 1].h + CARD_GAP);
-            }
-            for i in (0..a).rev() {
-                ys[i] = items[i].y.min(ys[i + 1] - CARD_GAP - items[i].h);
-            }
+        let mut ys: Vec<i32> = items.iter().map(|i| i.y).collect();
+        // Down from the focused card, or from the top without one.
+        let focused = items.iter().position(|i| i.focused);
+        let first = focused.unwrap_or(0);
+        if focused.is_none()
+            && let Some(y) = ys.first_mut()
+        {
+            *y = (*y).max(0);
         }
-        // Stack top to bottom without overlaps and below the page top.
-        let mut bottom = -CARD_GAP;
-        for i in 0..n {
-            let want = if items.iter().any(|i| i.focused) {
-                ys[i]
-            } else {
-                items[i].y
-            };
-            ys[i] = want.max(bottom + CARD_GAP).max(0);
-            bottom = ys[i] + items[i].h;
+        for i in first + 1..n {
+            ys[i] = ys[i].max(ys[i - 1] + items[i - 1].h + CARD_GAP);
+        }
+        for i in (0..first).rev() {
+            ys[i] = ys[i].min(ys[i + 1] - CARD_GAP - items[i].h);
         }
         self.view.move_overlay(&self.gutter, g.gutter_x, 0);
         for (i, item) in items.iter().enumerate() {

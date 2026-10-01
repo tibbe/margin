@@ -28,6 +28,60 @@ final class CardTests: XCTestCase {
         XCTAssertEqual(h.cardOffsets, [1: 0])
     }
 
+    /// Without a focused thread, cards stack down from the first; the
+    /// focused card always sits beside its text, with the cards above it
+    /// pushed up past the top of the page if need be.
+    @MainActor
+    func testTheFocusedCardIsBesideItsText() throws {
+        let h = try Harness("One.\nTwo.\nThree.\nFour.\nFive.\n")
+        defer { h.close() }
+        h.size(1300, 900)
+        for (i, word) in ["One", "Two", "Three", "Four", "Five"].enumerated() {
+            comment(h, on: word, "Comment \(i + 1).")
+        }
+        h.key("escape")
+        h.wait(0.1)
+        let stacked = h.cardOffsets
+        XCTAssertEqual(stacked[1], 0)
+        XCTAssertGreaterThan(try XCTUnwrap(stacked[5]), 0)
+
+        try h.click(card: 5)
+        h.wait(0.2)
+        XCTAssertEqual(h.comments.split(separator: "\n").last, "active 5")
+        XCTAssertEqual(h.cardOffsets[5], 0)
+        XCTAssertLessThan(try h.card(1).frame.minY, 0)
+
+        h.click(text: "One")
+        h.wait(0.2)
+        XCTAssertEqual(h.comments.split(separator: "\n").last, "active 1")
+        XCTAssertEqual(h.cardOffsets[1], 0)
+        XCTAssertGreaterThan(try XCTUnwrap(h.cardOffsets[5]), 0)
+    }
+
+    /// A clicked card that moves beside its text, out of the view, is
+    /// scrolled back into it.
+    @MainActor
+    func testAClickedCardStaysInView() throws {
+        let words = ["One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight"]
+        let h = try Harness(words.joined(separator: " ") + ".\n" + String(repeating: "Filler.\n\n", count: 80))
+        defer { h.close() }
+        h.size(1300, 500)
+        for (i, word) in words.enumerated() {
+            comment(h, on: word, "Comment \(i + 1).")
+        }
+        h.key("escape")
+        h.wait(0.1)
+        let card = try h.card(8)
+        h.layOut()
+        card.scrollToVisible(card.bounds)
+        h.wait(0.1)
+        try h.click(card: 8)
+        h.wait(0.2)
+        XCTAssertEqual(h.cardOffsets[8], 0)
+        let clip = try XCTUnwrap(h.doc.page.enclosingScrollView).contentView.bounds
+        XCTAssertTrue(clip.contains(NSPoint(x: clip.midX, y: card.frame.minY)), "\(card.frame) outside \(clip)")
+    }
+
     /// A click on a card's message text focuses the thread, as a click on
     /// the card's padding does; a drag across it selects the text instead.
     @MainActor
