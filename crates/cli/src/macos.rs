@@ -3,7 +3,8 @@
 use std::path::{Path, PathBuf};
 
 /// The containing macOS app, if this executable lives in its `MacOS` or
-/// `Helpers` directory. Standalone Cargo builds have no containing app.
+/// `Helpers` directory. Standalone Cargo builds have no containing app, so
+/// they can't open documents.
 pub(super) fn app_bundle() -> Option<PathBuf> {
     bundle_for_executable(&std::env::current_exe().ok()?.canonicalize().ok()?)
 }

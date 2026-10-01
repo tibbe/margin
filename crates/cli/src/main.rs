@@ -72,10 +72,18 @@ fn launch(files: Vec<PathBuf>, foreground: bool) -> anyhow::Result<i32> {
     Ok(0)
 }
 
-/// Hands files to the containing app, or the installed Release app for a
-/// standalone CLI. With `foreground`, waits until the app quits.
+/// Hands files to the containing app. With `foreground`, waits until the
+/// app quits.
 #[cfg(target_os = "macos")]
 fn launch(files: Vec<PathBuf>, foreground: bool) -> anyhow::Result<i32> {
+    // A standalone CLI could only pick an app by bundle ID, which can match
+    // any build Launch Services has registered, so it opens none.
+    let Some(bundle) = macos::app_bundle() else {
+        anyhow::bail!(
+            "this margin isn't inside Margin.app, so it can't open documents; \
+             use Margin.app/Contents/Helpers/margin"
+        );
+    };
     // Launch Services only opens files that exist; a new document starts
     // empty either way.
     for f in &files {
@@ -84,17 +92,13 @@ fn launch(files: Vec<PathBuf>, foreground: bool) -> anyhow::Result<i32> {
         }
     }
     let mut cmd = std::process::Command::new("/usr/bin/open");
-    if let Some(bundle) = macos::app_bundle() {
-        cmd.arg("-a").arg(bundle);
-    } else {
-        cmd.args(["-b", "io.github.tibbe.Margin"]);
-    }
+    cmd.arg("-a").arg(&bundle);
     if foreground {
         cmd.arg("-W");
     }
     let status = cmd.args(&files).status()?;
     if !status.success() {
-        anyhow::bail!("could not start Margin.app; is it installed?");
+        anyhow::bail!("could not start {}", bundle.display());
     }
     if !foreground {
         await_shown(&files)?;
