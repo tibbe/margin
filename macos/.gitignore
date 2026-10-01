@@ -1,0 +1,22 @@
+# Templates adapted from https://github.com/github/gitignore
+# (Global/Xcode.gitignore and Swift.gitignore).
+
+# Build output from the project's build scripts.
+/build/
+
+# Xcode user settings.
+xcuserdata/
+
+# Obj-C/Swift specific.
+*.hmap
+
+# App packaging.
+*.dSYM.zip
+*.dSYM
+
+# Playgrounds.
+timeline.xctimeline
+playground.xcworkspace
+
+# Swift Package Manager.
+.build/
