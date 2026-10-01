@@ -175,7 +175,8 @@ Every editor produces the same source for the same keys. The choices:
 - A thread is a comment plus replies, each with a time and an author: the
   writer, for messages from the editor, or an agent, for messages from the
   CLI. Agents aren't told apart. Threads are numbered per document and
-  numbers are never reused.
+  numbers are never reused. The numbers are for the CLI; the editor doesn't
+  show them.
 - Each message has a header row, as in Pages, Figma and GitHub: at its
   start the author, "You" or "Agent", and the time on one line ("Agent ·
   14:10"); at its end the message's buttons, Resolve (or Reopen) on the

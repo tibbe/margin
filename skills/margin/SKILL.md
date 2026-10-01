@@ -10,8 +10,10 @@ way they would in Google Docs: each **thread** is anchored to a span of the
 document's text. The `margin` CLI is how you read threads and reply to
 them. `margin --help` lists every command and flag.
 
-Threads are numbered per document (`#3`). Locations are `file:line:column`,
-1-based, computed against the file as it is now.
+Threads are numbered per document (`#3`). The number is for the CLI: the
+editor doesn't show it, so when you write to the user about a thread, name
+it by the text it is on. Locations are `file:line:column`, 1-based,
+computed against the file as it is now.
 
 ## Address comments
 

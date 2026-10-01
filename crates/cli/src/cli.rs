@@ -20,7 +20,9 @@ Agent workflow:
   margin add plan.md --quote \"retry budget\" \"Is 3 enough?\"
   margin wait plan.md              wait until the writer sends the next round
 
-Threads are numbered per document. Locations are file:line:column, 1-based.
+Threads are numbered per document, for the CLI; the editor doesn't show the
+numbers, so name a thread to the user by the text it is on.
+Locations are file:line:column, 1-based.
 Each message's author is \"user\" (from the editor) or \"agent\" (from margin).";
 
 #[derive(Parser, Debug)]
