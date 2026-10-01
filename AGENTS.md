@@ -28,3 +28,9 @@ Keep the specs in step with user-visible behavior changes. Keep `margin --help` 
 - `crates/gtk`: the Linux editor.
 - `crates/ffi`: the core for Swift, through UniFFI.
 - `macos/`: the macOS editor.
+
+## Launching
+
+When asked to launch Margin in text context of a checkout, build and use the
+local binary for the relevant platform instead of using a globally installed
+one. The user likely wants to test the latest changes themselves.
