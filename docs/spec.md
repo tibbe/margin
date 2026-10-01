@@ -22,23 +22,39 @@ chat, away from the text, and its edits to the document are hard to follow.
 
 A native editor that reads like a word processor and writes like a text
 editor, with Google Docs-style comments in the margin that agents read and
-answer through a CLI.
+answer through a CLI. Each choice below puts it at one point in the design
+space, against the alternative it names. Other tools make some of these
+choices; none makes them all.
 
-- **The file is the document.** The editor edits the Markdown text directly
-  and never re-serializes it; an edit changes only the bytes it must.
-- **Markdown is an input method.** Typed syntax formats as you type and is
-  hidden; the screen reads like a document, in proportional type.
-- **Keys behave like a word processor's**, expressed as minimal changes to
-  the source.
-- **Comments live beside the file, never in it**, and stay attached to their
-  text as anyone edits it. One person and their agents comment and reply,
-  and each message says which of them wrote it.
-- **Agents are first-class** through the `margin` CLI, like `tuicr` and
-  `hunk`. Their edits and replies appear in the open editor as they happen,
-  and the writer sends each round of comments to an agent that waits for
-  them.
-- **Quiet and native.** Documents save themselves; rarely used commands live
-  in menus; each platform's editor behaves like that platform's apps.
+- **The writer's own agent, in their project.** Margin has no AI of its
+  own: the writer reviews with the coding agent they already run, which
+  reads the codebase, runs commands and builds from the document. An
+  assistant built into a document editor sees only the document. Agents
+  take part through the `margin` CLI, like `tuicr` and `hunk`, and their
+  edits and replies appear in the open editor as they happen.
+- **Threads, not a chat.** A review raises many points at once. Each is a
+  thread on its own text and is answered there. In a chat, the points and
+  their answers share one stream, away from the text they are about.
+- **Many copies, not one shared document.** Like code in git, a document can
+  have many copies at once, each with its own review and its own agent, so
+  several sessions work on one spec in parallel without mixing. Google Docs
+  has one document that everyone edits.
+- **The file is the source of truth.** The editor edits the Markdown text
+  directly and never re-serializes it; an edit changes only the bytes it
+  must, so diffs and merges in git keep working. Rich editors rewrite the
+  file on save; Google Docs keeps no file in the project at all.
+- **Markdown, because both sides write it.** Agents write Markdown well and
+  people write it easily. In Margin it is an input method: typed syntax
+  formats as you type and is hidden.
+- **Rich, not plain.** A spec says some things best as a table, an image or
+  a diagram (a Mermaid flowchart, say), so the editor shows them as such,
+  not as their source.
+- **Proportional, because review is reading.** Most of the writer's time
+  goes to reading what the agent wrote, so the screen reads like a
+  document, in proportional type, not like source in a monospace editor.
+- **Comments beside the text, not in it.** Cards sit in the margin next to
+  their text, as in Google Docs, so they never break up the reading the way
+  comments between the lines of a code review do.
 
 User stories name two actors: the **writer** (the one person who
 comments) and a **coding agent**.
