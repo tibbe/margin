@@ -9,6 +9,7 @@ use super::view::DocView;
 use adw::prelude::*;
 use anyhow::Result;
 use gtk::{gio, glib};
+use margin_core::changes;
 use margin_core::comments::activity::{self, Change, Kind};
 use margin_core::comments::handoff::{AgentState, DocAgents};
 use margin_core::comments::{Store, canonical_doc_path, data_dir, read_doc};
@@ -277,6 +278,7 @@ pub fn open(app: &adw::Application, path: &Path, look: Look) -> Result<Rc<DocWin
 
     win.connect_signals();
     win.install_actions();
+    win.read_committed();
     win.watch();
     win.follow_agents();
     win.update_title();
@@ -549,21 +551,25 @@ impl DocWindow {
     fn connect_signals(&self) {
         let weak = self.weak();
         self.buffer.connect_changed(move |_| {
-            if let Some(w) = weak.upgrade()
-                && !w.loading.get()
-            {
+            let Some(w) = weak.upgrade() else { return };
+            if !w.loading.get() {
                 w.sync.borrow_mut().edited();
                 w.update_title();
                 w.schedule_save();
             }
+            w.update_change_actions();
         });
         let weak = self.weak();
         self.window.connect_is_active_notify(move |win| {
             let Some(w) = weak.upgrade() else { return };
             if !win.is_active() {
                 w.save();
-            } else if w.looking() {
-                w.clear_activity();
+            } else {
+                // Commits are made elsewhere, so look again on coming back.
+                w.read_committed();
+                if w.looking() {
+                    w.clear_activity();
+                }
             }
         });
         let weak = self.weak();
@@ -928,6 +934,8 @@ impl DocWindow {
         add("copy-comments", |w| w.copy_comments());
         add("send-to-agent", |w| w.send_to_agent());
         add("resolve-all", |w| w.layer.resolve_all());
+        add("next-change", |w| w.view.step_change(true));
+        add("prev-change", |w| w.view.step_change(false));
         add("next-comment", |w| w.layer.step(true));
         add("prev-comment", |w| w.layer.step(false));
         add("reply", |w| w.layer.focus_reply());
@@ -1011,6 +1019,47 @@ impl DocWindow {
             }
         });
         self.window.add_action(&source);
+        self.update_change_actions();
+    }
+
+    /// Reads the file as of its last commit, off the main thread since it
+    /// runs git, to mark what changed since.
+    fn read_committed(&self) {
+        if self.draft.get() {
+            self.show_committed(None);
+            return;
+        }
+        let path = self.path();
+        let weak = self.weak();
+        glib::spawn_future_local(async move {
+            let read = path.clone();
+            let Ok(committed) = gio::spawn_blocking(move || changes::committed(&read)).await else {
+                return;
+            };
+            if let Some(w) = weak.upgrade()
+                && w.path() == path
+            {
+                w.show_committed(committed);
+            }
+        });
+    }
+
+    fn show_committed(&self, committed: Option<String>) {
+        self.buffer.set_committed(committed);
+        self.view.queue_draw();
+        self.update_change_actions();
+    }
+
+    /// Next and Previous Change are available while something changed.
+    fn update_change_actions(&self) {
+        let any = !self.buffer.state().changes.is_empty();
+        for name in ["next-change", "prev-change"] {
+            if let Some(a) = self.window.lookup_action(name)
+                && let Ok(a) = a.downcast::<gio::SimpleAction>()
+            {
+                a.set_enabled(any);
+            }
+        }
     }
 
     /// Whether the keyboard focus is in a comment card rather than the
@@ -1230,6 +1279,7 @@ impl DocWindow {
         self.draft.set(false);
         self.sync.borrow_mut().wrote(&text);
         self.layer.attach(new_store);
+        self.read_committed();
         self.watch();
         self.follow_agents();
         self.update_title();
@@ -1408,6 +1458,8 @@ fn main_menu() -> gio::Menu {
     let view = gio::Menu::new();
     view.append(Some("Reflow Paragraphs"), Some("win.wrap-paragraphs"));
     view.append(Some("Show Markdown"), Some("win.show-markdown"));
+    view.append(Some("Next Change"), Some("win.next-change"));
+    view.append(Some("Previous Change"), Some("win.prev-change"));
     let size = gio::Menu::new();
     size.append(Some("Larger"), Some("win.zoom-in"));
     size.append(Some("Smaller"), Some("win.zoom-out"));
@@ -1445,6 +1497,8 @@ pub const ACCELS: &[(&str, &[&str])] = &[
     ("win.add-comment", &["<Control><Alt>m"]),
     ("win.copy-comments", &["<Control><Shift>c"]),
     ("win.send-to-agent", &["<Control><Shift>Return"]),
+    ("win.next-change", &["<Control><Alt><Shift>Down"]),
+    ("win.prev-change", &["<Control><Alt><Shift>Up"]),
     ("win.next-comment", &["<Control><Alt>Down"]),
     ("win.prev-comment", &["<Control><Alt>Up"]),
     ("win.reply", &["<Control><Alt>r"]),
@@ -1512,6 +1566,11 @@ fn shortcuts_dialog() -> adw::ShortcutsDialog {
             ("Reset text size", "<Control>0"),
             ("Show Markdown source", "<Control>slash"),
             ("Reflow paragraphs (join the file's line breaks)", "<Alt>z"),
+            (
+                "Next change since the last commit",
+                "<Control><Alt><Shift>Down",
+            ),
+            ("Previous change", "<Control><Alt><Shift>Up"),
         ],
     );
     section(

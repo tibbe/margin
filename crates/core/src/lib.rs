@@ -3,6 +3,7 @@
 //! text (`comments`), and keeping the text and its file in step
 //! (`file_sync`). No UI here.
 
+pub mod changes;
 pub mod comments;
 pub mod diff;
 pub mod file_sync;

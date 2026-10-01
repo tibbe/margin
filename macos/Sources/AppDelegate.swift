@@ -410,6 +410,12 @@ func buildMainMenu() -> NSMenu {
                 item("Show Markdown", #selector(DocumentWindow.marginToggleShowMarkdown(_:)), "/"),
                 item("Reflow Paragraphs", #selector(AppDelegate.marginToggleReflow(_:)), "z", [.command, .option]),
                 .separator(),
+                item(
+                    "Next Change", #selector(DocumentWindow.marginNextChange(_:)), down, [.command, .option, .shift]),
+                item(
+                    "Previous Change", #selector(DocumentWindow.marginPreviousChange(_:)), up,
+                    [.command, .option, .shift]),
+                .separator(),
                 item("Zoom In", #selector(AppDelegate.marginLarger(_:)), "+"),
                 largerAlt,
                 item("Zoom Out", #selector(AppDelegate.marginSmaller(_:)), "-"),

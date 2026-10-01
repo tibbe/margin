@@ -5,7 +5,8 @@
 
 use super::buffer::{DocBuffer, ITEM_STEP, QUOTE_STEP};
 use super::theme::{rgba, rgba_alpha};
-use gtk::{gdk, gio, glib, graphene, prelude::*, subclass::prelude::*};
+use gtk::{gdk, gio, glib, graphene, gsk, prelude::*, subclass::prelude::*};
+use margin_core::changes::Kind;
 use margin_core::md::{Container, InlineKind, LineKind, edit};
 use std::cell::{Cell, RefCell};
 
@@ -135,7 +136,10 @@ mod imp {
                 return;
             };
             match layer {
-                gtk::TextViewLayer::BelowText => obj.draw_blocks(&buf, &snapshot),
+                gtk::TextViewLayer::BelowText => {
+                    obj.draw_changes(&buf, &snapshot);
+                    obj.draw_blocks(&buf, &snapshot);
+                }
                 gtk::TextViewLayer::AboveText => obj.draw_markers(&buf, &snapshot),
                 _ => {}
             }
@@ -486,6 +490,127 @@ impl DocView {
         let top = st.byte_of(top.offset() as usize);
         let bottom = st.byte_of(bottom.offset() as usize);
         (st.doc.line_index(top), st.doc.line_index(bottom))
+    }
+
+    /// Bars in the left margin beside the lines changed since the last
+    /// commit, and a triangle between the lines where lines were deleted.
+    /// Lines laid out as nothing (blank lines, fences) get no bar; a change
+    /// of only those is marked like a deletion.
+    fn draw_changes(&self, buf: &DocBuffer, snapshot: &gtk::Snapshot) {
+        let (first, last) = self.visible_lines(buf);
+        let look = buf.look();
+        let scale = look.scale() as f32;
+        let p = &look.palette;
+        let x = self.geometry().left as f32 - 18.0 * scale;
+        let changes = buf.state().changes.clone();
+        for c in changes
+            .iter()
+            .filter(|c| c.lines.end >= first && c.lines.start <= last + 1)
+        {
+            let color = rgba(match c.kind {
+                Kind::Added => &p.added,
+                Kind::Changed => &p.changed,
+                Kind::Deleted => &p.deleted,
+            });
+            let laid_out: Vec<usize> = c
+                .lines
+                .clone()
+                .filter(|&li| !buf.line_collapsed(li))
+                .collect();
+            if let (Some(&fl), Some(&ll)) = (laid_out.first(), laid_out.last()) {
+                let (top, bottom) = {
+                    let st = buf.state();
+                    (
+                        self.iter_location_of(buf, st.doc.lines[fl].visible_start)
+                            .y(),
+                        self.line_yrange(&buf.iter_at_byte(st.doc.lines[ll].end)),
+                    )
+                };
+                let w = 3.0 * scale;
+                let rect =
+                    graphene::Rect::new(x, top as f32, w, (bottom.0 + bottom.1 - top) as f32);
+                let rounded = gsk::RoundedRect::from_rect(rect, w / 2.0);
+                snapshot.push_rounded_clip(&rounded);
+                snapshot.append_color(&color, &rect);
+                snapshot.pop();
+            } else {
+                let y = self.boundary(buf, c.lines.start) as f32;
+                let h = 4.0 * scale;
+                let cr =
+                    snapshot.append_cairo(&graphene::Rect::new(x, y - h, 5.0 * scale, 2.0 * h));
+                cr.move_to(x as f64, (y - h) as f64);
+                cr.line_to((x + 5.0 * scale) as f64, y as f64);
+                cr.line_to(x as f64, (y + h) as f64);
+                cr.close_path();
+                set_color(&cr, &color);
+                let _ = cr.fill();
+            }
+        }
+    }
+
+    /// Halfway between line `li` and the shown line before it.
+    fn boundary(&self, buf: &DocBuffer, li: usize) -> i32 {
+        let n = buf.state().doc.lines.len();
+        let prev = (0..li.min(n)).rev().find(|&l| !buf.line_collapsed(l));
+        let next = (li..n).find(|&l| !buf.line_collapsed(l));
+        let scale = buf.look().scale();
+        let bottom = |l: usize| {
+            let end = buf.state().doc.lines[l].end;
+            let (y, h) = self.line_yrange(&buf.iter_at_byte(end));
+            y + h
+        };
+        let top = |l: usize| {
+            let start = buf.state().doc.lines[l].visible_start;
+            self.iter_location_of(buf, start).y()
+        };
+        match (prev, next) {
+            (Some(p), Some(n)) => (bottom(p) + top(n)) / 2,
+            (Some(p), None) => bottom(p) + (4.0 * scale) as i32,
+            (None, Some(n)) => top(n) - (4.0 * scale) as i32,
+            (None, None) => 0,
+        }
+    }
+
+    /// Moves the cursor to the start of the nearest change after it, or
+    /// before it, wrapping around the document, and scrolls it into view.
+    pub fn step_change(&self, forward: bool) {
+        let buf = self.doc_buffer();
+        let (starts, cursor) = {
+            let changes = buf.state().changes.clone();
+            let n = buf.state().doc.lines.len();
+            let starts: Vec<usize> = changes
+                .iter()
+                .filter_map(|c| {
+                    let li = c.lines.start;
+                    // The cursor can't rest on a line laid out as nothing.
+                    let shown = (li..n)
+                        .find(|&l| !buf.line_collapsed(l))
+                        .or_else(|| (0..li.min(n)).rev().find(|&l| !buf.line_collapsed(l)))?;
+                    Some(buf.state().doc.lines[shown].visible_start)
+                })
+                .collect();
+            (starts, buf.cursor_byte())
+        };
+        let (Some(&first), Some(&last)) = (starts.first(), starts.last()) else {
+            return;
+        };
+        let target = if forward {
+            starts
+                .iter()
+                .copied()
+                .find(|&s| s > cursor)
+                .unwrap_or(first)
+        } else {
+            starts
+                .iter()
+                .copied()
+                .rev()
+                .find(|&s| s < cursor)
+                .unwrap_or(last)
+        };
+        buf.place_cursor(&buf.iter_at_byte(target));
+        self.grab_focus();
+        self.scroll_mark_onscreen(&buf.get_insert());
     }
 
     fn draw_blocks(&self, buf: &DocBuffer, snapshot: &gtk::Snapshot) {

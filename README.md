@@ -11,6 +11,8 @@ line.
   a readable document. The file on disk is plain Markdown, and text you
   didn't touch is never rewritten, so diffs stay small.
 - **Comments live in the right margin**, anchored to the text they're on.
+- **Changes since the last commit are marked** with a bar in the left
+  margin, so you know what to review after an agent's edits.
 - **Agents use the `margin` CLI** to list threads with `file:line`
   locations, reply and resolve. Replies appear in the open editor, and when
   an agent edits the document, comments stay attached to their text.

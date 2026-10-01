@@ -44,6 +44,9 @@ dark, and libadwaita is forced to match.
 | Card background | `lighter_background`, `dark_background` | `#fafafa` | `#2a2a2a` |
 | Comment highlight | `yellow`, `bright_yellow`, `orange` | `#f6d32d` | `#f8e45c` |
 | Links | `blue`, `accent` | `#1c71d8` | `#78aeed` |
+| Change bar: added | `green`, `color2` | `#2ec27e` | `#57e389` |
+| Change bar: changed | `blue`, `color4` | `#3584e4` | `#62a0ea` |
+| Change mark: deleted | `red`, `color1` | `#e01b24` | `#f66151` |
 
 Missing Omarchy keys fall back to the text, background or accent color.
 Without an Omarchy theme, Margin uses the Adwaita palette above and follows
@@ -75,6 +78,8 @@ At a 16px (12pt) body, scaled with the text size:
   with 28px side padding.
 - Comment cards 300px wide (scaled with the desktop's text scaling only),
   40px from the text. Cards stack with 10px between them.
+- Change bars 3px wide with round ends, 15px left of the text; a deletion
+  is a triangle 5px wide and 8px tall in the same place.
 - Default window 1340×920.
 
 ### Feedback
@@ -147,8 +152,8 @@ used commands live here rather than in the header.
   Checklist, Quote, Code Block; Bold, Italic, Strikethrough, Inline Code,
   Link…
 - Copy Open, Send to Agent, Resolve All, Show Resolved
-- Reflow Paragraphs, Show Markdown, Text Size ▸ Larger, Smaller, Reset;
-  Fullscreen
+- Reflow Paragraphs, Show Markdown, Next Change, Previous Change, Text
+  Size ▸ Larger, Smaller, Reset; Fullscreen
 - Keyboard Shortcuts, About Margin
 
 Headings 4–6, indent, outdent, Toggle Task, Open Link and the comment
@@ -183,6 +188,7 @@ are GNOME's.
 | Copy Open Comments | Ctrl+Shift+C |
 | Send to Agent | Ctrl+Shift+Enter |
 | Next Comment, Previous Comment | Ctrl+Alt+Down, Ctrl+Alt+Up |
+| Next Change, Previous Change | Ctrl+Alt+Shift+Down, Ctrl+Alt+Shift+Up |
 | Reply, Post | Ctrl+Alt+R, Ctrl+Enter |
 | Leave Comment, close Find | Escape |
 | Undo, Redo, Cut, Copy, Paste, Select All | GTK's: Ctrl+Z, Ctrl+Shift+Z, Ctrl+X, Ctrl+C, Ctrl+V, Ctrl+A |

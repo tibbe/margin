@@ -1,4 +1,5 @@
 import AppKit
+import margin_ffi
 
 /// Preferences that persist between runs, in the app's user defaults.
 enum Prefs {
@@ -97,6 +98,16 @@ enum Theme {
         return NSColor(
             srgbRed: mix(t.redComponent, b.redComponent), green: mix(t.greenComponent, b.greenComponent),
             blue: mix(t.blueComponent, b.blueComponent), alpha: a)
+    }
+
+    /// Change bars: green for added lines, blue for changed ones, red for
+    /// deletions, as in VS Code.
+    static func change(_ kind: LineChangeKind) -> NSColor {
+        switch kind {
+        case .added: .systemGreen
+        case .changed: .systemBlue
+        case .deleted: .systemRed
+        }
     }
 
     static func findMatch(current: Bool) -> NSColor {

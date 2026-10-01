@@ -20,6 +20,10 @@ pub struct Palette {
     pub card_bg: String,
     pub highlight: String,
     pub link: String,
+    /// Change bars: added and changed lines, and deletions.
+    pub added: String,
+    pub changed: String,
+    pub deleted: String,
 }
 
 pub fn omarchy_theme_dir() -> Option<PathBuf> {
@@ -94,10 +98,23 @@ fn omarchy_palette() -> Option<Palette> {
         card_bg: get(&["lighter_background", "dark_background"]).unwrap_or_else(|| bg.clone()),
         highlight: get(&["yellow", "bright_yellow", "orange"]).unwrap_or_else(|| "#e5c07b".into()),
         link: get(&["blue", "accent"]).unwrap_or_else(|| accent.clone()),
+        added: get(&["green", "color2"]).unwrap_or_else(|| change_colors(dark).0.into()),
+        changed: get(&["blue", "color4"]).unwrap_or_else(|| change_colors(dark).1.into()),
+        deleted: get(&["red", "color1"]).unwrap_or_else(|| change_colors(dark).2.into()),
         accent,
         bg,
         fg,
     })
+}
+
+/// Adwaita's green, blue and red, for added lines, changed lines and
+/// deletions.
+fn change_colors(dark: bool) -> (&'static str, &'static str, &'static str) {
+    if dark {
+        ("#57e389", "#62a0ea", "#f66151")
+    } else {
+        ("#2ec27e", "#3584e4", "#e01b24")
+    }
 }
 
 fn adwaita_palette() -> Palette {
@@ -116,6 +133,9 @@ fn adwaita_palette() -> Palette {
             card_bg: "#2a2a2a".into(),
             highlight: "#f8e45c".into(),
             link: "#78aeed".into(),
+            added: change_colors(dark).0.into(),
+            changed: change_colors(dark).1.into(),
+            deleted: change_colors(dark).2.into(),
         }
     } else {
         Palette {
@@ -131,6 +151,9 @@ fn adwaita_palette() -> Palette {
             card_bg: "#fafafa".into(),
             highlight: "#f6d32d".into(),
             link: "#1c71d8".into(),
+            added: change_colors(dark).0.into(),
+            changed: change_colors(dark).1.into(),
+            deleted: change_colors(dark).2.into(),
         }
     }
 }

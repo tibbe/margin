@@ -36,6 +36,15 @@ final class DocTextView: NSTextView, NSTextStorageDelegate, NSTextViewDelegate, 
     /// Links and images, for their tooltips.
     private var linkRanges: [NSRange] = []
     private var tableInfos: [TableInfo] = []
+    /// The file as of its last commit, to mark the lines changed since.
+    var committed: CommittedText? {
+        didSet {
+            changes = committed?.changes(text: analysis) ?? []
+            needsDisplay = true
+        }
+    }
+    /// The lines changed since the last commit, in order.
+    private(set) var changes: [LineChange] = []
 
     var sourceMode = false {
         didSet { if oldValue != sourceMode { forceRestyle() } }
@@ -195,6 +204,7 @@ final class DocTextView: NSTextView, NSTextStorageDelegate, NSTextViewDelegate, 
         let newSoft = Set(analysis.softBreaks().map { Int($0) })
         let changedSoft = newSoft.symmetricDifference(softBreaks)
         softBreaks = newSoft
+        changes = committed?.changes(text: analysis) ?? []
         stale = false
         revealed = revealRanges()
         restyle()
@@ -495,8 +505,10 @@ final class DocTextView: NSTextView, NSTextStorageDelegate, NSTextViewDelegate, 
 
     override func drawBackground(in rect: NSRect) {
         super.drawBackground(in: rect)
+        guard !stale, !lines.isEmpty else { return }
+        drawChanges(in: rect)
         // Show Markdown shows the syntax itself instead.
-        guard !stale, !lines.isEmpty, !sourceMode else { return }
+        guard !sourceMode else { return }
         let s = Theme.scale
         let left = geometry.left
         let shown = lines(in: rect)
@@ -549,6 +561,82 @@ final class DocTextView: NSTextView, NSTextStorageDelegate, NSTextViewDelegate, 
             Theme.border.setFill()
             NSRect(x: x, y: y, width: left + geometry.docWidth - x, height: max(1, s)).fill()
         }
+    }
+
+    /// Bars in the left margin beside the lines changed since the last
+    /// commit, and a triangle between the lines where lines were deleted.
+    /// Lines laid out as nothing (blank lines, fences) get no bar; a change
+    /// of only those is marked like a deletion.
+    private func drawChanges(in rect: NSRect) {
+        guard !usesFullWidth else { return }
+        let s = Theme.scale
+        let x = geometry.left - 18 * s
+        let shown = lines(in: rect)
+        for c in changes where Int(c.endLine) >= shown.lowerBound && Int(c.firstLine) <= shown.upperBound + 1 {
+            let laidOut = (Int(c.firstLine)..<Int(c.endLine)).filter { !isCollapsed(line: $0) }
+            Theme.change(c.kind).setFill()
+            if let first = laidOut.first, let last = laidOut.last {
+                let top = textTop(line: first)
+                let bottom = textBottom(line: last)
+                if bottom < rect.minY || top > rect.maxY { continue }
+                let w = 3 * s
+                NSBezierPath(
+                    roundedRect: NSRect(x: x, y: top, width: w, height: bottom - top), xRadius: w / 2, yRadius: w / 2
+                ).fill()
+            } else {
+                let y = boundary(before: Int(c.firstLine))
+                let h = 4 * s
+                if y + h < rect.minY || y - h > rect.maxY { continue }
+                let path = NSBezierPath()
+                path.move(to: NSPoint(x: x, y: y - h))
+                path.line(to: NSPoint(x: x + 5 * s, y: y))
+                path.line(to: NSPoint(x: x, y: y + h))
+                path.close()
+                path.fill()
+            }
+        }
+    }
+
+    /// Whether line `li` is laid out as nothing.
+    private func isCollapsed(line li: Int) -> Bool {
+        li < lines.count && inCollapsedLine(Int(lines[li].start))
+    }
+
+    /// Halfway between line `li` and the shown line before it.
+    private func boundary(before li: Int) -> CGFloat {
+        let prev = (0..<min(li, lines.count)).last { !isCollapsed(line: $0) }
+        let next = (li..<lines.count).first { !isCollapsed(line: $0) }
+        switch (prev, next) {
+        case (let p?, let n?): return (textBottom(line: p) + textTop(line: n)) / 2
+        case (let p?, nil): return textBottom(line: p) + 4 * Theme.scale
+        case (nil, let n?): return textTop(line: n) - 4 * Theme.scale
+        case (nil, nil): return fragmentRect(at: 0).minY
+        }
+    }
+
+    /// Where the cursor goes for change `c`: its first shown line, or for a
+    /// deletion the line after it.
+    private func start(of c: LineChange) -> Int {
+        let li = Int(c.firstLine)
+        // The cursor can't rest on a line laid out as nothing.
+        guard
+            let shown = (li..<lines.count).first(where: { !isCollapsed(line: $0) })
+                ?? (0..<li).last(where: { !isCollapsed(line: $0) })
+        else { return 0 }
+        return visibleStart(lines[shown])
+    }
+
+    /// Moves the cursor to the start of the nearest change after it, or
+    /// before it, wrapping around the document, and scrolls it into view.
+    func stepChange(forward: Bool) {
+        ensureFresh()
+        let starts = changes.map(start(of:))
+        guard let firstStart = starts.first, let lastStart = starts.last else { return }
+        let c = selectedRange().location
+        let target = forward ? (starts.first { $0 > c } ?? firstStart) : (starts.last { $0 < c } ?? lastStart)
+        window?.makeFirstResponder(self)
+        setSelectedRange(NSRange(location: target, length: 0))
+        scrollRangeToVisible(NSRange(location: target, length: 0))
     }
 
     /// A table's grid: a rounded box, the header's fill, and lines between

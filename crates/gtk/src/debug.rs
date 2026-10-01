@@ -21,6 +21,7 @@
 //! bugs in how GTK routes pointer events; click through the real path when
 //! testing anything a mouse does.
 //! agent                    print the agent state and what the header shows
+//! changes                  print the lines changed since the last commit
 //! background on|off       act as if the window were in the background, or
 //!                          back in front; notifications print
 //! size W H | wait MS | shot PATH | shot-window N PATH | dump | probe | sh CMD | quit
@@ -410,6 +411,15 @@ fn step(win: &DocWindow, line: &str) -> u64 {
             return 600;
         }
         "find-state" => println!("{}", win.find.describe()),
+        "changes" => {
+            for c in &buf.state().changes {
+                let (first, end) = (c.lines.start + 1, c.lines.end);
+                match c.kind {
+                    margin_core::changes::Kind::Deleted => println!("deleted before {first}"),
+                    k => println!("{k:?} {first}-{end}"),
+                }
+            }
+        }
         "windows" => {
             for (i, w) in super::window::all().iter().enumerate() {
                 println!(

@@ -35,6 +35,7 @@ Margin's own:
 | Comment highlight | `commentHighlightColor` |
 | Find matches | `findHighlightColor` at 35% (90% for the current match) |
 | Links | `linkColor` |
+| Change bars: added, changed, deleted | `systemGreen`, `systemBlue`, `systemRed` |
 
 ### Type
 
@@ -50,6 +51,9 @@ Margin's own:
   left, and the last one resolved moves it back. Cards are 300pt wide,
   growing to 400pt with half of any spare width; narrower windows narrow
   the text instead.
+- Change bars are 3pt wide with round ends, 15pt left of the text; a
+  deletion is a triangle 5pt wide and 8pt tall in the same place. Both
+  scale with the text size.
 
 ### Feedback
 
@@ -197,8 +201,8 @@ The standard menus, with Margin's commands where Mac users look for them:
 - **Comments**: Comment on Selection, Reply, Next Comment, Previous Comment;
   Resolve (Reopen), Edit, Delete, for the focused thread (Edit edits its
   comment); Copy Open Comments, Send to Agent, Resolve All, Show Resolved.
-- **View**: Show Markdown, Reflow Paragraphs; Larger Text, Smaller Text,
-  Actual Size; Enter Full Screen.
+- **View**: Show Markdown, Reflow Paragraphs; Next Change, Previous Change;
+  Larger Text, Smaller Text, Actual Size; Enter Full Screen.
 - **Window**: Minimize, Zoom, Bring All to Front.
 - **Help**: Keyboard Shortcuts, a window listing every shortcut, read from
   the menus.
@@ -233,6 +237,7 @@ modifier:
 | Copy Open Comments | Cmd+Shift+C |
 | Send to Agent | Cmd+Shift+Return |
 | Next Comment, Previous Comment | Cmd+Option+Down, Cmd+Option+Up |
+| Next Change, Previous Change | Cmd+Option+Shift+Down, Cmd+Option+Shift+Up |
 | Reply, Post | Cmd+Option+R, Cmd+Return |
 | Leave Comment, close Find | Escape |
 | Keyboard Shortcuts | in the Help menu |

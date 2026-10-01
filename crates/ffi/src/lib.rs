@@ -906,6 +906,60 @@ pub fn text_changes(old: String, new: String) -> Vec<Replacement> {
         .collect()
 }
 
+// --- Changes since the last commit -------------------------------------------
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum LineChangeKind {
+    Added,
+    Changed,
+    Deleted,
+}
+
+/// Lines of the text that differ from the last commit (see
+/// `margin_core::changes::LineChange`).
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct LineChange {
+    pub kind: LineChangeKind,
+    /// Indices into `Analysis::lines`. A deletion's are equal: the line
+    /// after the deleted ones.
+    pub first_line: u32,
+    pub end_line: u32,
+}
+
+/// A document's file as of its git repository's last commit, to mark what
+/// changed since.
+#[derive(uniffi::Object)]
+pub struct CommittedText {
+    text: String,
+}
+
+/// The file at `path` as of its repository's last commit; `None` outside a
+/// repository or for a file not yet committed.
+#[uniffi::export]
+pub fn committed_text(path: String) -> Option<Arc<CommittedText>> {
+    margin_core::changes::committed(Path::new(&path)).map(|text| Arc::new(CommittedText { text }))
+}
+
+#[uniffi::export]
+impl CommittedText {
+    /// The lines of `text` changed since, in order.
+    pub fn changes(&self, text: Arc<Analysis>) -> Vec<LineChange> {
+        use margin_core::changes::Kind;
+        margin_core::changes::line_changes(&self.text, &text.text)
+            .into_iter()
+            .map(|c| LineChange {
+                kind: match c.kind {
+                    Kind::Added => LineChangeKind::Added,
+                    Kind::Changed => LineChangeKind::Changed,
+                    Kind::Deleted => LineChangeKind::Deleted,
+                },
+                first_line: c.lines.start as u32,
+                end_line: c.lines.end as u32,
+            })
+            .collect()
+    }
+}
+
 /// What taking in a change to the file takes (see
 /// `margin_core::file_sync::Reconcile`).
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Enum)]

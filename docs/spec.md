@@ -55,6 +55,11 @@ choices; none makes them all.
 - **Comments beside the text, not in it.** Cards sit in the margin next to
   their text, as in Google Docs, so they never break up the reading the way
   comments between the lines of a code review do.
+- **Changes marked in the document, not in a diff.** After an agent's
+  edits the writer needs to know what to read again, so lines changed since
+  the last commit have a bar beside them where the writer reads and
+  comments. A diff view shows the changes away from the document and its
+  comments.
 
 User stories name two actors: the **writer** (the one person who
 comments) and a **coding agent**.
@@ -164,8 +169,8 @@ Every editor produces the same source for the same keys. The choices:
 - Replacing a selection (typing or pasting over it, a spelling correction)
   edits in place when it lies in plain text, keeping the formatting around
   it; otherwise it deletes and then types through the editing rules.
-- Print renders the document as shown, without comments, with the body at
-  11pt in the light appearance.
+- Print renders the document as shown, without comments or change marks,
+  with the body at 11pt in the light appearance.
 
 ## Comments
 
@@ -317,6 +322,38 @@ put anchors in the same places:
   `round;` replaced by `spec and`, across the anchor's end, which leaves
   `[the ]spec and its tooltip`.
 
+## Changes
+
+### User Stories
+
+1. As a writer, I want the lines changed since the last commit marked beside the text, so that I know what to review after an agent edits a document.
+2. As a writer, I want to step to the next and previous change, so that I can review a long document without hunting for the marks.
+
+### Decisions
+
+- Changes are against the file in the git repository's last commit
+  (`HEAD`). A file outside a repository, not yet committed, or in a
+  repository without commits shows none.
+- What is compared is the text as shown, unsaved edits included, so the
+  marks follow every edit, the writer's and agents' alike. A commit made
+  outside Margin shows when the window is next focused.
+- Changes are whole source lines, matched as `git diff --patience` matches
+  them, so a deleted paragraph shows as deleted rather than as the
+  paragraphs after it changed.
+- A changed line has a bar in the left margin beside every line on screen
+  that shows part of it, so a one-line paragraph is marked whole, in Show
+  Markdown and Reflow Paragraphs too. Added lines and changed lines have
+  different bars; where lines were deleted, a small mark sits between the
+  lines around them. Lines that show nothing, such as the blank lines
+  between paragraphs, have no bar, and a change to only those is marked as
+  a deletion is.
+- Margin shows neither which words changed nor the old text.
+- Next Change and Previous Change move the cursor to the start of the
+  nearest change after or before it, wrapping around the document as Next
+  Comment does, and scroll it into view. They are unavailable when nothing
+  has changed.
+- Nothing about changes reaches the CLI.
+
 ## CLI
 
 ### User Stories
@@ -413,8 +450,9 @@ The commands:
 
 Every editor shares the core: Markdown analysis, editing rules, find, the
 comment store and anchoring, keeping the text and its file in step
-(autosave, outside edits, conflicts), and the CLI. Each platform provides
-the UI and system integration, and routes every edit through the core.
+(autosave, outside edits, conflicts), the changes since the last commit, and
+the CLI. Each platform provides the UI and system integration, and routes
+every edit through the core.
 
 - Each editor uses its platform's own pieces wherever one exists: menus,
   window chrome, dialogs, file pickers, the print dialog, system colors and

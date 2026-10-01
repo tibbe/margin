@@ -88,6 +88,7 @@ final class DocumentWindow: NSWindowController, NSWindowDelegate, NSToolbarDeleg
         buildContent()
         textView.reflowsParagraphs = Prefs.reflowsParagraphs
         textView.setContents(text.text)
+        readCommitted()
         layer.attach(try? CommentStore(document: path))
         watch()
         updateTitle()
@@ -507,6 +508,25 @@ final class DocumentWindow: NSWindowController, NSWindowDelegate, NSToolbarDeleg
         DispatchQueue.main.async { [weak self] in self?.askConflict() }
     }
 
+    // MARK: - Changes
+
+    /// Reads the file as of its last commit, off the main thread since it
+    /// runs git, to mark what changed since.
+    private func readCommitted() {
+        guard !isDraft else {
+            textView.committed = nil
+            return
+        }
+        let path = path
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let committed = committedText(path: path)
+            DispatchQueue.main.async {
+                guard let self, self.path == path else { return }
+                self.textView.committed = committed
+            }
+        }
+    }
+
     // MARK: - Links
 
     /// Opens a link: Markdown files in Margin, other files in their
@@ -694,6 +714,7 @@ final class DocumentWindow: NSWindowController, NSWindowDelegate, NSToolbarDeleg
         isDraft = false
         sync.wrote(ours: text)
         layer.attach(try? CommentStore(document: canonical))
+        readCommitted()
         watch()
         followAgents()
         updateTitle()
@@ -778,6 +799,8 @@ final class DocumentWindow: NSWindowController, NSWindowDelegate, NSToolbarDeleg
 
     func windowDidBecomeKey(_ notification: Notification) {
         Notifier.shared.clear(path: path)
+        // Commits are made elsewhere, so look again on coming back.
+        readCommitted()
     }
 
     func windowDidResignKey(_ notification: Notification) {
@@ -851,6 +874,9 @@ final class DocumentWindow: NSWindowController, NSWindowDelegate, NSToolbarDeleg
         updateAgent()
     }
 
+    @objc func marginNextChange(_ sender: Any?) { textView.stepChange(forward: true) }
+    @objc func marginPreviousChange(_ sender: Any?) { textView.stepChange(forward: false) }
+
     @objc func marginToggleShowMarkdown(_ sender: Any?) {
         keepingCursorLineStill { textView.sourceMode.toggle() }
     }
@@ -893,6 +919,8 @@ final class DocumentWindow: NSWindowController, NSWindowDelegate, NSToolbarDeleg
             return layer.active != nil
         case #selector(marginEditComment(_:)), #selector(marginDeleteComment(_:)):
             return layer.active != nil
+        case #selector(marginNextChange(_:)), #selector(marginPreviousChange(_:)):
+            return !textView.changes.isEmpty
         case #selector(marginSendToAgent(_:)):
             updateAgent()
             return canSend

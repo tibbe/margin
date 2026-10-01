@@ -5,6 +5,7 @@
 
 use super::theme::{Fonts, Palette, rgba, rgba_alpha};
 use gtk::{glib, pango, prelude::*, subclass::prelude::*};
+use margin_core::changes::{self, LineChange};
 use margin_core::diff::diff_changes;
 use margin_core::md::edit::{self, Plan};
 use margin_core::md::{self, Doc, LineKind, Style};
@@ -78,6 +79,10 @@ pub struct State {
     /// Character offsets where the buffer shows a space for a newline of
     /// the file (a line break inside a paragraph), sorted.
     soft: Vec<usize>,
+    /// The file as of its last commit, to mark what changed since.
+    committed: Option<String>,
+    /// The lines changed since the last commit, in order.
+    pub changes: Vec<LineChange>,
 }
 
 impl State {
@@ -354,6 +359,11 @@ mod imp {
             let doc = md::parse(&text);
             let index = TextIndex::new(&text);
             let mut st = self.state.borrow_mut();
+            st.changes = st
+                .committed
+                .as_deref()
+                .map(|c| changes::line_changes(c, &text))
+                .unwrap_or_default();
             st.doc = doc;
             st.index = index;
             st.text = text;
@@ -775,6 +785,52 @@ impl DocBuffer {
     pub fn state(&self) -> Ref<'_, State> {
         self.imp().ensure_fresh();
         self.imp().state.borrow()
+    }
+
+    /// Sets the file as of its last commit, and marks the lines changed
+    /// since.
+    pub fn set_committed(&self, committed: Option<String>) {
+        self.imp().ensure_fresh();
+        let mut st = self.imp().state.borrow_mut();
+        st.changes = committed
+            .as_deref()
+            .map(|c| changes::line_changes(c, &st.text))
+            .unwrap_or_default();
+        st.committed = committed;
+    }
+
+    /// Whether line `li` is laid out as nothing: all of it hidden, newline
+    /// included (a blank line, a fence).
+    pub fn line_collapsed(&self, li: usize) -> bool {
+        if self.source_mode() {
+            return false;
+        }
+        let imp = self.imp();
+        let (Some(hidden), Some(reveal)) = (&*imp.hidden_tag.borrow(), &*imp.reveal_tag.borrow())
+        else {
+            return false;
+        };
+        let (start, end) = {
+            let st = imp.state.borrow();
+            if li >= st.doc.lines.len() {
+                return false;
+            }
+            (
+                st.char_of(st.doc.lines[li].start),
+                st.char_of(st.doc.line_end_incl(li)),
+            )
+        };
+        if start == end {
+            return false;
+        }
+        let mut it = self.iter_at_offset(start as i32);
+        while (it.offset() as usize) < end {
+            if !it.has_tag(hidden) || it.has_tag(reveal) {
+                return false;
+            }
+            it.forward_char();
+        }
+        true
     }
 
     pub fn text_string(&self) -> String {
