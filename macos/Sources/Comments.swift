@@ -25,7 +25,8 @@ extension CommentThread {
 
 /// A thread in the gutter, anchored to text in the editor. Anchors follow
 /// edits as the GTK editor's text marks do: text inserted at the start is
-/// excluded, text inserted at the end too.
+/// excluded, text inserted at the end too. Outside changes they follow as
+/// the CLI's anchors do (see `CommentLayer.applyExternal`).
 final class ThreadItem {
     /// As the store last had it.
     var thread: CommentThread
@@ -72,6 +73,10 @@ final class CommentLayer {
         case draft(Draft)
     }
     private var focus = Focus.none
+    /// Taking in an outside change, edit by edit: the cursor moves through
+    /// places the anchors are only on in passing, so focus waits for the
+    /// end.
+    private var takingIn = false
     /// The focused thread.
     var active: UInt64? {
         if case .thread(let id) = focus { id } else { nil }
@@ -152,6 +157,27 @@ final class CommentLayer {
             d.end = map(d.end, stickRight: false)
             focus = .draft(d)
         }
+    }
+
+    /// Changes the text to `new`, made outside the editor, as
+    /// `DocTextView.applyExternal` does. The anchors follow by what changed
+    /// between the two texts, as the CLI's do (see `mapPlaces`), rather
+    /// than edit by edit.
+    func applyExternal(_ new: String, actionName: String = "Outside Change") {
+        let old = view.string
+        var places = items.map(\.place)
+        if let d = draft { places.append(.on(start: UInt32(d.start), end: UInt32(d.end))) }
+        takingIn = true
+        view.applyExternal(new, actionName: actionName)
+        takingIn = false
+        var mapped = mapPlaces(old: old, new: view.string, places: places)
+        if case .draft(var d) = focus, let p = mapped.popLast() {
+            (d.start, d.end) = (p.start, p.range.map(NSMaxRange) ?? p.start)
+            focus = .draft(d)
+        }
+        for (it, p) in zip(items, mapped) { it.place = p }
+        refreshHighlights()
+        cursorMoved()
     }
 
     private func anchors() -> [ThreadAnchor] {
@@ -556,7 +582,7 @@ final class CommentLayer {
     }
 
     func cursorMoved() {
-        if view.selection != nil || draft != nil { return }
+        if takingIn || view.selection != nil || draft != nil { return }
         let c = view.cursor
         let hit =
             items

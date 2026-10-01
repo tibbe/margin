@@ -8,6 +8,7 @@ use super::view::DocView;
 use adw::prelude::*;
 use gtk::glib;
 use margin_core::comments::activity::{self, Change};
+use margin_core::comments::anchor::OffsetMap;
 use margin_core::comments::{Author, Comments, Place, Store, Thread};
 use margin_core::md::edit;
 use std::cell::{Cell, RefCell};
@@ -46,6 +47,10 @@ pub struct CommentLayer {
     active: Cell<Option<u64>>,
     show_resolved: Cell<bool>,
     relayout_queued: Cell<bool>,
+    /// Taking in an outside change, edit by edit: the cursor moves through
+    /// places the anchors are only on in passing, so focus waits for the
+    /// end.
+    taking_in: Cell<bool>,
     /// The one overlay in the text view; cards live inside it, because
     /// GtkTextView cannot remove overlay children.
     gutter: gtk::Fixed,
@@ -101,6 +106,7 @@ impl CommentLayer {
             active: Cell::new(None),
             show_resolved: Cell::new(false),
             relayout_queued: Cell::new(false),
+            taking_in: Cell::new(false),
             gutter,
             add_button,
             listeners: RefCell::new(Vec::new()),
@@ -283,6 +289,46 @@ impl CommentLayer {
                 None
             }
         }
+    }
+
+    /// Changes the text to `new`, made outside the editor, as
+    /// `DocBuffer::apply_external` does. The anchors follow by what changed
+    /// between the two texts, as the CLI's do (see `OffsetMap`), rather than
+    /// as their marks would.
+    pub fn apply_external(&self, new: &str) {
+        let old = self.buffer.text_string();
+        let threads: Vec<Place> = self
+            .threads
+            .borrow()
+            .iter()
+            .map(|tu| self.place_of(tu))
+            .collect();
+        let draft = self.draft.borrow().as_ref().map(|d| {
+            let at = |m| self.buffer.byte_at(&self.buffer.iter_at_mark(m));
+            Place::On(at(&d.start)..at(&d.end))
+        });
+        self.taking_in.set(true);
+        self.buffer.apply_external(new);
+        self.taking_in.set(false);
+        let text = self.buffer.text_string();
+        let map = OffsetMap::new(&old, &text);
+        let move_marks = |start: &gtk::TextMark, end: &gtk::TextMark, p: &Place| {
+            let r = match map.map(p) {
+                Place::On(r) => r,
+                Place::Detached(at) => at..at,
+            };
+            self.buffer
+                .move_mark(start, &self.buffer.iter_at_byte(r.start));
+            self.buffer.move_mark(end, &self.buffer.iter_at_byte(r.end));
+        };
+        for (tu, p) in self.threads.borrow().iter().zip(&threads) {
+            move_marks(&tu.start, &tu.end, p);
+        }
+        if let (Some(d), Some(p)) = (self.draft.borrow().as_ref(), &draft) {
+            move_marks(&d.start, &d.end, p);
+        }
+        self.refresh_highlights();
+        self.on_cursor_moved();
     }
 
     /// Writes current anchors to the store, after the document was saved.
@@ -820,7 +866,7 @@ impl CommentLayer {
 
     fn on_cursor_moved(&self) {
         self.queue_relayout();
-        if self.buffer.has_selection() || self.draft.borrow().is_some() {
+        if self.taking_in.get() || self.buffer.has_selection() || self.draft.borrow().is_some() {
             return;
         }
         let c = self.buffer.iter_at_mark(&self.buffer.get_insert()).offset();

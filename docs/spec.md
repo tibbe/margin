@@ -185,10 +185,8 @@ Every editor produces the same source for the same keys. The choices:
   14:10"); at its end the message's buttons, Resolve (or Reopen) on the
   comment's row, and a menu for the rarer actions. Editing a message
   doesn't change its author.
-- Anchors: edits elsewhere move them; replacing the anchored text re-anchors
-  to the replacement (even inside formatting); insertions inside grow the
-  anchor, insertions at its edges don't join it; deleting all of it detaches
-  the thread, which stays where the text was and keeps the old quote.
+- A thread's anchor follows its text through edits, as the table after
+  this list sets out.
 - A new comment's span is trimmed of whitespace and hidden syntax; without a
   selection it takes the word at the cursor. The document is saved first.
   If its text is deleted before it is posted, it doesn't post (there is
@@ -274,6 +272,34 @@ Every editor produces the same source for the same keys. The choices:
   the agent"). A send confirms what went: "Sent 2 open comments to the
   agent", or "Sent 5 open comments on 3 documents to the agent" for a
   round.
+
+How an anchor follows each kind of edit, shown on a thread on `quick fox`
+in `the quick fox jumps`. Brackets mark the anchor after the edit.
+
+| Edit | Anchor | After |
+| --- | --- | --- |
+| Elsewhere | Moves with it | `then the [quick fox] jumps` |
+| Inside it | Takes it in | `the [quick brown fox] jumps` |
+| Replacing all of it | Takes the new text | `the [lazy dog] jumps` |
+| Insertion at an edge | Leaves it out | `the very [quick fox] jumps` |
+| Across an edge | Loses what it covers | `the [quick].` |
+| Deleting all of it | Detaches | `the jumps` |
+
+Formatting doesn't change these: replacing `quick fox` in
+`the **quick fox** jumps` gives `the **[lazy dog]** jumps`. A detached
+thread stays where its text was and keeps the old quote.
+
+An outside change to the file gives only the new text, not the edits that
+made it. The editor and the CLI work out the edits the same way, so they
+put anchors in the same places:
+
+- They compare the lines, then the words of the lines that changed.
+- Words are compared whole, never letter by letter, so an anchor never ends
+  up on part of a word.
+- The edits found needn't be the ones the writer made. Rewriting
+  `[the round]; its tooltip` as `the spec and its tooltip` is found as
+  `round;` replaced by `spec and`, across the anchor's end, which leaves
+  `[the ]spec and its tooltip`.
 
 ## CLI
 

@@ -1,10 +1,9 @@
 //! Keeping comment anchors attached to their text while the document
 //! changes underneath them.
 
+use crate::diff::{Piece, diff_pieces};
 use serde::{Deserialize, Serialize};
-use similar::{Algorithm, DiffTag, TextDiff};
 use std::ops::Range;
-use std::time::Duration;
 
 /// Where a thread's text is, as byte offsets into the document.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
@@ -131,113 +130,96 @@ impl Anchor {
     }
 }
 
-/// Maps byte offsets in an old version of a document to a new version.
+/// Maps places in an old version of a document to a new version, by
+/// what changed between them (see [`diff_pieces`]).
 pub struct OffsetMap {
-    /// Diff operations as byte ranges: (tag, old range, new range).
-    ops: Vec<(DiffTag, Range<usize>, Range<usize>)>,
+    pieces: Vec<Piece>,
     new_len: usize,
 }
 
 impl OffsetMap {
     pub fn new(old: &str, new: &str) -> Self {
-        let diff = TextDiff::configure()
-            .algorithm(Algorithm::Myers)
-            .timeout(Duration::from_millis(250))
-            .diff_words(old, new);
-        let old_offsets = offsets(diff.iter_old_slices().map(str::len));
-        let new_offsets = offsets(diff.iter_new_slices().map(str::len));
-        let mut ops = Vec::new();
-        for op in diff.ops() {
-            let (tag, o, n) = op.as_tag_tuple();
-            let o = old_offsets[o.start]..old_offsets[o.end];
-            let n = new_offsets[n.start]..new_offsets[n.end];
-            // Refine replaced words character by character, so that
-            // `**blue**` → `**green**` keeps the `**` as unchanged text.
-            if tag == DiffTag::Replace && o.len() <= 4096 && n.len() <= 4096 {
-                let sub = TextDiff::configure()
-                    .algorithm(Algorithm::Myers)
-                    .timeout(Duration::from_millis(50))
-                    .diff_chars(&old[o.clone()], &new[n.clone()]);
-                let so = offsets(sub.iter_old_slices().map(str::len));
-                let sn = offsets(sub.iter_new_slices().map(str::len));
-                for sop in sub.ops() {
-                    let (t, a, b) = sop.as_tag_tuple();
-                    ops.push((
-                        t,
-                        o.start + so[a.start]..o.start + so[a.end],
-                        n.start + sn[b.start]..n.start + sn[b.end],
-                    ));
-                }
-            } else {
-                ops.push((tag, o, n));
-            }
-        }
         OffsetMap {
-            ops,
+            pieces: diff_pieces(old, new),
             new_len: new.len(),
         }
     }
 
-    /// Maps the start of a range. Text inserted exactly at `p` is excluded;
-    /// text that replaced what started at `p` is included.
-    pub fn map_start(&self, p: usize) -> usize {
-        for (tag, o, n) in &self.ops {
-            if *tag == DiffTag::Insert {
-                continue;
-            }
-            if o.start <= p && p < o.end {
-                return match tag {
-                    DiffTag::Equal => n.start + (p - o.start),
-                    _ => n.start,
-                };
-            }
-        }
-        self.new_len
-    }
-
-    /// Maps the end of a range. Text inserted exactly at `p` is excluded;
-    /// text that replaced what ended at `p` is included.
-    pub fn map_end(&self, p: usize) -> usize {
-        for (tag, o, n) in &self.ops {
-            if *tag == DiffTag::Insert {
-                continue;
-            }
-            if o.start < p && p <= o.end {
-                return match tag {
-                    DiffTag::Equal => n.start + (p - o.start),
-                    _ => n.end,
-                };
-            }
-        }
-        0
-    }
-
-    /// Maps a place: text all of which was deleted is detached where it
-    /// was.
+    /// Maps a place, by these rules:
+    /// - text that is kept keeps its place;
+    /// - an edit within the text, from edge to edge at most, becomes part
+    ///   of it, so replacing the text moves it to the replacement; except
+    ///   an insertion at an edge, which stays outside;
+    /// - an edit across an edge takes away the part it covers;
+    /// - text with nothing left is detached where it was.
     pub fn map(&self, p: &Place) -> Place {
         match p {
             Place::On(r) => {
-                let start = self.map_start(r.start);
-                let end = self.map_end(r.end);
+                let start = self.map_start(r);
+                let end = self.map_end(r);
                 if start < end {
                     Place::On(start..end)
                 } else {
                     Place::Detached(start.min(self.new_len))
                 }
             }
-            Place::Detached(at) => Place::Detached(self.map_start(*at).min(self.new_len)),
+            Place::Detached(at) => Place::Detached(self.map_point(*at)),
         }
     }
-}
 
-fn offsets(lens: impl Iterator<Item = usize>) -> Vec<usize> {
-    let mut v = vec![0];
-    let mut acc = 0;
-    for l in lens {
-        acc += l;
-        v.push(acc);
+    /// Where the text on `r` starts now.
+    fn map_start(&self, r: &Range<usize>) -> usize {
+        let p = r.start;
+        // An insertion at `p` is empty here, so it is passed over.
+        for piece in &self.pieces {
+            let o = &piece.old;
+            if o.start <= p && p < o.end {
+                return if piece.kept {
+                    piece.new.start + (p - o.start)
+                } else if o.start == p && o.end <= r.end {
+                    piece.new.start
+                } else {
+                    piece.new.end
+                };
+            }
+        }
+        self.new_len
     }
-    v
+
+    /// Where the text on `r` ends now.
+    fn map_end(&self, r: &Range<usize>) -> usize {
+        let p = r.end;
+        // An insertion at `p` is empty here, so it is passed over.
+        for piece in &self.pieces {
+            let o = &piece.old;
+            if o.start < p && p <= o.end {
+                return if piece.kept {
+                    piece.new.start + (p - o.start)
+                } else if o.end == p && o.start >= r.start {
+                    piece.new.end
+                } else {
+                    piece.new.start
+                };
+            }
+        }
+        0
+    }
+
+    /// Where a point between characters is now: after text inserted at
+    /// it, before an edit that starts at it or around it.
+    fn map_point(&self, p: usize) -> usize {
+        for piece in &self.pieces {
+            let o = &piece.old;
+            if o.start <= p && p < o.end {
+                return if piece.kept {
+                    piece.new.start + (p - o.start)
+                } else {
+                    piece.new.start
+                };
+            }
+        }
+        self.new_len
+    }
 }
 
 /// Finds `quote` in `text`, preferring the occurrence nearest `hint`.
@@ -292,6 +274,79 @@ mod tests {
         }
     }
 
+    /// A paragraph rewritten in one go.
+    const OLD_PARAGRAPH: &str = "\
+- Send to Agent is insensitive unless an agent is waiting and a thread is
+  open in the round; its tooltip says which is missing, or, when the round
+  has other documents, how many (\"Send open comments on this and 2 other
+  documents to the agent\"). While the agent works on a send, an
+  `AdwSpinner` sits before it. A send says \"Sent 2 open comments to the
+  agent\" in a toast, \"Sent 5 open comments on 3 documents to the agent\" for
+  a round.
+";
+
+    const NEW_PARAGRAPH: &str = "\
+- Send to Agent is disabled while it can't send (see the spec for when,
+  and for its tooltip). While the agent works on a send, an `AdwSpinner`
+  sits before it. A send's confirmation is a toast.
+";
+
+    #[test]
+    fn follows_rewritten_text() {
+        let m = |q| mapped(OLD_PARAGRAPH, NEW_PARAGRAPH, q);
+        assert_eq!(m("insensitive"), Ok("disabled".into()));
+        assert_eq!(m("its tooltip"), Ok("its tooltip".into()));
+        assert_eq!(m("AdwSpinner"), Ok("AdwSpinner".into()));
+    }
+
+    /// The examples in `docs/spec.md`'s table of how anchors follow edits.
+    #[test]
+    fn spec_examples() {
+        let m = |new| mapped("the quick fox jumps", new, "quick fox");
+        assert_eq!(m("then the quick fox jumps"), Ok("quick fox".into()));
+        assert_eq!(m("the quick brown fox jumps"), Ok("quick brown fox".into()));
+        assert_eq!(m("the lazy dog jumps"), Ok("lazy dog".into()));
+        assert_eq!(m("the very quick fox jumps"), Ok("quick fox".into()));
+        assert_eq!(m("the quick."), Ok("quick".into()));
+        assert_eq!(m("the jumps"), Err(4));
+        assert_eq!(
+            mapped(
+                "the **quick fox** jumps",
+                "the **lazy dog** jumps",
+                "quick fox"
+            ),
+            Ok("lazy dog".into())
+        );
+        assert_eq!(
+            mapped(
+                "the round; its tooltip",
+                "the spec and its tooltip",
+                "the round"
+            ),
+            Ok("the ".into())
+        );
+    }
+
+    #[test]
+    fn follows_a_replaced_word() {
+        assert_eq!(
+            mapped("the colour is red", "the color is red", "colour"),
+            Ok("color".into())
+        );
+    }
+
+    #[test]
+    fn loses_what_an_edit_across_an_edge_covers() {
+        assert_eq!(
+            mapped("keep this, lose that", "keep this", "this, lose"),
+            Ok("this".into())
+        );
+        assert_eq!(
+            mapped("lose that, keep this", "keep this", "that, keep"),
+            Ok("keep".into())
+        );
+    }
+
     #[test]
     fn survives_edits_elsewhere() {
         assert_eq!(
@@ -341,6 +396,15 @@ mod tests {
     #[test]
     fn detaches_when_deleted() {
         assert!(mapped("keep this gone text", "keep text", "this gone").is_err());
+        // Not onto the spaces that were around it.
+        assert!(
+            mapped(
+                "Keep this. Gone text here.",
+                "Keep this.  here.",
+                "Gone text"
+            )
+            .is_err()
+        );
     }
 
     #[test]

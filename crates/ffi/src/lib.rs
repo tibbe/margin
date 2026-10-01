@@ -2,7 +2,7 @@
 //! offsets, as `NSString` counts; the core works in UTF-8 bytes, so every
 //! position crosses `Utf16Index`.
 
-use margin_core::comments::anchor::floor_char_boundary;
+use margin_core::comments::anchor::{OffsetMap, floor_char_boundary};
 use margin_core::comments::{
     self, Anchor, Author, Comments, Message, Place, Status, Store, Thread, activity, export,
     handoff,
@@ -1169,6 +1169,22 @@ fn message_from_ffi(m: &ThreadMessage) -> Message {
     }
 }
 
+/// Where `places` in `old` are in `new`, by the rules anchors follow
+/// (see `margin_core::comments::anchor::OffsetMap::map`), so an editor
+/// taking in an outside change moves its anchors as the CLI does.
+#[uniffi::export]
+pub fn map_places(old: String, new: String, places: Vec<AnchorPlace>) -> Vec<AnchorPlace> {
+    let (old_index, new_index) = (Utf16Index::new(&old), Utf16Index::new(&new));
+    let map = OffsetMap::new(&old, &new);
+    places
+        .into_iter()
+        .map(|p| {
+            let p = map.map(&place_from_ffi(p, &old, &old_index));
+            place_to_ffi(&p, &new, &new_index)
+        })
+        .collect()
+}
+
 fn place_to_ffi(p: &Place, text: &str, index: &Utf16Index) -> AnchorPlace {
     match p {
         Place::On(r) => AnchorPlace::On {
@@ -1512,6 +1528,30 @@ impl DocAgents {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn places_map_across_a_change_in_utf16() {
+        // "😀" is two UTF-16 units; "é" one, in two bytes.
+        let old = "\u{1F600} is insensitive unless\n".to_string();
+        let new = "\u{1F600}\u{e9} is disabled while\n".to_string();
+        let places = map_places(
+            old,
+            new,
+            vec![
+                AnchorPlace::On { start: 6, end: 17 },
+                AnchorPlace::On { start: 18, end: 24 },
+                AnchorPlace::Detached { at: 5 },
+            ],
+        );
+        assert_eq!(
+            places,
+            [
+                AnchorPlace::On { start: 7, end: 15 },
+                AnchorPlace::On { start: 16, end: 21 },
+                AnchorPlace::Detached { at: 6 },
+            ]
+        );
+    }
 
     #[test]
     fn utf16_offsets_round_trip() {

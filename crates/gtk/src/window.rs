@@ -834,12 +834,12 @@ impl DocWindow {
         match r {
             Reconcile::CaughtUp => self.update_title(),
             Reconcile::Load(text) => {
-                self.buffer.apply_external(&text);
+                self.layer.apply_external(&text);
                 self.after_external_change();
                 self.toast("Updated from disk");
             }
             Reconcile::Merge(text) => {
-                self.buffer.apply_external(&text);
+                self.layer.apply_external(&text);
                 self.after_external_change();
                 self.schedule_save();
                 self.toast("Merged changes from disk");
@@ -876,7 +876,7 @@ impl DocWindow {
             if resp == "disk" {
                 let theirs = w.sync.borrow_mut().load_theirs();
                 if let Some(disk) = theirs {
-                    w.buffer.apply_external(&disk);
+                    w.layer.apply_external(&disk);
                     w.after_external_change();
                     w.check_disk();
                 }

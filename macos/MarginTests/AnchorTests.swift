@@ -48,6 +48,30 @@ final class AnchorTests: XCTestCase {
                 separator: "\n"), listing)
     }
 
+    /// An agent rewrites the commented text: the thread moves to what
+    /// replaced it, the same as the CLI has it.
+    @MainActor
+    func testRewrittenTextKeepsItsThread() throws {
+        let h = try Harness("Send to Agent is insensitive unless an agent is waiting.\n")
+        defer { h.close() }
+        h.select("insensitive")
+        h.key("cmd-opt-m")
+        h.compose("Clearer?")
+        h.key("cmd-enter")
+        h.wait(0.1)
+        h.external("Send to Agent is disabled while it can't send.\n")
+        h.wait(forText: "disabled")
+        h.wait(0.1)
+        XCTAssertEqual(h.comments, #"#1 open [17,25) ["Clearer?"]"# + "\nactive 1")
+        XCTAssertEqual(
+            h.margin("comments", "doc.md").split(separator: "\n").prefix(3).joined(separator: "\n"),
+            """
+            doc.md: 1 open thread
+            #1 doc.md:1:18 (open)
+              on "disabled"
+            """)
+    }
+
     @MainActor
     func testADraftOnDeletedTextPostsNothing() throws {
         let h = try Harness("Keep this. Gone text here.\n")

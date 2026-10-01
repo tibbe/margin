@@ -452,11 +452,11 @@ final class DocumentWindow: NSWindowController, NSWindowDelegate, NSToolbarDeleg
         case .caughtUp:
             updateTitle()
         case .load(let text):
-            textView.applyExternal(text)
+            layer.applyExternal(text)
             afterExternalChange()
             banner.show("Updated from disk", undo: nil)
         case .merge(let text):
-            textView.applyExternal(text)
+            layer.applyExternal(text)
             afterExternalChange()
             scheduleSave()
             banner.show("Merged changes from disk", undo: nil)
@@ -492,7 +492,7 @@ final class DocumentWindow: NSWindowController, NSWindowDelegate, NSToolbarDeleg
             guard let self else { return }
             if response == .alertSecondButtonReturn {
                 guard let theirs = self.sync.loadTheirs() else { return }
-                self.textView.applyExternal(theirs)
+                self.layer.applyExternal(theirs)
                 self.afterExternalChange()
                 self.checkDisk()
             } else if self.sync.keepMine() {
@@ -613,7 +613,7 @@ final class DocumentWindow: NSWindowController, NSWindowDelegate, NSToolbarDeleg
     /// as one undoable step.
     @objc func marginRevertToLastOpened(_ sender: Any?) {
         guard textView.string != openedText else { return }
-        textView.applyExternal(openedText, actionName: "Revert")
+        layer.applyExternal(openedText, actionName: "Revert")
         scheduleSave()
     }
 
