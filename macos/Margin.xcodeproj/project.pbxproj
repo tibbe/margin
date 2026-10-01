@@ -450,10 +450,17 @@
 			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
-			alwaysOutOfDate = 1;
+			dependencyFile = "$(DERIVED_FILE_DIR)/rust.d";
 			inputFileListPaths = (
 			);
 			inputPaths = (
+				"$(PROJECT_DIR)/../Cargo.lock",
+				"$(PROJECT_DIR)/../Cargo.toml",
+				"$(PROJECT_DIR)/../rust-toolchain.toml",
+				"$(PROJECT_DIR)/../crates/core/Cargo.toml",
+				"$(PROJECT_DIR)/../crates/cli/Cargo.toml",
+				"$(PROJECT_DIR)/../crates/ffi/Cargo.toml",
+				"$(PROJECT_DIR)/../crates/uniffi-bindgen/Cargo.toml",
 			);
 			name = "Build the Rust core";
 			outputFileListPaths = (
@@ -466,7 +473,7 @@
 				"$(PROJECT_DIR)/build/rust/$(CONFIGURATION)/margin",
 			);
 			shellPath = /bin/sh;
-			shellScript = "set -eu\n# The Rust core, as a static library, and the `margin` CLI, for each\n# architecture being built; then the Swift bindings to the library.\nexport PATH=\"$HOME/.cargo/bin:$PATH\"\nroot=\"$PROJECT_DIR/..\"\nout=\"$PROJECT_DIR/build/rust/$CONFIGURATION\"\nif [ \"$CONFIGURATION\" = Release ]; then flag=--release; dir=release; else flag=; dir=debug; fi\nlibs=\nclis=\nfor arch in $ARCHS; do\n    case $arch in arm64) target=aarch64-apple-darwin ;; *) target=x86_64-apple-darwin ;; esac\n    cargo build $flag --target \"$target\" -p margin-ffi --lib --manifest-path \"$root/Cargo.toml\"\n    cargo build $flag --target \"$target\" -p margin --bin margin --manifest-path \"$root/Cargo.toml\"\n    libs=\"$libs $root/target/$target/$dir/libmargin_ffi.a\"\n    clis=\"$clis $root/target/$target/$dir/margin\"\ndone\nmkdir -p \"$out\"\nlipo -create $libs -output \"$out/libmargin_ffi.a\"\nlipo -create $clis -output \"$out/margin\"\n# The bindings come from the library's metadata; any architecture will do.\n# The generator runs on this Mac only, and needn't be optimized.\ngen=\"$PROJECT_DIR/build/gen\"\nmkdir -p \"$gen\"\ncargo run -q -p margin-ffi --features cli --bin uniffi-bindgen --manifest-path \"$root/Cargo.toml\" -- \\\n    generate --library \"$root/target/$target/$dir/libmargin_ffi.dylib\" --language swift --out-dir \"$gen\"\n";
+			shellScript = "set -eu\n# The Rust core, as a static library, and the `margin` CLI, for each\n# architecture being built; then the Swift bindings to the library.\nexport PATH=\"$HOME/.cargo/bin:$PATH\"\nroot=\"$PROJECT_DIR/..\"\nout=\"$PROJECT_DIR/build/rust/$CONFIGURATION\"\nif [ \"$CONFIGURATION\" = Release ]; then flag=--release; dir=release; else flag=; dir=debug; fi\ntriple() {\n    case $1 in\n        arm64) echo aarch64-apple-darwin ;;\n        x86_64) echo x86_64-apple-darwin ;;\n        *) echo \"error: unsupported architecture $1\" >&2; exit 1 ;;\n    esac\n}\npackages=\"-p margin-ffi --lib -p margin --bin margin\"\nmkdir -p \"$out\" \"$DERIVED_FILE_DIR\"\nset -- $ARCHS\nif [ $# -eq 1 ] && [ \"$(triple \"$1\")\" = \"$(rustc -vV | sed -n 's/^host: //p')\" ]; then\n    # This Mac's architecture alone, as in Debug: without --target, Cargo\n    # builds into the directory `cargo build` and `cargo test` use, so each\n    # change compiles once.\n    cargo build $flag $packages --manifest-path \"$root/Cargo.toml\"\n    built=\"$root/target/$dir\"\n    cp -f \"$built/libmargin_ffi.a\" \"$built/margin\" \"$out/\"\nelse\n    targets=\n    libs=\n    clis=\n    for arch in $ARCHS; do\n        target=$(triple \"$arch\")\n        targets=\"$targets --target $target\"\n        built=\"$root/target/$target/$dir\"\n        libs=\"$libs $built/libmargin_ffi.a\"\n        clis=\"$clis $built/margin\"\n    done\n    cargo build $flag $targets $packages --manifest-path \"$root/Cargo.toml\"\n    lipo -create $libs -output \"$out/libmargin_ffi.a\"\n    lipo -create $clis -output \"$out/margin\"\nfi\n# The bindings come from the library's metadata; any architecture will do.\n# The generator runs on this Mac only, and needn't be optimized.\ngen=\"$PROJECT_DIR/build/gen\"\nmkdir -p \"$gen\"\ncargo run -q -p uniffi-bindgen --manifest-path \"$root/Cargo.toml\" -- \\\n    generate --library \"$built/libmargin_ffi.dylib\" --language swift --out-dir \"$gen\"\n# Xcode runs this phase again when a source file the build read changes:\n# Cargo's dependency files list them.\ncat \"$built/libmargin_ffi.d\" \"$built/margin.d\" >\"$DERIVED_FILE_DIR/rust.d\"\n";
 		};
 		A18836757FD2FE246F352FE0 /* Put the margin CLI in the app */ = {
 			isa = PBXShellScriptBuildPhase;
@@ -474,15 +481,16 @@
 			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
-			alwaysOutOfDate = 1;
 			inputFileListPaths = (
 			);
 			inputPaths = (
+				"$(PROJECT_DIR)/build/rust/$(CONFIGURATION)/margin",
 			);
 			name = "Put the margin CLI in the app";
 			outputFileListPaths = (
 			);
 			outputPaths = (
+				"$(TARGET_BUILD_DIR)/$(CONTENTS_FOLDER_PATH)/Helpers/margin",
 			);
 			shellPath = /bin/sh;
 			shellScript = "set -eu\n# The CLI agents use; `margin open` hands documents to this app.\nhelpers=\"$TARGET_BUILD_DIR/$CONTENTS_FOLDER_PATH/Helpers\"\nmkdir -p \"$helpers\"\n# Signed beside the build and moved into place: the kernel kills a running\n# binary whose file is rewritten, so a `margin wait` from this app keeps\n# running across rebuilds only if the file is replaced. codesign names the\n# signature after the file, so the copy is named margin too.\nmkdir -p \"$DERIVED_FILE_DIR\"\ncp \"$PROJECT_DIR/build/rust/$CONFIGURATION/margin\" \"$DERIVED_FILE_DIR/margin\"\ncodesign --force --options runtime --sign \"${EXPANDED_CODE_SIGN_IDENTITY:--}\" \"$DERIVED_FILE_DIR/margin\"\nmv -f \"$DERIVED_FILE_DIR/margin\" \"$helpers/margin\"\n";

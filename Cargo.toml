@@ -1,6 +1,10 @@
 [workspace]
 resolver = "3"
-members = ["crates/core", "crates/gtk", "crates/cli", "crates/ffi"]
+members = ["crates/core", "crates/gtk", "crates/cli", "crates/ffi", "crates/uniffi-bindgen"]
+# Without the bindings generator, which only the macOS build runs: its
+# `uniffi/cli` would change the features shared crates are built with, so
+# builds with it and without it would each compile them.
+default-members = ["crates/core", "crates/gtk", "crates/cli", "crates/ffi"]
 
 [workspace.package]
 version = "0.1.0"
@@ -14,6 +18,7 @@ margin-gtk = { path = "crates/gtk" }
 anyhow = "1"
 chrono = { version = "0.4", default-features = false, features = ["clock", "std", "serde"] }
 similar = "3"
+uniffi = "0.32"
 
 # Hand-picked rather than whole groups such as `clippy::pedantic`. Every
 # crate inherits these with `[lints] workspace = true`. They warn, so
