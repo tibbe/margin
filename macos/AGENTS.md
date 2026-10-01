@@ -10,6 +10,17 @@ address the app by its path, as below.
 - Quit: `pkill -f "$PWD/macos/build/DerivedData/Build/Products/Debug/Margin.app/Contents/MacOS/Margin"`
 - CLI: `Contents/Helpers/margin` in the app.
 
+## Release
+
+1. Set the version in `MARKETING_VERSION` in
+   `macos/Configurations/Common.xcconfig` and in `[workspace.package]` in
+   `Cargo.toml`, run `cargo check` to update `Cargo.lock`, and commit.
+2. Push a tag for it, such as `v0.2.0`.
+
+`.github/workflows/release.yml` then builds `Margin.zip` with
+`macos/tools/release.sh`, publishes it on GitHub Releases, and commits the
+new version and checksum to `Casks/margin.rb` on `main`.
+
 ## Checks
 
 - `swift format -i -p -r macos/Sources macos/App macos/MarginTests macos/MarginUITests macos/tools`

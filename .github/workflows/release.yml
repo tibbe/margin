@@ -1,0 +1,39 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  macos:
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install Rust
+        # The toolchain and targets rust-toolchain.toml names.
+        run: rustup toolchain install
+
+      - name: Build
+        run: macos/tools/release.sh "${GITHUB_REF_NAME#v}"
+
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" macos/build/release/Margin.zip --verify-tag --generate-notes
+
+      - name: Point the Homebrew cask at the release
+        run: |
+          version=${GITHUB_REF_NAME#v}
+          sha=$(shasum -a 256 macos/build/release/Margin.zip | cut -d' ' -f1)
+          git fetch --depth=1 origin main:refs/remotes/origin/main
+          git checkout -B main origin/main
+          sed -i '' -e "s/^  version \".*\"/  version \"$version\"/" \
+            -e "s/^  sha256 \".*\"/  sha256 \"$sha\"/" Casks/margin.rb
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -am "Point the Homebrew cask at Margin $version"
+          git push origin main

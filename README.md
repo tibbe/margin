@@ -17,6 +17,8 @@ line.
 
 ## Install
 
+### Linux
+
 On Omarchy, or any Linux with GTK 4.20+ and libadwaita 1.8+, with Rust:
 
 ```sh
@@ -25,7 +27,18 @@ On Omarchy, or any Linux with GTK 4.20+ and libadwaita 1.8+, with Rust:
 
 This installs `margin` into `~/.local/bin`, with a launcher entry and icon.
 
-On macOS 26, with Xcode 26 and Rust:
+### macOS
+
+On macOS 26, with Homebrew:
+
+```sh
+brew tap tibbe/margin https://github.com/tibbe/margin
+brew install --cask tibbe/margin/margin
+```
+
+This installs Margin into `/Applications` and the `margin` CLI onto your PATH.
+
+Or build it, with Xcode 26 and Rust:
 
 ```sh
 xcodebuild -project macos/Margin.xcodeproj -scheme Margin -configuration Release \
@@ -37,7 +50,9 @@ ln -sf /Applications/Margin.app/Contents/Helpers/margin ~/.local/bin/margin
 The last line puts the `margin` CLI on your PATH; any directory on it will
 do.
 
-Then teach your coding agent the workflow:
+### Coding agents
+
+Teach your coding agent the workflow:
 
 ```sh
 npx skills add tibbe/margin
