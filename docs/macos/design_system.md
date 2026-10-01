@@ -271,19 +271,3 @@ Open question: Cmd+Option+Q (Quote) sits next to Cmd+Q; is that too close?
   do; clicking its Dock icon then shows the Open panel.
 - Quitting keeps untitled documents and asks, one window at a time, only
   about text whose save failed; Don't Save finishes quitting.
-
-### Storage
-
-- Comments in `~/Library/Application Support/Margin/docs/`, the Mac's place
-  for app data, and drafts beside them in `drafts/`. `XDG_DATA_HOME`, when
-  set, and `MARGIN_DATA_DIR` override it, so the CLI and the editor always
-  agree.
-- Preferences (zoom, Reflow Paragraphs) in the user defaults under
-  `io.github.tibbe.Margin`.
-
-### Distribution
-
-- The app runs on Apple silicon and Intel, and the `margin` CLI ships
-  inside it.
-- Signed with a Developer ID and notarized, distributed as a disk image or
-  through Homebrew Cask, which links the CLI onto the PATH.

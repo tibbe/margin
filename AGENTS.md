@@ -13,8 +13,8 @@ This project uses specification-driven development.
 - `docs/linux/design_system.md`: the Linux editor's design system.
 - `docs/macos/design_system.md`: the macOS editor's design system.
 - `docs/macos/architecture.md`: the macOS editor's architecturally
-  significant decisions, the ones costly to change later, such as its
-  language, frameworks, and key libraries.
+  significant decisions, the ones costly to change later, e.g. its
+  language and frameworks.
 
 UX that holds on every platform belongs in the spec; a design system holds
 only the UX specific to its platform.

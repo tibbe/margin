@@ -1,7 +1,7 @@
 # macOS architecture
 
 The macOS editor's architecturally significant decisions: the ones costly to
-change later, such as its language, frameworks, and key libraries.
+change later, e.g. its language and frameworks.
 
 - The app is an Xcode project.
 - The UI is built with AppKit.
