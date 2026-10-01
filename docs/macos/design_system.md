@@ -156,12 +156,8 @@ so there is no version history (Revert To ▸ Browse All Versions) and no
   Reply, Undo Delete Comment.
 - Toolbar: the open-comment count, Send to Agent (`paperplane`) and a
   comment button. Everything else is in the menu bar.
-- Send to Agent is enabled only while an agent is waiting and a thread is
-  open; its tooltip says which is missing ("No agent is waiting on this
-  document. Ask your agent to run “margin wait” on it."). While the agent
-  works on a send, the button is disabled and the count reads "2 open
-  comments · Agent working". A send says "Sent 2 open comments to the
-  agent" in a banner.
+- While the agent works on a send, the count reads "2 open comments ·
+  Agent working". A send's confirmation is a banner.
 - The toolbar holds only standard items and plain text. On the macOS 26
   toolbar, a custom view such as a spinner is drawn inside the buttons'
   glass or in a pill of its own, and a badge is always the system's

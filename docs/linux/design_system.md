@@ -124,10 +124,8 @@ At a 16px (12pt) body, scaled with the text size:
 - On the right of the header bar: the open-comment count ("3 open
   comments", "2 resolved"), Send to Agent (`mail-send-symbolic`), a comment
   button, and the menu button.
-- Send to Agent is insensitive unless an agent is waiting and a thread is
-  open; its tooltip says which is missing. While the agent works on a send,
-  an `AdwSpinner` sits before it. A send says "Sent 2 open comments to the
-  agent" in a toast.
+- While the agent works on a send, an `AdwSpinner` sits before Send to
+  Agent. A send's confirmation is a toast.
 - **System notifications** (see the spec for when) are one `GNotification`
   per document, as GNOME Shell doesn't group them: replaced with the running
   totals ("3 new replies, 1 comment resolved") until the window is active

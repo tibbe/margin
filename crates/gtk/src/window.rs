@@ -391,8 +391,22 @@ impl DocWindow {
         self.agent_state.get()
     }
 
+    /// Open threads on the round's other documents, and how many of those
+    /// documents have some.
+    fn open_elsewhere(&self) -> (usize, usize) {
+        let agents = self.agents.borrow();
+        let others = agents.as_ref().map(DocAgents::others).unwrap_or_default();
+        let open = others.iter().map(|(_, n)| n).sum();
+        (open, others.iter().filter(|(_, n)| *n > 0).count())
+    }
+
+    /// Open threads on every document a send from here covers.
+    fn open_in_round(&self) -> usize {
+        self.layer.open_count() + self.open_elsewhere().0
+    }
+
     fn can_send(&self) -> bool {
-        self.agent_state.get() == AgentState::Waiting && self.layer.open_count() > 0
+        self.agent_state.get() == AgentState::Waiting && self.open_in_round() > 0
     }
 
     fn show_agent(&self) {
@@ -405,23 +419,36 @@ impl DocWindow {
         {
             a.set_enabled(self.can_send());
         }
-        self.send.set_tooltip_text(Some(match state {
-            AgentState::Waiting if self.layer.open_count() > 0 => {
-                "Send open comments to the agent (Ctrl+Shift+Enter)"
+        let others = self
+            .agents
+            .borrow()
+            .as_ref()
+            .map_or(0, |a| a.others().len());
+        let tip = match state {
+            AgentState::Waiting if self.open_in_round() > 0 && others > 0 => format!(
+                "Send open comments on this and {others} other document{} to the agent (Ctrl+Shift+Enter)",
+                if others == 1 { "" } else { "s" }
+            ),
+            AgentState::Waiting if self.open_in_round() > 0 => {
+                "Send open comments to the agent (Ctrl+Shift+Enter)".into()
             }
-            AgentState::Waiting => "An agent is waiting, but there are no open comments to send",
-            AgentState::Working => "The agent is working on the comments you sent",
+            AgentState::Waiting => {
+                "An agent is waiting, but there are no open comments to send".into()
+            }
+            AgentState::Working => "The agent is working on the comments you sent".into(),
             AgentState::None => {
                 "No agent is waiting on this document. Ask your agent to run “margin wait” on it"
+                    .into()
             }
-        }));
+        };
+        self.send.set_tooltip_text(Some(&tip));
     }
 
     /// Sends the open comments to the agents waiting on the document.
     fn send_to_agent(&self) {
         self.update_agent();
         if !self.can_send() {
-            self.toast(if self.layer.open_count() == 0 {
+            self.toast(if self.open_in_round() == 0 {
                 "No open comments"
             } else {
                 "No agent is waiting"
@@ -433,12 +460,17 @@ impl DocWindow {
         match sent {
             Some(Ok(0)) | None => self.toast("No agent is waiting"),
             Some(Ok(n)) => {
-                let open = self.layer.open_count();
-                let what = if open == 1 {
+                let (elsewhere, docs) = self.open_elsewhere();
+                let open = self.layer.open_count() + elsewhere;
+                let docs = docs + usize::from(self.layer.open_count() > 0);
+                let mut what = if open == 1 {
                     "1 open comment".to_string()
                 } else {
                     format!("{open} open comments")
                 };
+                if docs > 1 {
+                    what.push_str(&format!(" on {docs} documents"));
+                }
                 let to = if n == 1 {
                     "the agent".to_string()
                 } else {

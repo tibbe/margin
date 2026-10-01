@@ -44,24 +44,27 @@ attached to their text as it moves. Read positions from a fresh
 
 When you have written a document the user should review (a plan, a spec):
 
-1. `margin open FILE`. It returns as soon as the document appears in the
+1. `margin open FILE…`. It returns as soon as the documents appear in the
    editor.
-2. Wait for the review, below, and tell the user the document is open and
+2. Wait for the review, below, and tell the user the documents are open and
    you are waiting for them to send their comments.
 
 ## Wait for the review
 
-`margin wait FILE` returns when the user clicks Send to Agent in the editor,
-and prints that round's open comments with their locations. It also
-returns when the document isn't open in the editor, since then no comments
-can come. Run it in the background when your shell tool can, so you are
-woken when it exits and stay free meanwhile; otherwise run it in the
-foreground. Each time it exits, do what it prints: address the comments it
-printed, as above, and run `margin wait FILE` again for the next round; or
-stop waiting when it says the document isn't open.
+`margin wait FILE…` returns when the user clicks Send to Agent in the
+editor, and prints that round's open comments, with their locations, on
+every document you named. When a review spans several documents, name them
+all in one `margin wait`: one send from any of their windows covers them
+all. It also returns when none of the documents is open in the editor,
+since then no comments can come. Run it in the background when your shell
+tool can, so you are woken when it exits and stay free meanwhile; otherwise
+run it in the foreground. Each time it exits, do what it prints: address
+the comments it printed, as above, and run the `margin wait` command it
+prints again for the next round; or stop waiting when it says the documents
+aren't open.
 
 The review is over when the user says so, or when `margin wait` says the
-document isn't open. Until then, a round is done when every thread it
+documents aren't open. Until then, a round is done when every thread it
 printed ends with your reply and `margin wait` is running again: that is
 what tells the editor you are ready.
 

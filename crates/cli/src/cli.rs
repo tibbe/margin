@@ -5,7 +5,7 @@ use anyhow::{Result, bail};
 use chrono::{DateTime, Local, Utc};
 use clap::{Parser, Subcommand};
 use margin_core::comments::anchor::line_col;
-use margin_core::comments::export::{for_agent, shell_word};
+use margin_core::comments::export::{for_agent_docs, shell_word};
 use margin_core::comments::handoff::Waiter;
 use margin_core::comments::{Author, Comments, Store, Thread, all_stores, read_doc};
 use serde::Serialize;
@@ -18,7 +18,8 @@ Agent workflow:
   margin thread plan.md 3          read one thread, with all its replies
   margin reply plan.md 3 \"Done.\" --resolve
   margin add plan.md --quote \"retry budget\" \"Is 3 enough?\"
-  margin wait plan.md              wait until the writer sends the next round
+  margin wait plan.md spec.md      wait until the writer sends the next round,
+                                   which covers every document named
 
 Threads are numbered per document, for the CLI; the editor doesn't show the
 numbers, so name a thread to the user by the text it is on.
@@ -52,7 +53,8 @@ pub enum Command {
     Open { files: Vec<PathBuf> },
 
     /// List comment threads. Without files: documents under the current
-    /// directory that have open threads.
+    /// directory that have open threads, leaving out other worktrees and
+    /// repositories nested in it.
     Comments {
         files: Vec<PathBuf>,
         /// Include resolved threads.
@@ -106,11 +108,13 @@ pub enum Command {
     /// Delete a thread.
     Delete { file: PathBuf, id: u64 },
 
-    /// Wait until the writer sends the comments on one of the documents
-    /// (Send to Agent in the editor), then print them and exit. Also exits
-    /// when the editor doesn't show any of the documents, since then no
-    /// comments can come. Either way, it prints what to do next. Run it in
-    /// the background if you can, to keep working while you wait.
+    /// Wait until the writer sends the comments (Send to Agent in the
+    /// editor, from any of the documents' windows), then print the open
+    /// comments on all the documents and exit. Name every document of the
+    /// review: one send covers them all. Also exits when the editor doesn't
+    /// show any of the documents, since then no comments can come. Either
+    /// way, it prints what to do next. Run it in the background if you can,
+    /// to keep working while you wait.
     Wait {
         #[arg(required = true)]
         files: Vec<PathBuf>,
@@ -315,13 +319,25 @@ fn threads_json(docs: &[(PathBuf, Comments, String)], include_resolved: bool) ->
     Ok(serde_json::to_string_pretty(&all)?)
 }
 
-/// Documents under `root` (or anywhere, with `all`) that have threads.
+/// Whether `doc` is in `dir`'s checkout: under it, and not in another
+/// worktree or repository nested in it.
+fn in_checkout(doc: &Path, dir: &Path) -> bool {
+    doc.starts_with(dir)
+        && doc
+            .ancestors()
+            .skip(1)
+            .take_while(|d| *d != dir)
+            .all(|d| !d.join(".git").exists())
+}
+
+/// Documents in the current directory's checkout (or anywhere, with `all`)
+/// that have threads.
 fn discovered_docs(all: bool, open_only: bool) -> Result<Vec<PathBuf>> {
     let cwd = std::env::current_dir()?;
     Ok(all_stores()?
         .into_iter()
         .filter(|(s, c)| {
-            (all || s.doc.starts_with(&cwd))
+            (all || in_checkout(&s.doc, &cwd))
                 && s.doc.exists()
                 && if open_only {
                     c.open_count() > 0
@@ -477,10 +493,14 @@ pub fn run(cmd: Command) -> Result<i32> {
             ));
         }
         Command::Wait { files, json } => {
-            let waiters = files
+            let round = files
                 .iter()
-                .map(|f| {
-                    let w = Waiter::start(f)?;
+                .map(|f| Ok(Store::for_doc(f)?.doc))
+                .collect::<Result<Vec<_>>>()?;
+            let waiters = round
+                .iter()
+                .map(|doc| {
+                    let w = Waiter::start(doc, &round)?;
                     if !w.doc().exists() {
                         bail!("{} does not exist", w.doc().display());
                     }
@@ -493,13 +513,12 @@ pub fn run(cmd: Command) -> Result<i32> {
                 .collect();
             let args = args.join(" ");
             let mut shown_before = false;
-            let sent = loop {
+            loop {
                 let shown = waiters.iter().any(Waiter::shown);
                 // Looked at after `shown`: a window sends before it closes,
                 // so a closed window's last send shows up here.
-                let sent: Vec<&Waiter> = waiters.iter().filter(|w| w.sent()).collect();
-                if !sent.is_empty() {
-                    break sent;
+                if waiters.iter().any(Waiter::sent) {
+                    break;
                 }
                 if !shown {
                     let docs: Vec<&Path> = waiters.iter().map(Waiter::doc).collect();
@@ -514,23 +533,30 @@ pub fn run(cmd: Command) -> Result<i32> {
                 }
                 shown_before = true;
                 std::thread::sleep(std::time::Duration::from_millis(250));
-            };
-            let docs = load_many(
-                &sent
-                    .iter()
-                    .map(|w| w.doc().to_path_buf())
-                    .collect::<Vec<_>>(),
-            )?;
+            }
+            // A send covers the round: every document waited on.
+            let docs = load_many(&round)?;
             if json {
                 print(&threads_json(&docs, false)?);
             } else {
-                let mut out = String::new();
-                for (doc, c, text) in &docs {
-                    let open: Vec<Thread> =
-                        c.threads.iter().filter(|t| t.is_open()).cloned().collect();
-                    out.push_str(&for_agent(doc, text, &open));
-                    out.push('\n');
-                }
+                let open: Vec<(&PathBuf, &String, Vec<Thread>)> = docs
+                    .iter()
+                    .filter_map(|(doc, c, text)| {
+                        let open: Vec<Thread> =
+                            c.threads.iter().filter(|t| t.is_open()).cloned().collect();
+                        (!open.is_empty()).then_some((doc, text, open))
+                    })
+                    .collect();
+                let open: Vec<(&Path, &str, &[Thread])> = open
+                    .iter()
+                    .map(|(doc, text, threads)| (doc.as_path(), text.as_str(), threads.as_slice()))
+                    .collect();
+                let mut out = if open.is_empty() {
+                    "The writer sent the review, but no comments are open.\n".to_string()
+                } else {
+                    for_agent_docs(&open)
+                };
+                out.push('\n');
                 out.push_str(&format!(
                     "Once you have answered them, run `margin wait {args}` again for the next round."
                 ));
@@ -568,5 +594,33 @@ fn find_quote(text: &str, quote: &str) -> Result<std::ops::Range<usize>> {
                 lines.join(", ")
             )
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+
+    #[test]
+    fn a_checkout_leaves_out_worktrees_nested_in_it() {
+        let root = std::env::temp_dir().join(format!("margin-cli-checkout-{}", std::process::id()));
+        let nested = root.join(".claude/worktrees/feature");
+        fs::create_dir_all(root.join(".git")).unwrap();
+        fs::create_dir_all(root.join("docs")).unwrap();
+        fs::create_dir_all(&nested).unwrap();
+        // A worktree's .git is a file pointing at the main repository.
+        fs::write(
+            nested.join(".git"),
+            "gitdir: ../../../.git/worktrees/feature\n",
+        )
+        .unwrap();
+
+        assert!(in_checkout(&root.join("docs/spec.md"), &root));
+        assert!(in_checkout(&root.join("docs/spec.md"), &root.join("docs")));
+        assert!(!in_checkout(&nested.join("docs/spec.md"), &root));
+        assert!(in_checkout(&nested.join("docs/spec.md"), &nested));
+        assert!(!in_checkout(&root.join("docs/spec.md"), &nested));
+        fs::remove_dir_all(&root).unwrap();
     }
 }

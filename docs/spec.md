@@ -169,6 +169,9 @@ Every editor produces the same source for the same keys. The choices:
 12. As a writer, I want to copy the open comments as a list with locations, so that I can paste a review into an agent's chat.
 13. As a writer, I want to send the open comments to the agent waiting on a document in one step, so that I don't paste every round of review into its chat.
 14. As a writer, I want to see whether an agent is waiting on a document or working on what I sent, so that I know whether answers are coming.
+15. As a writer, I want one send to cover every document the agent is waiting on, so that I can review several specs and send them as one round.
+16. As a writer, I want the documents of a round in their own windows, so that I can read them side by side.
+17. As a writer, I want a send to reach only the agents waiting on those very files, so that reviews of other copies of a project (another clone or worktree) never mix.
 
 ### Decisions
 
@@ -239,27 +242,50 @@ Every editor produces the same source for the same keys. The choices:
   comment and the latest message, each after its author, `User` or `Agent`; the replies between, which the agent saw
   on earlier copies, are left to `margin thread`, so copying again after
   each round doesn't paste the whole conversation again.
+- For several documents, as a round sends them, the first line names each
+  by its absolute path (`` I left comments on `/home/me/proj/plan.md` and
+  `/home/me/proj/spec.md`. ``), and each document's items follow in turn,
+  after a blank line. The absolute paths say which copy of a project the
+  comments are on, since the items' paths read the same in every copy.
 - Send to Agent gives the open comments, in the Copy Open Comments format,
   to every agent waiting on the document with `margin wait`. Margin doesn't
   start agents or look for them: it reaches only one that waits, which any
   agent that can run a command can do. Nothing is queued, so the command is
-  unavailable, saying why, while no agent is waiting or no thread is open.
+  unavailable, saying why, while no agent is waiting or no thread is open
+  in the round.
+- A send covers a **round**: the documents its agents wait on, which an
+  agent names with `margin wait FILE…`, and, when agents wait on
+  overlapping documents, theirs too. Send to Agent in any of the round's
+  windows sends the open comments on all of them, documents without open
+  threads left out. The agent defines the round, so there is nothing to
+  name, save or close, and a round lasts as long as the wait.
+- Each of a round's documents has its own window, so they sit side by
+  side, or in the platform's window tabs when the writer prefers tabs.
+- Documents are keyed by canonical path, so the same file in two copies of
+  a project is two documents, with their own threads and waiting agents.
 - Beside the comment count the window shows the agent: waiting (Send to
-  Agent is available), working (from a send until an agent waits on the
-  document again) or neither. Working gives up after 30 minutes without
+  Agent is available, and says how many other documents the round has),
+  working (from a send that covered the document, from any window, until an
+  agent waits on it again) or neither. Working gives up after 30 minutes without
   agent activity on the document.
+- Send to Agent's tooltip says what it would send, or what is missing: an
+  agent waiting, or an open comment. When the round has other documents,
+  it says how many ("Send open comments on this and 2 other documents to
+  the agent"). A send confirms what went: "Sent 2 open comments to the
+  agent", or "Sent 5 open comments on 3 documents to the agent" for a
+  round.
 
 ## CLI
 
 ### User Stories
 
 1. As a coding agent, I want the open threads with `file:line:column` locations against the file as it is now, so that I can find what was asked even after my own edits.
-2. As a coding agent, I want to find documents with open threads under the current directory, so that I don't need to be told the file.
+2. As a coding agent, I want to find documents with open threads under the current directory, but not in other worktrees nested in it, so that I don't need to be told the file and don't pick up another checkout's review.
 3. As a coding agent, I want a thread's quote as the file's exact Markdown source, so that I can find and edit the text.
 4. As a coding agent, I want to reply, resolve and reopen, so that I report what I did where the writer will see it.
 5. As a coding agent, I want to start threads on quoted text, with ambiguous quotes refused, so that my question lands on the right text.
 6. As a coding agent, I want to open a document for review and return at once, so that my shell isn't blocked.
-7. As a coding agent, I want to wait until the writer sends a document's comments, so that I pick up each round of review without being told in chat.
+7. As a coding agent, I want to wait until the writer sends the comments on the documents I name, all of them at once, so that I pick up each round of review without being told in chat.
 8. As a coding agent, I want JSON output, so that I can process threads reliably.
 9. As a coding agent, I want the same commands and output on every platform, so that one skill works everywhere.
 
@@ -271,7 +297,8 @@ The CLI's help and the agent skill follow this section.
   as it is now; every command re-anchors first. Paths print relative to the
   current directory when they are under it.
 - Without files, `comments` looks at the documents with open threads under
-  the current directory; `--all`, anywhere.
+  the current directory, skipping directories that hold their own `.git`
+  (other worktrees and repositories nested in it); `--all`, anywhere.
 - `comments`, `thread` and `wait` take `--json`.
 - The editor and the CLI can change a document's comments at the same time
   without losing either's changes.
@@ -321,10 +348,10 @@ The commands:
   ones.
 - `margin thread FILE ID` shows one thread, open or resolved, in full. The
   JSON is the one thread's object.
-- `margin wait FILE…` waits until the writer sends the comments on one of
-  the documents, prints them as Copy Open Comments does, followed by the
-  command to wait for the next round, and exits. `--json` prints the sent
-  documents' open threads as `comments --json` does. An agent that runs
+- `margin wait FILE…` waits until the writer sends a round that covers
+  its documents, prints the open comments on all of them as a round sends
+  them, followed by the command to wait for the next round, and exits.
+  `--json` prints the documents' open threads as `comments --json` does. An agent that runs
   commands in the background works on while it waits, and hears when the
   command exits.
 - `margin wait` also exits when no editor window shows any of its

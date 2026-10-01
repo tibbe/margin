@@ -79,13 +79,35 @@ fn item(m: &Message) -> String {
 /// author; the replies between, which the agent has seen on earlier
 /// copies, become a `margin thread` command that prints them.
 pub fn for_agent(doc: &Path, text: &str, threads: &[Thread]) -> String {
+    for_agent_docs(&[(doc, text, threads)])
+}
+
+/// Several documents' threads, as [`for_agent`] gives one's: a first line
+/// naming every document by its absolute path, so that the comments say
+/// which checkout they are on, then each document's items in turn.
+pub fn for_agent_docs(docs: &[(&Path, &str, &[Thread])]) -> String {
+    let names: Vec<String> = docs
+        .iter()
+        .map(|(doc, _, _)| format!("`{}`", doc.display()))
+        .collect();
+    let names = match names.split_last() {
+        Some((last, rest)) if !rest.is_empty() => format!("{} and {last}", rest.join(", ")),
+        _ => names.concat(),
+    };
+    let mut out = format!("I left comments on {names}. Please address them.\n");
+    for (doc, text, threads) in docs {
+        out.push('\n');
+        out.push_str(&items(doc, text, threads));
+    }
+    out
+}
+
+/// One document's threads as list items.
+fn items(doc: &Path, text: &str, threads: &[Thread]) -> String {
     let name = item_path(doc);
     let mut threads: Vec<&Thread> = threads.iter().collect();
     threads.sort_by_key(|t| (t.anchor.start(), t.id));
-    let mut out = format!(
-        "I left comments on `{}`. Please address them.\n\n",
-        doc.display()
-    );
+    let mut out = String::new();
     for t in threads {
         let a = &t.anchor;
         let at = match a.range() {
@@ -200,6 +222,28 @@ mod tests {
              #2 `/x/my plan.md:1:5-1:7` \"two\"\n  \
              - User: Typo?\n  \
              - Agent: Fixed.\n"
+        );
+    }
+
+    #[test]
+    fn several_documents_are_named_by_absolute_path_then_listed_in_turn() {
+        let text = "one two\n";
+        let mut a = Comments::new("/x/a.md".into());
+        a.add(text, 0..3, "Why?", Author::User).unwrap();
+        let mut b = Comments::new("/x/b.md".into());
+        b.add(text, 4..7, "Typo?", Author::User).unwrap();
+        let mut c = Comments::new("/x/c.md".into());
+        c.add(text, 0..3, "More?", Author::User).unwrap();
+        assert_eq!(
+            for_agent_docs(&[
+                (Path::new("/x/a.md"), text, &a.threads),
+                (Path::new("/x/b.md"), text, &b.threads),
+                (Path::new("/x/c.md"), text, &c.threads),
+            ]),
+            "I left comments on `/x/a.md`, `/x/b.md` and `/x/c.md`. Please address them.\n\n\
+             #1 `/x/a.md:1:1-1:3` \"one\"\n  - User: Why?\n\n\
+             #1 `/x/b.md:1:5-1:7` \"two\"\n  - User: Typo?\n\n\
+             #1 `/x/c.md:1:1-1:3` \"one\"\n  - User: More?\n"
         );
     }
 

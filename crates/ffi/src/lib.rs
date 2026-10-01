@@ -1452,6 +1452,13 @@ pub enum AgentState {
     Working,
 }
 
+/// Another document a send covers, and how many open threads it has.
+#[derive(uniffi::Record)]
+pub struct RoundDocument {
+    pub path: String,
+    pub open: u32,
+}
+
 /// The agents waiting on, or working on, one open document.
 #[derive(uniffi::Object)]
 pub struct DocAgents {
@@ -1476,7 +1483,22 @@ impl DocAgents {
         }
     }
 
-    /// Sends the open comments to the waiting agents; returns how many.
+    /// The other documents a send from here covers, as of the last poll.
+    pub fn others(&self) -> Vec<RoundDocument> {
+        self.inner
+            .lock()
+            .unwrap()
+            .others()
+            .iter()
+            .map(|(path, open)| RoundDocument {
+                path: path.display().to_string(),
+                open: *open as u32,
+            })
+            .collect()
+    }
+
+    /// Sends the open comments on the round to the waiting agents; returns
+    /// how many agents there were.
     pub fn send(&self, now_ms: i64) -> Result<u32> {
         Ok(self.inner.lock().unwrap().send(now_ms)? as u32)
     }

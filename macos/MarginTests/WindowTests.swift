@@ -164,6 +164,78 @@ final class WindowTests: XCTestCase {
         XCTAssertEqual(agent(), "none | send disabled | count 1 open comment")
     }
 
+    /// A send covers every document the agent waits on: Send to Agent in
+    /// one window sends the open comments on the others too, and those
+    /// documents' windows show the agent working.
+    @MainActor
+    func testSendToAgentCoversTheRound() throws {
+        let h = try Harness("Retry three times.\n")
+        defer { h.close() }
+        try "Use canary deploys.\n".write(
+            toFile: h.dir.appendingPathComponent("spec.md").path, atomically: true, encoding: .utf8)
+        let spec = try XCTUnwrap(TestApp.delegate.open(path: h.dir.appendingPathComponent("spec.md").path, show: false))
+        func agent(_ d: DocumentWindow) -> String {
+            d.updateAgent()
+            return "\(d.agentState) | send \(d.sendItem?.isEnabled == true ? "enabled" : "disabled") | "
+                + (d.sendItem?.toolTip ?? "-")
+        }
+        _ = h.win.toolbar?.items
+        _ = spec.window?.toolbar?.items
+        XCTAssertEqual(
+            h.margin("add", "spec.md", "--quote", "canary", "Which regions first?"), "Added #1 at spec.md:1:5.\n")
+
+        h.sh("\(Harness.cli) wait doc.md spec.md > wait.out 2>&1 &")
+        h.wait(0.7)
+        // The open thread is on spec.md, but doc.md's window can send it.
+        XCTAssertEqual(
+            agent(h.doc),
+            "waiting | send enabled | Send Open Comments on This and 1 Other Document to the Agent (⇧⌘↩)")
+        h.key("cmd-shift-enter")
+        h.wait(forBanner: "Sent")
+        XCTAssertEqual(h.banner, "Sent 1 open comment to the agent")
+        h.wait(0.7)
+        XCTAssertEqual(
+            h.sh("sed -E 's|`/[^`]*/|`|g' wait.out"),
+            """
+            I left comments on `spec.md`. Please address them.
+
+            #1 `spec.md:1:5-1:10` "canary"
+              - Agent: Which regions first?
+
+            Once you have answered them, run `margin wait doc.md spec.md` again for the next round.
+
+            """)
+        XCTAssertEqual(agent(spec).prefix(7), "working")
+
+        // With comments on both, one send gives both, named in full.
+        h.select("three")
+        h.key("cmd-opt-m")
+        h.compose("Enough?")
+        h.key("cmd-enter")
+        h.wait(0.1)
+        h.sh("\(Harness.cli) wait doc.md spec.md > wait2.out 2>&1 &")
+        h.wait(0.7)
+        XCTAssertEqual(agent(spec).prefix(7), "waiting")
+        h.key("cmd-shift-enter")
+        h.wait(forBanner: "Sent 2")
+        XCTAssertEqual(h.banner, "Sent 2 open comments on 2 documents to the agent")
+        h.wait(0.7)
+        XCTAssertEqual(
+            h.sh("sed -E 's|`/[^`]*/|`|g' wait2.out"),
+            """
+            I left comments on `doc.md` and `spec.md`. Please address them.
+
+            #1 `doc.md:1:7-1:11` "three"
+              - User: Enough?
+
+            #1 `spec.md:1:5-1:10` "canary"
+              - Agent: Which regions first?
+
+            Once you have answered them, run `margin wait doc.md spec.md` again for the next round.
+
+            """)
+    }
+
     /// `margin wait` stops once no window shows its document, since no
     /// comments can come then.
     @MainActor

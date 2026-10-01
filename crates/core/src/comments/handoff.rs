@@ -8,12 +8,18 @@
 //! Waiters that started before the last send are on their way out, and
 //! don't count as waiting.
 //!
+//! A send covers a round: the documents of the agents waiting on the
+//! document, and of the agents waiting on those, and so on. Each waiter's
+//! record lists the documents its agent waits on, and [`send`] bumps the
+//! send count of every document in the round.
+//!
 //! An editor showing the document holds a [`DocAgents`], which keeps a
 //! viewer record there the same way. A waiter whose documents no editor
 //! shows has nothing to wait for.
 
 use super::store::{Store, data_dir};
 use anyhow::{Context, Result};
+use std::collections::BTreeSet;
 use std::fs::{self, File};
 use std::io::{ErrorKind, Write};
 use std::path::{Path, PathBuf};
@@ -92,6 +98,69 @@ fn live_records(dir: &Path, kind: &str) -> Result<Vec<PathBuf>> {
     Ok(live)
 }
 
+/// A waiter's record: the send count it started at, then the canonical
+/// paths of every document its agent waits on, one per line.
+fn waiter_record(seen: u64, round: &[PathBuf]) -> String {
+    let mut s = seen.to_string();
+    for doc in round {
+        s.push('\n');
+        s.push_str(&doc.display().to_string());
+    }
+    s
+}
+
+/// An agent waiting on `dir`'s document for its next send, and the
+/// documents it waits on.
+struct Waiting {
+    /// The record's name, the same in every document's directory for one
+    /// agent.
+    agent: String,
+    docs: Vec<PathBuf>,
+}
+
+/// The agents waiting on `dir`'s document for its next send. Records of
+/// waiters that started before the last send don't count.
+fn waiting_in(dir: &Path) -> Result<Vec<Waiting>> {
+    let sent = sent_count(dir);
+    Ok(live_records(dir, WAITER)?
+        .iter()
+        .filter_map(|path| {
+            let record = fs::read_to_string(path).ok()?;
+            let mut lines = record.lines();
+            let seen: u64 = lines.next()?.trim().parse().ok()?;
+            let agent = path.file_stem()?.to_string_lossy().into_owned();
+            (seen == sent).then(|| Waiting {
+                agent,
+                docs: lines.map(PathBuf::from).collect(),
+            })
+        })
+        .collect())
+}
+
+/// The documents a send on `doc` covers, `doc` first, and the agents
+/// waiting on them.
+pub fn round(doc: &Path) -> Result<(Vec<PathBuf>, BTreeSet<String>)> {
+    let doc = Store::for_doc(doc)?.doc;
+    let mut docs = vec![doc];
+    let mut agents = BTreeSet::new();
+    let mut i = 0;
+    while i < docs.len() {
+        // A document elsewhere that is gone has no directory to look in.
+        if let Ok(waiting) = dir(&docs[i]).and_then(|d| waiting_in(&d)) {
+            for w in waiting {
+                agents.insert(w.agent);
+                for d in w.docs {
+                    if !docs.contains(&d) {
+                        docs.push(d);
+                    }
+                }
+            }
+        }
+        i += 1;
+    }
+    Ok((docs, agents))
+}
+
 /// An agent waiting on one document, for as long as this value lives.
 pub struct Waiter {
     doc: PathBuf,
@@ -102,14 +171,16 @@ pub struct Waiter {
 }
 
 impl Waiter {
-    pub fn start(doc: &Path) -> Result<Waiter> {
+    /// Waits on `doc`, one of the documents in `round`, the canonical
+    /// paths of all the documents the agent waits on.
+    pub fn start(doc: &Path, round: &[PathBuf]) -> Result<Waiter> {
         let dir = dir(doc)?;
         let seen = sent_count(&dir);
         let (record, lock) = lock_record(
             &dir,
             &std::process::id().to_string(),
             WAITER,
-            &seen.to_string(),
+            &waiter_record(seen, round),
         )?;
         Ok(Waiter {
             doc: Store::for_doc(doc)?.doc,
@@ -146,17 +217,12 @@ impl Drop for Waiter {
 /// How many agents are waiting on the document for its next send. Removes
 /// the records of waiters that died.
 pub fn waiting(doc: &Path) -> Result<usize> {
-    let dir = dir(doc)?;
-    let sent = sent_count(&dir);
-    Ok(live_records(&dir, WAITER)?
-        .iter()
-        .filter(|path| {
-            let seen: Option<u64> = fs::read_to_string(path)
-                .ok()
-                .and_then(|s| s.trim().parse().ok());
-            seen == Some(sent)
-        })
-        .count())
+    Ok(waiting_in(&dir(doc)?)?.len())
+}
+
+/// How many times the document has been sent, 0 when that can't be read.
+fn sends(doc: &Path) -> u64 {
+    dir(doc).map(|d| sent_count(&d)).unwrap_or(0)
 }
 
 /// How many editor windows show the document. Removes the records of
@@ -196,17 +262,33 @@ impl Drop for Viewer {
     }
 }
 
-/// Sends the document's comments to the agents waiting on it, returning
-/// how many there were. Nothing is sent, or kept for later, when none is.
+/// Sends the comments on the document's round to the agents waiting on
+/// it, returning how many agents there were. Nothing is sent, or kept for
+/// later, when none is.
 pub fn send(doc: &Path) -> Result<usize> {
-    let n = waiting(doc)?;
-    if n > 0 {
-        let dir = dir(doc)?;
-        replace(&dir.join(SENT), &(sent_count(&dir) + 1).to_string(), |_| {
-            Ok(())
-        })?;
+    let (docs, agents) = round(doc)?;
+    if agents.is_empty() {
+        return Ok(0);
     }
-    Ok(n)
+    for (i, d) in docs.iter().enumerate() {
+        match dir(d).and_then(|dir| bump(&dir)) {
+            Ok(()) => {}
+            // The document itself must be sent; one elsewhere that is gone
+            // has nothing to send.
+            Err(e) if i == 0 => return Err(e),
+            Err(_) => {}
+        }
+    }
+    Ok(agents.len())
+}
+
+/// Counts one more send of `dir`'s document.
+fn bump(dir: &Path) -> Result<()> {
+    fs::create_dir_all(dir).with_context(|| format!("creating {}", dir.display()))?;
+    replace(&dir.join(SENT), &(sent_count(dir) + 1).to_string(), |_| {
+        Ok(())
+    })?;
+    Ok(())
 }
 
 /// What the window shows about agents on a document.
@@ -269,6 +351,12 @@ impl AgentTracker {
 pub struct DocAgents {
     doc: PathBuf,
     tracker: AgentTracker,
+    /// The document's send count when last looked at, to tell when a send
+    /// from another document's window covered it.
+    sends: u64,
+    /// The other documents a send from here covers, and how many open
+    /// threads each has, as of the last poll.
+    others: Vec<(PathBuf, usize)>,
     /// None when the record couldn't be written; waiters then give up on
     /// the document while the window still shows it.
     _viewer: Option<Viewer>,
@@ -279,21 +367,53 @@ impl DocAgents {
         DocAgents {
             doc: doc.to_path_buf(),
             tracker: AgentTracker::default(),
+            sends: sends(doc),
+            others: Vec::new(),
             _viewer: Viewer::start(doc).ok(),
         }
     }
 
-    /// The state now, looking at the document's waiters.
+    /// The state now, looking at the document's waiters, and at sends that
+    /// covered it from other windows.
     pub fn poll(&mut self, now: i64) -> AgentState {
-        let n = waiting(&self.doc).unwrap_or(0);
-        self.tracker.state(n, now)
+        self.saw_sends(now);
+        let (docs, agents) = round(&self.doc).unwrap_or_default();
+        self.others = docs
+            .into_iter()
+            .skip(1)
+            .map(|d| {
+                let open = Store::for_doc(&d)
+                    .and_then(|s| s.load())
+                    .map_or(0, |c| c.open_count());
+                (d, open)
+            })
+            .collect();
+        // The round has agents only when one waits here.
+        self.tracker.state(agents.len(), now)
     }
 
-    /// Sends the comments; see [`send`].
+    /// The other documents a send from here covers, as of the last
+    /// [`poll`](Self::poll), in the order agents named them, each with how
+    /// many open threads it has.
+    pub fn others(&self) -> &[(PathBuf, usize)] {
+        &self.others
+    }
+
+    /// Sends the comments on the round; see [`send`].
     pub fn send(&mut self, now: i64) -> Result<usize> {
         let n = send(&self.doc)?;
         self.tracker.sent(n, now);
+        self.sends = sends(&self.doc);
         Ok(n)
+    }
+
+    /// Starts working when a send covered the document since last looked.
+    fn saw_sends(&mut self, now: i64) {
+        let sends = sends(&self.doc);
+        if sends > self.sends {
+            self.tracker.sent(1, now);
+        }
+        self.sends = sends;
     }
 
     /// An agent changed the document's threads.
@@ -319,8 +439,8 @@ mod tests {
         assert_eq!(waiting(&plan).unwrap(), 0);
         assert_eq!(send(&plan).unwrap(), 0, "nothing to send to");
 
-        let a = Waiter::start(&plan).unwrap();
-        let b = Waiter::start(&other).unwrap();
+        let a = Waiter::start(&plan, &[]).unwrap();
+        let b = Waiter::start(&other, &[]).unwrap();
         assert_eq!(waiting(&plan).unwrap(), 1);
         assert!(!a.sent());
         assert_eq!(send(&plan).unwrap(), 1);
@@ -329,12 +449,61 @@ mod tests {
         // Until it exits, a waiter that got the send isn't waiting.
         assert_eq!(waiting(&plan).unwrap(), 0);
         drop(a);
-        let again = Waiter::start(&plan).unwrap();
+        let again = Waiter::start(&plan, &[]).unwrap();
         assert!(!again.sent());
         assert_eq!(waiting(&plan).unwrap(), 1);
         drop(again);
         assert_eq!(waiting(&plan).unwrap(), 0);
         drop(b);
+        fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn a_send_covers_every_document_its_agents_wait_on() {
+        let root =
+            std::env::temp_dir().join(format!("margin-handoff-round-{}", std::process::id()));
+        fs::create_dir_all(&root).unwrap();
+        let _env = crate::comments::use_data_dir(&root.join("data"));
+        let [plan, spec, notes, other] = ["plan.md", "spec.md", "notes.md", "other.md"].map(|n| {
+            fs::write(root.join(n), "text\n").unwrap();
+            Store::for_doc(&root.join(n)).unwrap().doc
+        });
+
+        // This agent waits on plan and spec; another, on spec and notes.
+        let both = [plan.clone(), spec.clone()];
+        let on_plan = Waiter::start(&plan, &both).unwrap();
+        let on_spec = Waiter::start(&spec, &both).unwrap();
+        let elsewhere = Waiter::start(&other, &[]).unwrap();
+        let _another = [&spec, &notes].map(|d| {
+            lock_record(
+                &dir(d).unwrap(),
+                "another",
+                WAITER,
+                &waiter_record(0, &[spec.clone(), notes.clone()]),
+            )
+            .unwrap()
+        });
+        let (docs, agents) = round(&plan).unwrap();
+        assert_eq!(docs, [plan.clone(), spec.clone(), notes.clone()]);
+        assert_eq!(agents.len(), 2);
+
+        // A window on notes follows the round; one on other doesn't.
+        let mut notes_window = DocAgents::new(&notes);
+        let mut other_window = DocAgents::new(&other);
+        assert_eq!(notes_window.poll(0), AgentState::Waiting);
+        assert_eq!(
+            notes_window.others(),
+            [(spec.clone(), 0), (plan.clone(), 0)]
+        );
+
+        assert_eq!(send(&plan).unwrap(), 2);
+        assert!(on_plan.sent());
+        assert!(on_spec.sent());
+        assert!(!elsewhere.sent(), "other is in no agent's round");
+        assert_eq!(sends(&notes), 1);
+        // A send from another window counts as one here.
+        assert_eq!(notes_window.poll(10), AgentState::Working);
+        assert_eq!(other_window.poll(10), AgentState::Waiting);
         fs::remove_dir_all(&root).unwrap();
     }
 
@@ -345,7 +514,7 @@ mod tests {
         let _env = crate::comments::use_data_dir(&root.join("data"));
         let plan = root.join("plan.md");
         fs::write(&plan, "plan\n").unwrap();
-        let w = Waiter::start(&plan).unwrap();
+        let w = Waiter::start(&plan, &[]).unwrap();
         let record = w.record.clone();
         // A crash leaves the record but releases the lock.
         std::mem::forget(w);
@@ -370,7 +539,7 @@ mod tests {
         fs::write(&plan, "plan\n").unwrap();
         fs::write(&other, "other\n").unwrap();
 
-        let w = Waiter::start(&plan).unwrap();
+        let w = Waiter::start(&plan, &[]).unwrap();
         assert!(!w.shown());
         let a = DocAgents::new(&plan);
         let _b = DocAgents::new(&other);

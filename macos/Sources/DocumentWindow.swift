@@ -250,11 +250,18 @@ final class DocumentWindow: NSWindowController, NSWindowDelegate, NSToolbarDeleg
         updateAgent()
     }
 
-    private var canSend: Bool { agentState == .waiting && layer.openCount > 0 }
+    /// The other documents a send from here covers, as of the last poll.
+    private var roundOthers: [RoundDocument] = []
+
+    /// Open threads on every document a send from here covers.
+    private var openInRound: Int { layer.openCount + roundOthers.reduce(0) { $0 + Int($1.open) } }
+
+    private var canSend: Bool { agentState == .waiting && openInRound > 0 }
 
     /// Looks at the document's agents again, and shows what they are doing.
     func updateAgent() {
         agentState = agents?.poll(nowMs: DocumentWindow.nowMs()) ?? .none
+        roundOthers = agents?.others() ?? []
         showAgent()
     }
 
@@ -274,10 +281,13 @@ final class DocumentWindow: NSWindowController, NSWindowDelegate, NSToolbarDeleg
         item.isEnabled = canSend
         switch agentState {
         case .waiting:
+            let others = roundOthers.count
             item.toolTip =
-                layer.openCount > 0
-                ? "Send Open Comments to the Agent (⇧⌘↩)"
-                : "An agent is waiting, but there are no open comments to send."
+                openInRound == 0
+                ? "An agent is waiting, but there are no open comments to send."
+                : others == 0
+                    ? "Send Open Comments to the Agent (⇧⌘↩)"
+                    : "Send Open Comments on This and \(others) Other Document\(others == 1 ? "" : "s") to the Agent (⇧⌘↩)"
         case .working:
             item.toolTip = "The agent is working on the comments you sent."
         case .none:
@@ -823,14 +833,16 @@ final class DocumentWindow: NSWindowController, NSWindowDelegate, NSToolbarDeleg
     @objc func marginSendToAgent(_ sender: Any?) {
         updateAgent()
         guard canSend, let agents else {
-            banner.show(layer.openCount == 0 ? "No open comments" : "No agent is waiting", undo: nil)
+            banner.show(openInRound == 0 ? "No open comments" : "No agent is waiting", undo: nil)
             return
         }
         save()
         do {
             let n = try agents.send(nowMs: DocumentWindow.nowMs())
-            let open = layer.openCount
-            let what = open == 1 ? "1 open comment" : "\(open) open comments"
+            let open = openInRound
+            let docs = roundOthers.filter { $0.open > 0 }.count + (layer.openCount > 0 ? 1 : 0)
+            let what =
+                (open == 1 ? "1 open comment" : "\(open) open comments") + (docs > 1 ? " on \(docs) documents" : "")
             banner.show(
                 n == 0 ? "No agent is waiting" : "Sent \(what) to \(n == 1 ? "the agent" : "\(n) agents")", undo: nil)
         } catch {
