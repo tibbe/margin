@@ -1,8 +1,7 @@
 # Margin on Linux: design system
 
-The Linux editor is built for [Omarchy](https://omarchy.org) with GTK 4
-(4.20+) and libadwaita (1.8+). The goal is for Margin to feel like one of
-Omarchy's own apps (such as Omawrite).
+The Linux editor is built for [Omarchy](https://omarchy.org). The goal is
+for Margin to feel like one of Omarchy's own apps (such as Omawrite).
 
 ## Foundations
 
@@ -46,6 +45,7 @@ dark, and libadwaita is forced to match.
 | Change bar: added | `green`, `color2` | `#2ec27e` | `#57e389` |
 | Change bar: changed | `blue`, `color4` | `#3584e4` | `#62a0ea` |
 | Change mark: deleted | `red`, `color1` | `#e01b24` | `#f66151` |
+| Errors | `red`, `color1` | `#e01b24` | `#f66151` |
 
 Missing Omarchy keys fall back to the text, background or accent color.
 Without an Omarchy theme, Margin uses the Adwaita palette above and follows
@@ -100,6 +100,12 @@ At a 16px (12pt) body, scaled with the text size:
 - Open and Save As use `GtkFileDialog` (the desktop portal), filtered to
   Markdown (`.md`, `.markdown`, `text/markdown`). Open starts in the current
   document's folder.
+
+## Rendering
+
+- An image path starting with `/` is from the file system's root.
+- The broken-image mark is the icon theme's `image-missing-symbolic`, and a
+  diagram error's header starts with `dialog-warning-symbolic`.
 
 ## Editing
 

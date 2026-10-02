@@ -101,11 +101,13 @@ comments) and a **coding agent**.
 ### User Stories
 
 1. As a writer, I want HTML, front matter and link reference definitions shown as dimmed source, and tables as grids that edit as text, so that nothing in the file is hidden or misrendered.
-2. As a writer, I want images shown as their alt text, so that I know an image is there without the editor loading files.
-3. As a writer, I want the syntax of the blank line I'm on, and the fences of the code block I'm in, shown, so that I can edit what is otherwise invisible.
-4. As a writer, I want a marker without its space (`#`, `-`) left as typed, so that a line isn't formatted before I mean it.
-5. As a writer, I want to switch a window to raw source, keeping my place, so that I can see exactly what is in the file.
-6. As a writer, I want hard-wrapped paragraphs to reflow to the window when I choose, without changing the file, so that I can read them comfortably.
+2. As a writer, I want images shown as images, local and remote, so that I see the screenshot or mockup a spec is about.
+3. As a writer, I want Mermaid diagrams shown as diagrams, so that I read a flowchart as a flowchart, not as its source.
+4. As a writer, I want an image or diagram that can't be shown to say why, so that I can fix it.
+5. As a writer, I want the syntax of the blank line I'm on, and the fences of the code block I'm in, shown, so that I can edit what is otherwise invisible.
+6. As a writer, I want a marker without its space (`#`, `-`) left as typed, so that a line isn't formatted before I mean it.
+7. As a writer, I want to switch a window to raw source, keeping my place, so that I can see exactly what is in the file.
+8. As a writer, I want hard-wrapped paragraphs to reflow to the window when I choose, without changing the file, so that I can read them comfortably.
 
 ### Decisions
 
@@ -113,11 +115,30 @@ comments) and a **coding agent**.
   matter.
 - Tables show as grids.
 - HTML, front matter and link reference definitions show as dimmed
-  monospace source; images as italic, link-colored alt text; bare URLs and
-  autolinks as links with the URL visible. Checked tasks are struck through
-  and dimmed; Heading 6 is dimmed.
+  monospace source; bare URLs and autolinks as links with the URL visible.
+  Checked tasks are struck through and dimmed; Heading 6 is dimmed.
 - Bullets change shape with nesting depth. A code block sits on a tinted
   background and shows its language; a quote has a bar down its left side.
+- An image alone in its paragraph, in a list item or a quote too, shows as
+  the image; an image in running text shows as italic, link-colored alt
+  text. Relative paths are from the document's folder; remote images load
+  too.
+- An image shows at its own size, scaled with the zoom, never wider than
+  the text column and never enlarged. A placeholder, a box on the code
+  background, holds its place until its size is known; when the size
+  arrives, the text being read stays where it is.
+- An image that is missing or can't be read shows as its alt text (its file
+  name, without one) after a broken-image mark; hovering it gives the path
+  or URL and the reason.
+- A `mermaid` code block shows as its diagram, in the page's colors: nodes
+  on the code background with borders around them, text in the text color,
+  lines and arrows dimmed. One that can't be drawn shows as an error block
+  on the code background: the message saying what is wrong, in the error
+  color, then the source with the line at fault marked. An unknown diagram
+  type, or one Margin can't draw, says which. A broken diagram never shows
+  its last good picture. Code blocks in other diagram languages (PlantUML,
+  Graphviz) stay code blocks.
+- A selected image or diagram is tinted with the selection color.
 - Reflow Paragraphs is off by default, global and persisted. Show Markdown is
   per window and not persisted.
 
@@ -136,6 +157,7 @@ comments) and a **coding agent**.
 9. As a writer, I want the characters I type written exactly as typed, so that the file holds what I typed.
 10. As a writer, I want search to match the text as shown, so that "bold text" finds `**bold** text`.
 11. As a writer, I want replacing to keep formatting around a match, so that I can rename things safely.
+12. As a writer, I want an image or diagram to act as one piece, so that I never break its syntax by accident.
 
 ### Decisions
 
@@ -154,17 +176,29 @@ Every editor produces the same source for the same keys. The choices:
   paragraph. Bold and friends act on the word at the cursor when nothing is
   selected.
 - An item nested under a numbered item starts a sublist at 1.
+- An image or diagram shown as such is one object, and the cursor never
+  rests in its source. Left or Right toward it selects it, and the next
+  press moves past it, as in Obsidian; Up and Down pass it keeping the
+  column; Shift extends a selection over it whole. A click selects it too.
+  Selected, Delete removes it, typing replaces it, and copying gives its
+  Markdown. Its source is edited in Show Markdown.
 - No automatic character substitution (smart quotes, dashes, autocorrect).
 - Links to `.md`/`.markdown` files open in Margin; other files in their
   default app.
 - Find ignores case by default and treats line breaks inside paragraphs as
   spaces. Replace edits in place when the match is plain text, otherwise
   deletes and retypes through the editing rules.
+- Find matches what is shown. An image drawn as an image matches nothing,
+  neither its alt text nor its path; alt text that is shown (an image in
+  running text, a missing image) matches. A diagram matches the labels it
+  draws, highlighted where they are drawn. Replace skips matches in
+  diagrams, and Replace All says how many it left.
 - Replacing a selection (typing or pasting over it, a spelling correction)
   edits in place when it lies in plain text, keeping the formatting around
   it; otherwise it deletes and then types through the editing rules.
-- Print renders the document as shown, without comments or change marks,
-  with the body at 11pt in the light appearance.
+- Print renders the document as shown, images and diagrams included once
+  loaded, without comments or change marks, with the body at 11pt in the
+  light appearance.
 
 ## Comments
 
@@ -212,7 +246,9 @@ Every editor produces the same source for the same keys. The choices:
 - A thread's anchor follows its text through edits, as the table after
   this list sets out.
 - A new comment's span is trimmed of whitespace and hidden syntax; without a
-  selection it takes the word at the cursor. The document is saved first.
+  selection it takes the word at the cursor. A comment on an image or
+  diagram is on all of its source: the whole object is tinted, and its card
+  sits beside the object's top. The document is saved first.
   If its text is deleted before it is posted, it doesn't post (there is
   nothing to comment on) and the draft stays, so its words aren't lost.
 - Cards never overlap. With no thread focused, each card sits beside its
@@ -345,7 +381,8 @@ put anchors in the same places:
 - A changed line has a bar in the left margin beside every line on screen
   that shows part of it, so a one-line paragraph is marked whole, in Show
   Markdown and Reflow Paragraphs too: a thin bar a little way left of the
-  text, green for added lines and blue for changed ones.
+  text, green for added lines and blue for changed ones. An image or
+  diagram is marked along its height.
   Where lines were deleted, a small red triangle sits between the lines
   around them. Lines that show nothing, such as the blank lines between
   paragraphs, have no bar, and a change to only those is marked as a
@@ -387,13 +424,14 @@ Colors go by role:
 | Dimmed text | Syntax and source, times, Heading 6 |
 | Borders | Cards, rules, quote bars |
 | Accent | Focus, checked boxes |
-| Selection | Selected text |
+| Selection | Selected text, a selected image or diagram |
 | Code background | Code blocks, inline code, table headers |
 | Card background | Cards |
 | Comment highlight | Commented text, stronger for the focused thread |
 | Find matches | Find matches, stronger for the current one |
 | Links | Links, image alt text |
 | Change bars | Added, changed and deleted lines |
+| Errors | Diagram errors |
 
 ## Commands
 
@@ -527,12 +565,6 @@ The commands:
   badly.
 
 ## Platforms
-
-Every editor shares the core: Markdown analysis, editing rules, find, the
-comment store and anchoring, keeping the text and its file in step
-(autosave, outside edits, conflicts), the changes since the last commit, and
-the CLI. Each platform provides the UI and system integration, and routes
-every edit through the core.
 
 - Each editor uses its platform's own pieces wherever one exists: menus,
   window chrome, dialogs, file pickers, the print dialog, system colors and

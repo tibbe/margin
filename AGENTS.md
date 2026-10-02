@@ -10,14 +10,18 @@ This project uses specification-driven development.
 
 - `docs/spec.md`: the product spec: problem, user stories, product
   decisions, and the UX the platforms share.
-- `docs/linux/design_system.md`: the Linux editor's design system.
-- `docs/macos/design_system.md`: the macOS editor's design system.
-- `docs/macos/architecture.md`: the macOS editor's architecturally
-  significant decisions, the ones costly to change later, e.g. its
-  language and frameworks.
+- `docs/<platform>/design_system.md` (`linux`, `macos`, `web`): a platform's
+  UX.
+- `docs/architecture.md`: the architecturally significant decisions every
+  platform shares, the ones costly to change later, e.g. languages and
+  frameworks.
+- `docs/<platform>/architecture.md` (`linux`, `macos`, `web`): a
+  platform's own architecturally significant decisions.
 
-UX that holds on every platform belongs in the spec; a design system holds
-only the UX specific to its platform.
+UX that holds on every platform belongs in the spec, and architecture that
+holds on every platform in `docs/architecture.md`; a platform's documents
+hold only what is specific to it. How the code does what the specs say
+belongs in the code and its comments.
 Keep the specs in step with user-visible behavior changes. Keep `margin --help` and
 `skills/margin/SKILL.md` in step with agent-facing behavior changes.
 

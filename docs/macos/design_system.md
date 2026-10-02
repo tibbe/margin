@@ -32,6 +32,7 @@ works, but for one color of Margin's own:
 | Find matches | `findHighlightColor` at 35% (90% for the current match) |
 | Links | `linkColor` |
 | Change bars: added, changed, deleted | `systemGreen`, `systemBlue`, `systemRed` |
+| Errors | `systemRed` |
 
 ### Type
 
@@ -95,6 +96,11 @@ so there is no version history (Revert To ▸ Browse All Versions) and no
 - The grid is in a box with a 6pt radius. Cells have 10pt of padding at the
   sides and 6pt above and below. Text is at 94% of body size. A table wider
   than the page is cut off at its right edge.
+- An image path starting with `/` is from the file system's root.
+- Image placeholders and diagram error blocks have a 6pt radius, as code
+  blocks' boxes do.
+- The broken-image mark is the `photo.badge.exclamationmark` symbol, and a
+  diagram error's header starts with `exclamationmark.triangle.fill`.
 
 ## Editing
 
