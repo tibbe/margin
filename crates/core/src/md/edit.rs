@@ -11,7 +11,7 @@
     reason = "deletions are lists of byte ranges, often of one range"
 )]
 
-use super::doc::{Container, Doc, ImageBlock, InlineKind, LineKind};
+use super::doc::{Container, Doc, InlineKind, LineKind};
 use std::ops::Range;
 use unicode_segmentation::UnicodeSegmentation;
 
@@ -767,8 +767,8 @@ pub fn backspace(src: &str, doc: &Doc, pos: usize) -> Plan {
         // Back to the end of the text above, over hidden blank lines, so
         // that Enter then Backspace is a round trip.
         let prev = prev_visible_line(doc, li);
-        if let Some(im) = prev.and_then(|pi| doc.image_block_on_line(pi)) {
-            return select_image(im);
+        if let Some(object) = prev.and_then(|pi| doc.object_on_line(pi)) {
+            return select_object(object);
         }
         return match prev {
             Some(pi) => {
@@ -906,8 +906,8 @@ fn backspace_at_start(src: &str, doc: &Doc, li: usize) -> Plan {
     let Some(pi) = prev_visible_line(doc, li) else {
         return Plan::cursor_only(line.content_start);
     };
-    if let Some(im) = doc.image_block_on_line(pi) {
-        return select_image(im);
+    if let Some(object) = doc.object_on_line(pi) {
+        return select_object(object);
     }
     let prev = &doc.lines[pi];
     match prev.kind {
@@ -935,14 +935,14 @@ fn backspace_at_start(src: &str, doc: &Doc, li: usize) -> Plan {
     }
 }
 
-/// Backspace or Delete toward an image block, which would join the lines
-/// and turn the image into running text: it selects the image instead,
+/// Backspace or Delete toward an object, an image or a diagram, which would
+/// join its lines to the text beside it: it selects the object instead,
 /// which the next press deletes.
-fn select_image(im: &ImageBlock) -> Plan {
+fn select_object(object: Range<usize>) -> Plan {
     Plan {
         changes: Vec::new(),
-        cursor: im.range.end,
-        selection: Some(im.range.clone()),
+        cursor: object.end,
+        selection: Some(object),
     }
 }
 
@@ -964,9 +964,9 @@ pub fn delete_forward(src: &str, doc: &Doc, pos: usize) -> Plan {
         };
         let next = &doc.lines[ni];
         if line.kind != LineKind::CodeContent
-            && let Some(im) = doc.image_block_on_line(ni)
+            && let Some(object) = doc.object_on_line(ni)
         {
-            return select_image(im);
+            return select_object(object);
         }
         return match next.kind {
             LineKind::Rule => Plan::mapped(vec![Change::delete(line.end..next.end)], p, false),
@@ -1103,18 +1103,18 @@ pub fn word_at(src: &str, doc: &Doc, pos: usize) -> Option<Range<usize>> {
         .find(|r| r.start <= l.content_start + rel && l.content_start + rel <= r.end)
 }
 
-/// Shrinks `a..b` past hidden syntax and whitespace at both ends. An image
-/// block it touches is one piece, so it is kept whole: a comment on an
-/// image is on all of its source.
+/// Shrinks `a..b` past hidden syntax and whitespace at both ends. An
+/// object, an image or a diagram, it touches is one piece, so it is kept
+/// whole: a comment on an image is on all of its source.
 pub fn trim_segment(src: &str, doc: &Doc, a: usize, b: usize) -> Option<Range<usize>> {
     let trimmed = trim_text(src, doc, a, b);
-    doc.images
-        .iter()
-        .filter(|im| im.range.start < b && a < im.range.end)
-        .fold(trimmed, |r, im| {
+    doc.objects()
+        .into_iter()
+        .filter(|o| o.start < b && a < o.end)
+        .fold(trimmed, |r, o| {
             Some(match r {
-                Some(r) => r.start.min(im.range.start)..r.end.max(im.range.end),
-                None => im.range.clone(),
+                Some(r) => r.start.min(o.start)..r.end.max(o.end),
+                None => o,
             })
         })
 }
@@ -2160,6 +2160,24 @@ mod tests {
         let plan = toggle_inline(src, &doc, im.clone(), InlineKind::Strong);
         assert!(plan.changes.is_empty());
         assert_eq!(plan.selection, Some(im));
+    }
+
+    #[test]
+    fn backspace_and_delete_toward_a_diagram_select_it() {
+        assert_eq!(
+            marked("Intro.\n\n```mermaid\npie\n```\n\n|Next.\n", backspace),
+            "Intro.\n\n[```mermaid\npie\n```]\n\nNext.\n"
+        );
+        assert_eq!(
+            marked("Intro.|\n\n```mermaid\npie\n```\n", delete_forward),
+            "Intro.\n\n[```mermaid\npie\n```]\n"
+        );
+        let src = "a\n\n```mermaid\npie\n```\n";
+        let doc = parse(src);
+        assert_eq!(
+            trim_segment(src, &doc, 8, 10),
+            Some(doc.diagrams[0].range.clone())
+        );
     }
 
     #[test]

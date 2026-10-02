@@ -5,6 +5,8 @@
 
 pub mod changes;
 pub mod comments;
+#[cfg(feature = "diagrams")]
+pub mod diagram;
 pub mod diff;
 pub mod file_sync;
 pub mod md;

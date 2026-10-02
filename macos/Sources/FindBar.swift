@@ -1,8 +1,27 @@
 import AppKit
 
+/// A find match: in the text, or in a label a diagram draws, which has no
+/// text in the document to select or replace.
+enum FindMatch: Equatable {
+    case text(NSRange)
+    /// In label `label` of the diagram starting at `start`, at `range` in its
+    /// text.
+    case label(start: Int, label: Int, range: NSRange)
+
+    /// Where it is in the document, for its order.
+    var location: Int {
+        switch self {
+        case .text(let r): r.location
+        case .label(let start, _, _): start
+        }
+    }
+}
+
 /// Find and replace over the text as shown: hidden Markdown syntax is
-/// skipped, so "bold text" finds `**bold** text`. Replacing goes through the
-/// editing rules, so formatting around a match survives.
+/// skipped, so "bold text" finds `**bold** text`, and a drawn diagram's
+/// labels are found where they are drawn. Replacing goes through the
+/// editing rules, so formatting around a match survives; matches in
+/// diagrams are skipped.
 final class FindBar: NSView, NSSearchFieldDelegate, NSTextFieldDelegate {
     unowned let view: DocTextView
     let search = NSSearchField()
@@ -11,7 +30,11 @@ final class FindBar: NSView, NSSearchFieldDelegate, NSTextFieldDelegate {
     private let matchCase = NSButton(title: "Aa", target: nil, action: nil)
     private let steps = NSSegmentedControl()
     private let replaceRow = NSStackView()
-    private(set) var matches: [NSRange] = []
+    private(set) var matches: [FindMatch] = []
+    /// The matches in the text, which can be selected and replaced.
+    var textMatches: [NSRange] {
+        matches.compactMap { if case .text(let r) = $0 { r } else { nil } }
+    }
     private(set) var current: Int?
     /// Shown, hidden, or matches changed: highlights need redrawing.
     var onChange: (() -> Void)?
@@ -121,6 +144,8 @@ final class FindBar: NSView, NSSearchFieldDelegate, NSTextFieldDelegate {
     }
 
     /// Hides the bar and selects the current match.
+    /// Hides the bar and selects the current match; in a diagram, the
+    /// diagram.
     func close() {
         let m = current.flatMap { $0 < matches.count ? matches[$0] : nil }
         isHidden = true
@@ -128,7 +153,11 @@ final class FindBar: NSView, NSSearchFieldDelegate, NSTextFieldDelegate {
         current = nil
         onChange?()
         window?.makeFirstResponder(view)
-        if let m { view.setSelectedRange(m) }
+        switch m {
+        case .text(let r)?: view.setSelectedRange(r)
+        case .label(let start, _, _)?: if let o = view.object(at: start) { view.setSelectedRange(o.range) }
+        case nil: break
+        }
         onClose?()
     }
 
@@ -140,12 +169,21 @@ final class FindBar: NSView, NSSearchFieldDelegate, NSTextFieldDelegate {
         guard isOpen else { return }
         view.ensureFresh()
         let needle = search.stringValue
-        matches =
+        let exact = matchCase.state == .on
+        let text: [FindMatch] =
             needle.isEmpty
             ? []
             : view.analysis.findAll(
-                needle: needle, matchCase: matchCase.state == .on, altTextImages: view.altTextImages
-            ).map { NSRange($0) }
+                needle: needle, matchCase: exact, altTextImages: view.altTextImages,
+                sourceDiagrams: view.sourceDiagrams
+            ).map { .text(NSRange($0)) }
+        let labels: [FindMatch] = view.labelMatches(needle, matchCase: exact).map {
+            .label(start: $0.start, label: $0.label, range: $0.range)
+        }
+        // In document order; a diagram's labels in the order it draws them.
+        matches = (text + labels).enumerated().sorted {
+            ($0.element.location, $0.offset) < ($1.element.location, $1.offset)
+        }.map(\.element)
         if matches.isEmpty {
             current = nil
         } else if goingToMatchAtOrAfterCursor || current == nil {
@@ -167,16 +205,34 @@ final class FindBar: NSView, NSSearchFieldDelegate, NSTextFieldDelegate {
         }
     }
 
-    /// Highlights for the matches, the current one strongest.
+    /// Highlights for the matches in the text, the current one strongest.
     func highlights() -> [(NSRange, NSColor)] {
         guard isOpen else { return [] }
-        return matches.enumerated().map { ($0.element, Theme.findMatch(current: $0.offset == current)) }
+        return matches.enumerated().compactMap { i, m in
+            guard case .text(let r) = m else { return nil }
+            return (r, Theme.findMatch(current: i == current))
+        }
+    }
+
+    /// Highlights for the matches in diagrams' labels, by diagram start and
+    /// label, the current one strongest.
+    func labelHighlights() -> [(start: Int, label: Int, color: NSColor)] {
+        guard isOpen else { return [] }
+        return matches.enumerated().compactMap { i, m in
+            guard case .label(let start, let label, _) = m else { return nil }
+            return (start, label, Theme.findMatch(current: i == current))
+        }
     }
 
     private func reveal() {
         guard let i = current, i < matches.count else { return }
-        view.scrollRangeToVisible(matches[i])
-        view.showFindIndicator(for: matches[i])
+        switch matches[i] {
+        case .text(let r):
+            view.scrollRangeToVisible(r)
+            view.showFindIndicator(for: r)
+        case .label(let start, _, _):
+            view.scrollRangeToVisible(NSRange(location: start, length: 0))
+        }
     }
 
     func step(forward: Bool) {
@@ -207,24 +263,30 @@ final class FindBar: NSView, NSSearchFieldDelegate, NSTextFieldDelegate {
         }
     }
 
+    /// Replaces the current match; one in a diagram is skipped, to the next.
     func replaceCurrent() {
         guard let i = current, i < matches.count else { return }
+        guard case .text(let r) = matches[i] else { return step(forward: true) }
         view.undoManager?.beginUndoGrouping()
-        replace(matches[i], with: replaceField.stringValue)
+        replace(r, with: replaceField.stringValue)
         view.undoManager?.endUndoGrouping()
         refresh(goingToMatchAtOrAfterCursor: false)
         reveal()
     }
 
+    /// Replaces every match in the text, and says how many it left in
+    /// diagrams.
     func replaceAll() {
         view.ensureFresh()
         if let plan = view.analysis.replaceAll(
             needle: search.stringValue, matchCase: matchCase.state == .on, with: replaceField.stringValue,
-            altTextImages: view.altTextImages)
+            altTextImages: view.altTextImages, sourceDiagrams: view.sourceDiagrams)
         {
             view.apply(plan)
         }
         refresh(goingToMatchAtOrAfterCursor: false)
+        let left = matches.count - textMatches.count
+        if left > 0 { count.stringValue = left == 1 ? "1 left in a diagram" : "\(left) left in diagrams" }
     }
 
     @objc private func searchChanged() {

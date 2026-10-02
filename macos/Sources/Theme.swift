@@ -66,6 +66,8 @@ enum Theme {
     static var accent: NSColor { .controlAccentColor }
     static var link: NSColor { .linkColor }
     static var codeBackground: NSColor { .quaternarySystemFill }
+    /// What has gone wrong: a diagram that can't be drawn.
+    static var error: NSColor { .systemRed }
     static var cardBackground: NSColor { .controlBackgroundColor }
 
     /// Commented text: Apple's purple author color, not yellow, which is

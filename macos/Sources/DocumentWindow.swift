@@ -166,6 +166,7 @@ final class DocumentWindow: NSWindowController, NSWindowDelegate, NSToolbarDeleg
                 self.scrollView.isFindBarVisible = self.findBar.isOpen
                 self.scrollView.tile()
             }
+            self.textView.labelHighlights = self.findBar.labelHighlights()
             self.layer.refreshHighlights()
         }
         followAgents()

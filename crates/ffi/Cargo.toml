@@ -14,7 +14,7 @@ crate-type = ["staticlib", "cdylib", "lib"]
 workspace = true
 
 [dependencies]
-margin-core.workspace = true
+margin-core = { workspace = true, features = ["diagrams"] }
 anyhow.workspace = true
 chrono.workspace = true
 uniffi.workspace = true

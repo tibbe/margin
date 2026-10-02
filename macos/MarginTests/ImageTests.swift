@@ -149,12 +149,12 @@ final class ImageTests: XCTestCase {
         func found(_ s: String) -> [String] {
             find.search.stringValue = s
             find.refresh(goingToMatchAtOrAfterCursor: false)
-            return find.matches.map { (h.text as NSString).substring(with: $0) }
+            return find.textMatches.map { (h.text as NSString).substring(with: $0) }
         }
         // An image drawn as an image matches nothing, neither its alt text
         // nor its path; alt text that is shown does.
         XCTAssertEqual(found("shown"), ["shown"])
-        XCTAssertEqual(find.matches.first?.location, (h.text as NSString).range(of: "shown text").location)
+        XCTAssertEqual(find.textMatches.first?.location, (h.text as NSString).range(of: "shown text").location)
         XCTAssertEqual(found("ok.png"), [])
         XCTAssertEqual(found("lost"), ["lost"])
         XCTAssertEqual(found("inline"), ["inline"])

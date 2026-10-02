@@ -258,6 +258,21 @@ pub struct ImageBlock {
     pub alt: Vec<Range<usize>>,
 }
 
+/// A `mermaid` fenced code block, which an editor shows as its diagram:
+/// one object, as an image block is.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DiagramBlock {
+    /// From its opening fence to the end of its last line.
+    pub range: Range<usize>,
+    pub first_line: usize,
+    pub last_line: usize,
+    /// The diagram's source: its code, without the fences or the prefixes
+    /// of the lists and quotes it is in, each line ended by a newline.
+    pub source: String,
+    /// Where each line of `source` starts in the document.
+    pub line_starts: Vec<usize>,
+}
+
 #[derive(Clone, Debug, Default)]
 pub struct Doc {
     pub len: usize,
@@ -270,6 +285,8 @@ pub struct Doc {
     pub tables: Vec<Table>,
     /// In source order, at most one per line.
     pub images: Vec<ImageBlock>,
+    /// In source order.
+    pub diagrams: Vec<DiagramBlock>,
     pub inlines: Vec<Inline>,
     /// Hidden inline syntax (emphasis markers, link destinations, escapes),
     /// sorted and merged. Block prefixes are described by
@@ -845,6 +862,7 @@ impl Builder<'_> {
         self.inlines.sort_by_key(|i| i.open.start);
         self.blocks.sort_by_key(|b| b.range.start);
         let images = self.image_blocks(&hidden);
+        let diagrams = self.diagram_blocks();
 
         Doc {
             len: self.src.len(),
@@ -856,6 +874,7 @@ impl Builder<'_> {
             code_blocks: self.code_blocks,
             tables: self.tables,
             images,
+            diagrams,
             inlines: self.inlines,
             hidden,
             spans: self.spans,
@@ -1503,6 +1522,36 @@ impl Builder<'_> {
         out
     }
 
+    /// `mermaid` fenced code blocks ([`DiagramBlock`]): those whose info
+    /// string's first word is `mermaid`, in any case.
+    fn diagram_blocks(&self) -> Vec<DiagramBlock> {
+        let mut out = Vec::new();
+        for cb in &self.code_blocks {
+            let Some(open) = cb.open_line else { continue };
+            let lang = cb.info.split_whitespace().next().unwrap_or("");
+            if !cb.fenced || !lang.eq_ignore_ascii_case("mermaid") {
+                continue;
+            }
+            let mut source = String::new();
+            let mut line_starts = Vec::new();
+            for li in cb.content_lines() {
+                let l = &self.lines[li];
+                line_starts.push(l.content_start);
+                source.push_str(&self.src[l.content_start..l.end.max(l.content_start)]);
+                source.push('\n');
+            }
+            out.push(DiagramBlock {
+                range: self.lines[open].content_start..self.lines[cb.last_line].end,
+                first_line: cb.first_line,
+                last_line: cb.last_line,
+                source,
+                line_starts,
+            });
+        }
+        out.sort_by_key(|d| d.range.start);
+        out
+    }
+
     /// Each line's first shown byte ([`Line::visible_start`]): from its
     /// content start, past what the hidden spans cover.
     fn assign_visible_starts(&mut self) {
@@ -1631,6 +1680,32 @@ impl Doc {
     pub fn image_block_on_line(&self, line: usize) -> Option<&ImageBlock> {
         let i = self.images.partition_point(|im| im.line < line);
         self.images.get(i).filter(|im| im.line == line)
+    }
+
+    /// The diagram block that `line` is one of, if any.
+    pub fn diagram_on_line(&self, line: usize) -> Option<&DiagramBlock> {
+        let i = self.diagrams.partition_point(|d| d.last_line < line);
+        self.diagrams.get(i).filter(|d| d.first_line <= line)
+    }
+
+    /// The source of the object, an image or a diagram, that `line` is on:
+    /// what selecting the object selects.
+    pub fn object_on_line(&self, line: usize) -> Option<Range<usize>> {
+        self.image_block_on_line(line)
+            .map(|im| im.range.clone())
+            .or_else(|| self.diagram_on_line(line).map(|d| d.range.clone()))
+    }
+
+    /// The sources of the objects, images and diagrams, in source order.
+    pub fn objects(&self) -> Vec<Range<usize>> {
+        let mut out: Vec<Range<usize>> = self
+            .images
+            .iter()
+            .map(|im| im.range.clone())
+            .chain(self.diagrams.iter().map(|d| d.range.clone()))
+            .collect();
+        out.sort_by_key(|r| r.start);
+        out
     }
 }
 
@@ -2058,6 +2133,40 @@ mod tests {
         let doc = parse("a\n\n![a](a.png)\n");
         assert_eq!(doc.image_block_on_line(2).map(|im| im.line), Some(2));
         assert!(doc.image_block_on_line(0).is_none());
+    }
+
+    #[test]
+    fn mermaid_blocks_are_diagrams() {
+        let src = "Intro.\n\n```mermaid\nflowchart TD\n  A --> B\n```\n\n- ```Mermaid\n  pie\n  ```\n\n```js\nx\n```\n";
+        let doc = parse(src);
+        let d: Vec<(&str, &str, usize, usize)> = doc
+            .diagrams
+            .iter()
+            .map(|d| {
+                (
+                    &src[d.range.clone()],
+                    d.source.as_str(),
+                    d.first_line,
+                    d.last_line,
+                )
+            })
+            .collect();
+        assert_eq!(
+            d,
+            [
+                (
+                    "```mermaid\nflowchart TD\n  A --> B\n```",
+                    "flowchart TD\n  A --> B\n",
+                    2,
+                    5
+                ),
+                ("```Mermaid\n  pie\n  ```", "pie\n", 7, 9),
+            ]
+        );
+        assert_eq!(&src[doc.diagrams[0].line_starts[1]..][..3], "  A");
+        assert_eq!(doc.object_on_line(4), Some(doc.diagrams[0].range.clone()));
+        assert_eq!(doc.object_on_line(6), None);
+        assert_eq!(doc.objects().len(), 2);
     }
 
     #[test]

@@ -1,5 +1,6 @@
 import AppKit
 import ImageIO
+import margin_ffi
 
 /// Where an image's path or URL points.
 enum ImageSource: Hashable {
@@ -9,6 +10,8 @@ enum ImageSource: Hashable {
     case remote(URL)
     /// Nothing Margin can load: what was written, and why.
     case unusable(written: String, reason: String)
+    /// A Mermaid diagram's source, drawn in the page's colors.
+    case diagram(String, DiagramColors)
 
     /// The source of an image whose destination is `written`, in a document
     /// in `folder`. A relative path is from the document's folder, and one
@@ -35,6 +38,7 @@ enum ImageSource: Hashable {
         case .file(let path): path
         case .remote(let url): url.absoluteString
         case .unusable(let written, _): written
+        case .diagram: "diagram"
         }
     }
 
@@ -45,6 +49,7 @@ enum ImageSource: Hashable {
         case .remote(let url):
             url.lastPathComponent.isEmpty ? (url.host() ?? url.absoluteString) : url.lastPathComponent
         case .unusable(let written, _): (written as NSString).lastPathComponent
+        case .diagram: "diagram"
         }
     }
 }
@@ -59,11 +64,27 @@ struct LoadedImage {
     let data: Data
     /// A vector image (SVG, PDF), drawn as is at any size.
     let vector: NSImage?
+    /// A drawn diagram's SVG, which the core turns into pixels at any size,
+    /// and the labels it draws, where, in its own points.
+    let svg: String?
+    let labels: [DiagramLabel]
+
+    /// A drawn diagram, `size` points.
+    init(svg: String, size: NSSize, labels: [DiagramLabel]) {
+        self.svg = svg
+        self.size = size
+        self.labels = labels
+        pixels = 0
+        data = Data()
+        vector = nil
+    }
 
     /// Its size and kind from its header, without decoding it; nil if it
     /// isn't an image.
     init?(_ data: Data) {
         self.data = data
+        svg = nil
+        labels = []
         if let src = CGImageSourceCreateWithData(data as CFData, nil), CGImageSourceGetCount(src) > 0,
             let props = CGImageSourceCopyPropertiesAtIndex(src, 0, nil) as? [CFString: Any],
             let w = props[kCGImagePropertyPixelWidth] as? Int, let h = props[kCGImagePropertyPixelHeight] as? Int,
@@ -96,6 +117,9 @@ enum ImageState {
     case loaded(LoadedImage)
     /// It can't be shown, and why.
     case failed(String)
+    /// A diagram that can't be drawn: why, and the line of its source at
+    /// fault (from 0), when known.
+    case unrenderable(String, line: Int?)
 }
 
 /// Loads images, local and remote, without blocking the window, and keeps
@@ -164,6 +188,15 @@ final class ImageLibrary {
             states[source] = .failed(reason)
             return
         }
+        if case .diagram(let text, let colors) = source {
+            states[source] = .loading
+            let colors = Colors(colors)
+            Task.detached(priority: .userInitiated) {
+                let outcome = Outcome(renderDiagram(source: text, colors: colors.colors))
+                await MainActor.run { self.settle(source, outcome.state) }
+            }
+            return
+        }
         // A reload keeps showing what it has until it is done.
         if states[source] == nil { states[source] = .loading }
         Task {
@@ -201,24 +234,28 @@ final class ImageLibrary {
     func drawable(_ source: ImageSource, pixels: Int, now: Bool) -> NSImage? {
         guard case .loaded(let l)? = states[source] else { return nil }
         if let v = l.vector { return v }
-        let want = max(1, min(pixels, l.pixels))
+        // A diagram draws sharp at any size; an image no larger than it is.
+        let want = l.svg != nil ? max(1, pixels) : max(1, min(pixels, l.pixels))
         clock += 1
         let have = images[source]
         if have != nil { images[source]?.used = clock }
         if let have, have.pixels >= want { return have.image }
         if now {
-            guard let cg = ImageLibrary.decode(l.data, pixels: want) else { return have?.image }
+            guard let cg = ImageLibrary.decode(l, pixels: want) else { return have?.image }
             return keep(source, cg.image, size: l.size, pixels: want)
         }
         if !decoding.contains(source) {
             decoding.insert(source)
             let data = l.data
+            let job = Job(image: l)
             Task.detached(priority: .userInitiated) {
-                let cg = ImageLibrary.decode(data, pixels: want)
+                let cg = ImageLibrary.decode(job.image, pixels: want)
                 await MainActor.run {
                     self.decoding.remove(source)
                     // Loaded again meanwhile: that load's decoding is due.
-                    guard case .loaded(let now)? = self.states[source], now.data == data, let cg else { return }
+                    guard case .loaded(let now)? = self.states[source], now.data == data, now.svg == job.image.svg,
+                        let cg
+                    else { return }
                     _ = self.keep(source, cg.image, size: now.size, pixels: want)
                     NotificationCenter.default.post(
                         name: ImageLibrary.decoded, object: self, userInfo: [ImageLibrary.sourceKey: source])
@@ -251,10 +288,52 @@ final class ImageLibrary {
         let image: CGImage
     }
 
-    /// Decodes an image with `pixels` on its longer side, turned upright,
-    /// as Apple recommends for showing large images smaller.
-    nonisolated static func decode(_ data: Data, pixels: Int) -> Decoded? {
-        guard let src = CGImageSourceCreateWithData(data as CFData, nil) else { return nil }
+    /// A loaded image, to decode on another thread.
+    struct Job: @unchecked Sendable {
+        let image: LoadedImage
+    }
+
+    /// The page's colors, to draw a diagram in on another thread.
+    struct Colors: @unchecked Sendable {
+        let colors: DiagramColors
+        nonisolated init(_ colors: DiagramColors) { self.colors = colors }
+    }
+
+    /// What drawing a diagram gave, from another thread.
+    struct Outcome: @unchecked Sendable {
+        let outcome: DiagramOutcome
+        nonisolated init(_ outcome: DiagramOutcome) { self.outcome = outcome }
+
+        @MainActor var state: ImageState {
+            switch outcome {
+            case .drawn(let svg, let width, let height, let labels):
+                .loaded(
+                    LoadedImage(svg: svg, size: NSSize(width: Double(width), height: Double(height)), labels: labels))
+            case .failed(_, let message, let line):
+                .unrenderable(message, line: line.map { Int($0) })
+            }
+        }
+    }
+
+    /// Decodes an image with `pixels` on its longer side: a bitmap turned
+    /// upright, as Apple recommends for showing large images smaller, or a
+    /// diagram drawn by the core.
+    nonisolated static func decode(_ image: LoadedImage, pixels: Int) -> Decoded? {
+        if let svg = image.svg {
+            let scale = Double(pixels) / max(1, max(image.size.width, image.size.height))
+            let w = max(1, Int((image.size.width * scale).rounded()))
+            let h = max(1, Int((image.size.height * scale).rounded()))
+            guard let rgba = rasterizeDiagram(svg: svg, width: UInt32(w), height: UInt32(h)),
+                let provider = CGDataProvider(data: Data(rgba) as CFData),
+                let cg = CGImage(
+                    width: w, height: h, bitsPerComponent: 8, bitsPerPixel: 32, bytesPerRow: w * 4,
+                    space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                    bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.premultipliedLast.rawValue), provider: provider,
+                    decode: nil, shouldInterpolate: true, intent: .defaultIntent)
+            else { return nil }
+            return Decoded(image: cg)
+        }
+        guard let src = CGImageSourceCreateWithData(image.data as CFData, nil) else { return nil }
         let options: [CFString: Any] = [
             kCGImageSourceCreateThumbnailFromImageAlways: true,
             kCGImageSourceThumbnailMaxPixelSize: pixels,
@@ -308,6 +387,8 @@ final class ImageLibrary {
             }
         case .unusable(_, let reason):
             return .failure(ImageLoadError(reason))
+        case .diagram:
+            return .failure(ImageLoadError("A diagram is drawn, not read."))
         }
     }
 }

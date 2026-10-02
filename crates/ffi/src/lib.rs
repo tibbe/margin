@@ -258,6 +258,20 @@ pub struct ImageBlockInfo {
     pub alt: Vec<TextRange>,
 }
 
+/// A `mermaid` code block (see `margin_core::md::DiagramBlock`), which the
+/// editor shows as its diagram: one object.
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct DiagramBlockInfo {
+    /// From its opening fence to the end of its last line.
+    pub range: TextRange,
+    pub first_line: u32,
+    pub last_line: u32,
+    /// The diagram's source, without fences or container prefixes.
+    pub source: String,
+    /// Where each line of `source` starts in the document.
+    pub line_starts: Vec<u32>,
+}
+
 #[derive(Debug, Clone, uniffi::Record)]
 pub struct Replacement {
     /// UTF-16 range of the text before the change.
@@ -660,6 +674,21 @@ impl Analysis {
             .collect()
     }
 
+    /// `mermaid` code blocks, in source order.
+    pub fn diagram_blocks(&self) -> Vec<DiagramBlockInfo> {
+        self.doc
+            .diagrams
+            .iter()
+            .map(|d| DiagramBlockInfo {
+                range: self.range(d.range.clone()),
+                first_line: d.first_line as u32,
+                last_line: d.last_line as u32,
+                source: d.source.clone(),
+                line_starts: d.line_starts.iter().map(|&b| self.u(b)).collect(),
+            })
+            .collect()
+    }
+
     /// Newlines inside paragraphs, which Reflow Paragraphs shows as spaces.
     pub fn soft_breaks(&self) -> Vec<u32> {
         self.doc.soft_breaks.iter().map(|&b| self.u(b)).collect()
@@ -838,8 +867,9 @@ impl Analysis {
         match_case: bool,
         with: String,
         alt_text_images: Vec<u32>,
+        source_diagrams: Vec<u32>,
     ) -> Option<EditPlan> {
-        let matches = self.find(&needle, match_case, &alt_text_images);
+        let matches = self.find(&needle, match_case, &alt_text_images, &source_diagrams);
         let first = matches.first()?.start;
         // Last to first, so earlier matches keep their offsets.
         let mut text = self.text.clone();
@@ -887,14 +917,17 @@ impl Analysis {
     /// Every match of `needle` in the text as shown. `alt_text_images` are
     /// the image blocks (indices into `image_blocks`) shown as their alt
     /// text, since they can't be loaded; the others show as images, which
-    /// match nothing.
+    /// match nothing. `source_diagrams` are the diagrams (indices into
+    /// `diagram_blocks`) shown as their source, since they can't be drawn;
+    /// the others are drawn, and their source matches nothing.
     pub fn find_all(
         &self,
         needle: String,
         match_case: bool,
         alt_text_images: Vec<u32>,
+        source_diagrams: Vec<u32>,
     ) -> Vec<TextRange> {
-        self.find(&needle, match_case, &alt_text_images)
+        self.find(&needle, match_case, &alt_text_images, &source_diagrams)
             .into_iter()
             .map(|r| self.range(r))
             .collect()
@@ -902,10 +935,21 @@ impl Analysis {
 }
 
 impl Analysis {
-    fn find(&self, needle: &str, match_case: bool, alt_text_images: &[u32]) -> Vec<Range<usize>> {
-        search::find_shown(&self.text, &self.doc, needle, match_case, |i| {
-            alt_text_images.contains(&(i as u32))
-        })
+    fn find(
+        &self,
+        needle: &str,
+        match_case: bool,
+        alt_text_images: &[u32],
+        source_diagrams: &[u32],
+    ) -> Vec<Range<usize>> {
+        search::find_shown(
+            &self.text,
+            &self.doc,
+            needle,
+            match_case,
+            |i| alt_text_images.contains(&(i as u32)),
+            |d| source_diagrams.contains(&(d as u32)),
+        )
     }
 }
 
@@ -921,6 +965,112 @@ pub struct LoadedText {
 
 fn read_loaded(path: &str) -> Result<Loaded> {
     Ok(Loaded::new(comments::read_doc(Path::new(path))?))
+}
+
+// --- Diagrams ---------------------------------------------------------------
+
+/// The page's colors, as CSS hex, which a diagram is drawn in.
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct DiagramColors {
+    pub background: String,
+    pub node: String,
+    pub border: String,
+    pub text: String,
+    pub line: String,
+    /// The body font's size, in points, before zoom.
+    pub font_size: u32,
+}
+
+/// Text a diagram draws, and where, in its own points.
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct DiagramLabel {
+    pub text: String,
+    pub x: f32,
+    pub y: f32,
+    pub width: f32,
+    pub height: f32,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum DiagramFailure {
+    Syntax,
+    UnknownType,
+    Unsupported,
+    TooLarge,
+    TooSlow,
+    Failed,
+}
+
+#[derive(Debug, Clone, uniffi::Enum)]
+pub enum DiagramOutcome {
+    /// Its SVG, its size in points, and the labels it draws.
+    Drawn {
+        svg: String,
+        width: f32,
+        height: f32,
+        labels: Vec<DiagramLabel>,
+    },
+    /// Why it can't be drawn, and the line of its source at fault (from 0),
+    /// when that is known.
+    Failed {
+        failure: DiagramFailure,
+        message: String,
+        line: Option<u32>,
+    },
+}
+
+/// Draws a Mermaid diagram's source in `colors`. Slow for a large diagram:
+/// call it off the main thread.
+#[uniffi::export]
+pub fn render_diagram(source: String, colors: DiagramColors) -> DiagramOutcome {
+    use margin_core::diagram::{self, Failure};
+    let colors = diagram::Colors {
+        background: colors.background,
+        node: colors.node,
+        border: colors.border,
+        text: colors.text,
+        line: colors.line,
+        font_size: colors.font_size,
+    };
+    match diagram::render(&source, &colors) {
+        Ok(d) => DiagramOutcome::Drawn {
+            svg: d.svg,
+            width: d.width,
+            height: d.height,
+            labels: d
+                .labels
+                .into_iter()
+                .map(|l| DiagramLabel {
+                    text: l.text,
+                    x: l.x,
+                    y: l.y,
+                    width: l.width,
+                    height: l.height,
+                })
+                .collect(),
+        },
+        Err(e) => DiagramOutcome::Failed {
+            failure: match e.failure {
+                Failure::Syntax => DiagramFailure::Syntax,
+                Failure::UnknownType => DiagramFailure::UnknownType,
+                Failure::Unsupported => DiagramFailure::Unsupported,
+                Failure::TooLarge => DiagramFailure::TooLarge,
+                Failure::TooSlow => DiagramFailure::TooSlow,
+                Failure::Failed => DiagramFailure::Failed,
+            },
+            message: e.message,
+            line: e
+                .span
+                .map(|s| source[..s.start.min(source.len())].matches('\n').count() as u32),
+        },
+    }
+}
+
+/// A drawn diagram's SVG as `width`×`height` pixels: RGBA, premultiplied,
+/// row by row.
+#[uniffi::export]
+pub fn rasterize_diagram(svg: String, width: u32, height: u32) -> Option<Vec<u8>> {
+    margin_core::diagram::rasterize(&svg, width, height)
 }
 
 /// Reads a document as UTF-8, normalized; a missing file reads as empty.

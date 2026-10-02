@@ -48,9 +48,11 @@ extension Harness {
         view.ensureFresh()
         return view.objects.map { o in
             switch view.look(of: o) {
-            case .image(_, let s): "image \(Int(s.width))×\(Int(s.height))"
+            case .image(let l, let s): "\(l.svg == nil ? "image" : "diagram") \(Int(s.width))×\(Int(s.height))"
             case .placeholder(let s): "placeholder \(Int(s.width))×\(Int(s.height))"
             case .broken(let b): "broken \(b.text.string.debugDescription)"
+            case .diagramError(let e):
+                "diagram error \(e.message.debugDescription) at \(e.fault.map(String.init) ?? "-")"
             }
         }
     }

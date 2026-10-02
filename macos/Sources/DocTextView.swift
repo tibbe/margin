@@ -23,10 +23,13 @@ final class DocTextView: NSTextView, NSTextStorageDelegate, NSTextViewDelegate, 
     private var tableRowStarts = Set<Int>()
     /// Newlines inside paragraphs, laid out as spaces while reflowing.
     private(set) var softBreaks = Set<Int>()
-    /// Images alone in their paragraphs, from the analysis.
+    /// Images alone in their paragraphs, and `mermaid` code blocks, from
+    /// the analysis.
     private(set) var imageBlocks: [ImageBlockInfo] = []
-    /// The image blocks shown as images (none in Show Markdown), in order.
-    private(set) var objects: [ImageObject] = []
+    private(set) var diagramBlocks: [DiagramBlockInfo] = []
+    /// The image blocks shown as images, and the diagrams (none in Show
+    /// Markdown), in order.
+    private(set) var objects: [DocObject] = []
     /// Indices into `objects`, by line and by first character.
     private var objectOnLine: [Int: Int] = [:]
     private var objectAtChar: [Int: Int] = [:]
@@ -234,6 +237,7 @@ final class DocTextView: NSTextView, NSTextStorageDelegate, NSTextViewDelegate, 
         codeBlocks = analysis.codeBlocks()
         tableInfos = analysis.tables()
         imageBlocks = analysis.imageBlocks()
+        diagramBlocks = analysis.diagramBlocks()
         let newSoft = Set(analysis.softBreaks().map { Int($0) })
         let changedSoft = newSoft.symmetricDifference(softBreaks)
         softBreaks = newSoft
@@ -384,28 +388,68 @@ final class DocTextView: NSTextView, NSTextStorageDelegate, NSTextViewDelegate, 
     /// The image blocks shown as images: all of them, but in Show Markdown.
     /// Lines whose image moved are laid out again.
     private func updateObjects() {
-        let old = objects.map(\.start)
-        objects =
-            sourceMode
-            ? []
-            : imageBlocks.enumerated().compactMap { i, b in
+        let old = objects.map { [$0.start: $0.source] }
+        var all: [DocObject] = []
+        if !sourceMode {
+            all = imageBlocks.enumerated().compactMap { i, b in
                 let li = Int(b.line)
                 guard li < lines.count else { return nil }
-                return ImageObject(
-                    index: i, info: b, source: ImageSource.resolve(b.url, from: imageFolder), line: li,
-                    end: Int(lines[li].end))
+                return DocObject(
+                    kind: .image(b), index: i, source: ImageSource.resolve(b.url, from: imageFolder), line: li,
+                    lastLine: li, start: Int(b.range.start), sourceEnd: Int(b.range.end), end: Int(lines[li].end))
             }
+            let colors = diagramColors()
+            all += diagramBlocks.enumerated().compactMap { i, d in
+                let first = Int(d.firstLine)
+                let last = Int(d.lastLine)
+                guard last < lines.count else { return nil }
+                return DocObject(
+                    kind: .diagram(d), index: i, source: .diagram(d.source, colors), line: first, lastLine: last,
+                    start: Int(d.range.start), sourceEnd: Int(d.range.end), end: Int(lines[last].end))
+            }
+            all.sort { $0.start < $1.start }
+        }
+        objects = all
         objectOnLine = [:]
         objectAtChar = [:]
         for (i, o) in objects.enumerated() {
-            objectOnLine[o.line] = i
+            for li in o.line...o.lastLine { objectOnLine[li] = i }
             objectAtChar[o.start] = i
         }
-        if objects.map(\.start) != old { invalidateObjects(objects) }
+        if objects.map({ [$0.start: $0.source] }) != old { invalidateObjects(objects) }
     }
 
-    /// An image shows in place of its source: its first character is laid
-    /// out as the space it is drawn in, and the rest of its line hidden.
+    /// Whether line `li` is a diagram's, shown as the diagram.
+    private func isDiagram(line li: Int) -> Bool {
+        objectOnLine[li].map { objects[$0].isDiagram } ?? false
+    }
+
+    /// The page's colors, as the diagrams are drawn in them: nodes on the
+    /// code background with borders around them, text in the text color,
+    /// lines and arrows dimmed. See-through colors are taken over the page.
+    private func diagramColors() -> DiagramColors {
+        var colors = DiagramColors(
+            background: "#ffffff", node: "#f2f2f2", border: "#d0d0d0", text: "#000000", line: "#808080",
+            fontSize: UInt32(Theme.baseBodySize))
+        effectiveAppearance.performAsCurrentDrawingAppearance {
+            let page = (backgroundColor.usingColorSpace(.sRGB) ?? .white)
+            func hex(_ c: NSColor) -> String {
+                let c = c.usingColorSpace(.sRGB) ?? c
+                let a = c.alphaComponent
+                let mix = { (f: CGFloat, b: CGFloat) in Int(((f * a + b * (1 - a)) * 255).rounded()) }
+                return String(
+                    format: "#%02X%02X%02X", mix(c.redComponent, page.redComponent),
+                    mix(c.greenComponent, page.greenComponent), mix(c.blueComponent, page.blueComponent))
+            }
+            colors = DiagramColors(
+                background: hex(page), node: hex(Theme.codeBackground), border: hex(Theme.border),
+                text: hex(Theme.text), line: hex(Theme.dim), fontSize: UInt32(Theme.baseBodySize))
+        }
+        return colors
+    }
+
+    /// An object shows in place of its source: its first character is laid
+    /// out as the space it is drawn in, and the rest of its lines hidden.
     private func objectSpans() -> [Span] {
         objects.flatMap { o in
             [
@@ -415,9 +459,9 @@ final class DocTextView: NSTextView, NSTextStorageDelegate, NSTextViewDelegate, 
         }
     }
 
-    /// The image on the line of `p`, if `p` is on it: from its start to its
-    /// line's end.
-    func object(at p: Int) -> ImageObject? {
+    /// The object on the line of `p`, if `p` is on it: from its start to its
+    /// last line's end.
+    func object(at p: Int) -> DocObject? {
         guard !objects.isEmpty, !lines.isEmpty else { return nil }
         let li = Int(analysis.lineIndex(pos: UInt32(max(0, p))))
         guard let i = objectOnLine[li], objects[i].contains(p) else { return nil }
@@ -427,15 +471,15 @@ final class DocTextView: NSTextView, NSTextStorageDelegate, NSTextViewDelegate, 
     /// The image that `p` is on, where the cursor may not rest: it rests on
     /// an image's edge only where there is no text before it, or after it,
     /// to go to instead.
-    private func objectZone(at p: Int) -> ImageObject? {
+    private func objectZone(at p: Int) -> DocObject? {
         guard let o = object(at: p) else { return nil }
         if p == o.start && (0..<o.line).allSatisfy(isCollapsed(line:)) { return nil }
-        if p == o.end && (o.line + 1..<lines.count).allSatisfy(isCollapsed(line:)) { return nil }
+        if p == o.end && (o.lastLine + 1..<lines.count).allSatisfy(isCollapsed(line:)) { return nil }
         return o
     }
 
     /// The image the selection is, if it is one.
-    var selectedObject: ImageObject? {
+    var selectedObject: DocObject? {
         let sel = selectedRange()
         guard sel.length > 0, let o = object(at: sel.location), sel.location == o.start,
             NSMaxRange(sel) >= o.sourceEnd, NSMaxRange(sel) <= o.end
@@ -448,12 +492,52 @@ final class DocTextView: NSTextView, NSTextStorageDelegate, NSTextViewDelegate, 
     var altTextImages: [UInt32] {
         if sourceMode { return imageBlocks.indices.map { UInt32($0) } }
         return objects.compactMap { o in
-            if case .failed = ImageLibrary.shared.state(of: o.source) { UInt32(o.index) } else { nil }
+            guard !o.isDiagram, case .failed = ImageLibrary.shared.state(of: o.source) else { return nil }
+            return UInt32(o.index)
         }
     }
 
+    /// The diagrams shown as their source, as indices for find: those that
+    /// can't be drawn, or all of them in Show Markdown.
+    var sourceDiagrams: [UInt32] {
+        if sourceMode { return diagramBlocks.indices.map { UInt32($0) } }
+        return objects.compactMap { o in
+            guard o.isDiagram, case .unrenderable = ImageLibrary.shared.state(of: o.source) else { return nil }
+            return UInt32(o.index)
+        }
+    }
+
+    /// Find matches in the labels drawn diagrams draw: each diagram's start,
+    /// the label's index, and where in its text.
+    func labelMatches(_ needle: String, matchCase: Bool) -> [(start: Int, label: Int, range: NSRange)] {
+        guard !needle.isEmpty, !sourceMode else { return [] }
+        var out: [(start: Int, label: Int, range: NSRange)] = []
+        for o in objects where o.isDiagram {
+            guard case .loaded(let d) = ImageLibrary.shared.state(of: o.source) else { continue }
+            for (i, l) in d.labels.enumerated() {
+                let text = l.text as NSString
+                var from = 0
+                while from < text.length {
+                    let r = text.range(
+                        of: needle, options: matchCase ? [] : [.caseInsensitive],
+                        range: NSRange(location: from, length: text.length - from))
+                    if r.location == NSNotFound { break }
+                    out.append((o.start, i, r))
+                    from = NSMaxRange(r)
+                }
+            }
+        }
+        return out
+    }
+
+    /// Find matches in diagrams' labels, by diagram start and label index,
+    /// which the diagrams draw over them.
+    var labelHighlights: [(start: Int, label: Int, color: NSColor)] = [] {
+        didSet { if objects.contains(where: \.isDiagram) { needsDisplay = true } }
+    }
+
     /// How image `o` looks now, its size from the text column and the zoom.
-    func look(of o: ImageObject) -> ObjectLook {
+    func look(of o: DocObject) -> ObjectLook {
         let l = lines[o.line]
         let room = max(1, geometry.docWidth - indent(quotes: l.quotes, items: l.items))
         switch ImageLibrary.shared.state(of: o.source) {
@@ -463,8 +547,20 @@ final class DocTextView: NSTextView, NSTextStorageDelegate, NSTextViewDelegate, 
             return .placeholder(NSSize(width: room.rounded(), height: (160 * Theme.scale).rounded()))
         case .failed(let reason):
             let s = (string as NSString)
-            let alt = o.info.alt.map { r -> (NSRange, String) in (NSRange(r), s.substring(with: NSRange(r))) }
+            guard case .image(let info) = o.kind else { return .placeholder(NSSize(width: room, height: 1)) }
+            let alt = info.alt.map { r -> (NSRange, String) in (NSRange(r), s.substring(with: NSRange(r))) }
             return .broken(BrokenImage(alt: alt, fileName: o.source.fileName, reason: reason, room: room))
+        case .unrenderable(let message, let fault):
+            guard case .diagram(let d) = o.kind else { return .placeholder(NSSize(width: room, height: 1)) }
+            let s = (string as NSString)
+            let lines = d.lineStarts.map { Int($0) }.map { start -> (source: NSRange, text: String) in
+                let r = s.lineRange(for: NSRange(location: min(start, max(0, s.length - 1)), length: 0))
+                var end = NSMaxRange(r)
+                while end > start && (s.character(at: end - 1) == 10 || s.character(at: end - 1) == 13) { end -= 1 }
+                let range = NSRange(location: start, length: max(0, end - start))
+                return (range, s.substring(with: range))
+            }
+            return .diagramError(DiagramError(message: message, lines: lines, fault: fault, room: room.rounded()))
         }
     }
 
@@ -494,7 +590,7 @@ final class DocTextView: NSTextView, NSTextStorageDelegate, NSTextViewDelegate, 
     }
 
     /// Where image `o` is drawn, in view coordinates.
-    func objectRect(_ o: ImageObject, look: ObjectLook) -> NSRect? {
+    func objectRect(_ o: DocObject, look: ObjectLook) -> NSRect? {
         guard let lm = layoutManager, o.start < (string as NSString).length else { return nil }
         let g = lm.glyphIndexForCharacter(at: o.start)
         let frag = lm.lineFragmentRect(forGlyphAt: g, effectiveRange: nil)
@@ -502,9 +598,9 @@ final class DocTextView: NSTextView, NSTextStorageDelegate, NSTextViewDelegate, 
         let origin = textContainerOrigin
         let x = origin.x + frag.minX + at.x
         switch look {
-        case .image(_, let size), .placeholder(let size):
+        case .image, .placeholder, .diagramError:
             let above = o.line < styler.metrics.count ? styler.metrics[o.line].spaceAbove : 0
-            return NSRect(origin: NSPoint(x: x, y: origin.y + frag.minY + above), size: size)
+            return NSRect(origin: NSPoint(x: x, y: origin.y + frag.minY + above), size: look.size)
         case .broken(let b):
             let baseline = origin.y + frag.minY + at.y
             return NSRect(x: x, y: baseline - b.ascent, width: b.width, height: b.ascent + b.descent)
@@ -512,7 +608,7 @@ final class DocTextView: NSTextView, NSTextStorageDelegate, NSTextViewDelegate, 
     }
 
     /// The image drawn under a point, if any.
-    private func object(atPoint p: NSPoint) -> ImageObject? {
+    private func object(atPoint p: NSPoint) -> DocObject? {
         guard !stale, !sourceMode else { return nil }
         // Across the view: the text column starts past its left margin.
         let shown = lines(in: NSRect(x: bounds.minX, y: p.y - 20, width: bounds.width, height: 40))
@@ -522,7 +618,7 @@ final class DocTextView: NSTextView, NSTextStorageDelegate, NSTextViewDelegate, 
     }
 
     /// Lays out the lines of `objects` again.
-    private func invalidateObjects(_ objects: [ImageObject]) {
+    private func invalidateObjects(_ objects: [DocObject]) {
         guard let lm = layoutManager else { return }
         let len = (string as NSString).length
         for o in objects where o.start < len {
@@ -635,7 +731,8 @@ final class DocTextView: NSTextView, NSTextStorageDelegate, NSTextViewDelegate, 
         for cb in codeBlocks {
             let first = Int(cb.openLine ?? cb.firstContentLine)
             let last = Int(cb.closeLine ?? max(cb.firstContentLine, cb.endContentLine &- 1))
-            guard li >= first && li <= last else { continue }
+            // A diagram shows as such: no fences to reveal.
+            guard li >= first && li <= last, !isDiagram(line: first) else { continue }
             for fl in [cb.openLine, cb.closeLine].compactMap({ $0 }) {
                 let l = lines[Int(fl)]
                 let end = min(Int(l.end) + 1, len)
@@ -789,6 +886,7 @@ final class DocTextView: NSTextView, NSTextStorageDelegate, NSTextViewDelegate, 
         for cb in codeBlocks
         where cb.endContentLine > cb.firstContentLine
             && Int(cb.endContentLine) > shown.lowerBound && Int(cb.firstContentLine) <= shown.upperBound
+            && !isDiagram(line: Int(cb.openLine ?? cb.firstContentLine))
         {
             let top = textTop(line: Int(cb.firstContentLine)) - 8 * s
             let bottom = textBottom(line: Int(cb.endContentLine) - 1) + 8 * s
@@ -847,7 +945,11 @@ final class DocTextView: NSTextView, NSTextStorageDelegate, NSTextViewDelegate, 
         let x = geometry.left - 18 * s
         let shown = lines(in: rect)
         for c in changes where Int(c.endLine) >= shown.lowerBound && Int(c.firstLine) <= shown.upperBound + 1 {
-            let laidOut = (Int(c.firstLine)..<Int(c.endLine)).filter { !isCollapsed(line: $0) }
+            // A line in an object is marked beside the object, along its
+            // height: its first line's.
+            let laidOut = Array(
+                Set((Int(c.firstLine)..<Int(c.endLine)).map { li in objectOnLine[li].map { objects[$0].line } ?? li })
+            ).sorted().filter { !isCollapsed(line: $0) }
             Theme.change(c.kind).setFill()
             if let first = laidOut.first, let last = laidOut.last {
                 let top = textTop(line: first)
@@ -965,6 +1067,7 @@ final class DocTextView: NSTextView, NSTextStorageDelegate, NSTextViewDelegate, 
             // decoding to be drawn again.
             look.draw(
                 in: r, for: o, highlights: objectHighlights, selection: selected ? selection : nil,
+                labels: labelHighlights.filter { $0.start == o.start }.map { ($0.label, $0.color) },
                 scale: window?.backingScaleFactor ?? 2,
                 canWait: window != nil && NSPrintOperation.current == nil
                     && NSGraphicsContext.currentContextDrawingToScreen())
@@ -1121,7 +1224,7 @@ final class DocTextView: NSTextView, NSTextStorageDelegate, NSTextViewDelegate, 
     }
 
     /// A broken image's path or URL and why it can't be shown.
-    func imageToolTip(_ o: ImageObject) -> String? {
+    func imageToolTip(_ o: DocObject) -> String? {
         guard case .broken(let b) = look(of: o) else { return nil }
         return "\(o.source.location)\n\(b.reason)"
     }
@@ -1138,6 +1241,11 @@ final class DocTextView: NSTextView, NSTextStorageDelegate, NSTextViewDelegate, 
 
     override func viewDidChangeEffectiveAppearance() {
         super.viewDidChangeEffectiveAppearance()
+        // Diagrams are drawn in the page's colors.
+        if !stale && !diagramBlocks.isEmpty {
+            updateObjects()
+            needsDisplay = true
+        }
         onHighlight?()
     }
 

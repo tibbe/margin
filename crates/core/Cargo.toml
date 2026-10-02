@@ -9,6 +9,10 @@ repository.workspace = true
 [lints]
 workspace = true
 
+[features]
+# Drawing Mermaid diagrams, for the editors; the CLI doesn't draw them.
+diagrams = ["dep:merman", "dep:resvg"]
+
 [dependencies]
 anyhow.workspace = true
 chrono.workspace = true
@@ -18,3 +22,6 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha2 = "0.10"
 unicode-segmentation = "1.13.3"
+# Mermaid, pinned: merman is alpha. Without its ELK layout (EPL-2.0).
+merman = { version = "=0.8.0-alpha.7", default-features = false, features = ["all-diagrams", "svg", "layout-cytoscape"], optional = true }
+resvg = { version = "0.47", optional = true }
