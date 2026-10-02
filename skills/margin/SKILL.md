@@ -40,14 +40,18 @@ Edits to the file show up in the open editor at once, and threads stay
 attached to their text as it moves. Read positions from a fresh
 `margin comments` rather than reusing line numbers from before your edits.
 
-## Open a document for review
+## Open documents for review
 
-When you have written a document the user should review (a plan, a spec):
+Whenever you open documents in Margin for the user to comment on:
 
 1. `margin open FILE…`. It returns as soon as the documents appear in the
    editor.
-2. Wait for the review, below, and tell the user the documents are open and
-   you are waiting for them to send their comments.
+2. Start `margin wait` on the same documents at once, as in Wait for the
+   review below, and tell the user the documents are open and you are
+   waiting for them to send their comments.
+
+Opening is done only when `margin wait` is running on every document you
+opened.
 
 ## Wait for the review
 
