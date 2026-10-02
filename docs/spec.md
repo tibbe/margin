@@ -123,10 +123,12 @@ comments) and a **coding agent**.
   the image; an image in running text shows as italic, link-colored alt
   text. Relative paths are from the document's folder; remote images load
   too.
-- An image shows at its own size, scaled with the zoom, never wider than
-  the text column and never enlarged. A placeholder, a box on the code
-  background, holds its place until its size is known; when the size
-  arrives, the text being read stays where it is.
+- An image shows at its own size: at the default zoom, one point of the
+  image (its pixels at its resolution) to one point on screen. It scales
+  with the zoom but not with the platform's text size. It is never wider
+  than the text column, and never stretched to fill it. A placeholder, a
+  box on the code background, holds its place until its size is known;
+  when the size arrives, the text being read stays where it is.
 - An image that is missing or can't be read shows as its alt text (its file
   name, without one) after a broken-image mark; hovering it gives the path
   or URL and the reason.
@@ -406,8 +408,8 @@ put anchors in the same places:
 - The text column holds about 100 characters, with the comment gutter to
   its right. The gutter is the page's margin: one background behind the
   text and the cards. Spacing and sizes are proportional to the text
-  size. Zoom is shared by all windows and persisted, on top of the
-  platform's text size.
+  size, except an image's, which follows only the zoom. Zoom is shared by
+  all windows and persisted, on top of the platform's text size.
 - The body is in a proportional font, code and source shown as source in a
   monospace one, and cards in the interface font.
 - Announcements ("Updated from disk", "1 new reply") are a short message
