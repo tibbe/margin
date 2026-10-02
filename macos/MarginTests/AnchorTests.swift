@@ -72,6 +72,25 @@ final class AnchorTests: XCTestCase {
             """)
     }
 
+    /// Deleting the commented text shows the card as detached at once,
+    /// before the document is saved, as the highlight goes at once.
+    @MainActor
+    func testACardShowsItsDeletedTextAtOnce() throws {
+        let h = try Harness("Keep this. Gone text here.\n")
+        defer { h.close() }
+        h.select("Gone text")
+        h.key("cmd-opt-m")
+        h.compose("Why?")
+        h.key("cmd-enter")
+        h.wait(0.1)
+        XCTAssertEqual(try h.deletedQuote(onCard: 1), nil)
+
+        h.select("Gone text")
+        h.key("backspace")
+        XCTAssertEqual(h.comments, #"#1 open detached [11,11) ["Why?"]"# + "\nactive none")
+        XCTAssertEqual(try h.deletedQuote(onCard: 1), "“Gone text”")
+    }
+
     @MainActor
     func testADraftOnDeletedTextPostsNothing() throws {
         let h = try Harness("Keep this. Gone text here.\n")

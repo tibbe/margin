@@ -307,8 +307,9 @@ in `the quick fox jumps`. Brackets mark the anchor after the edit.
 | Deleting all of it | Detaches | `the jumps` |
 
 Formatting doesn't change these: replacing `quick fox` in
-`the **quick fox** jumps` gives `the **[lazy dog]** jumps`. A detached
-thread stays where its text was and keeps the old quote.
+`the **quick fox** jumps` gives `the **[lazy dog]** jumps`. Text with
+only whitespace left counts as deleted. A detached thread stays where its
+text was and keeps the old quote.
 
 An outside change to the file gives only the new text, not the edits that
 made it. The editor and the CLI work out the edits the same way, so they

@@ -421,6 +421,11 @@ final class Harness {
         wait(0.2)
     }
 
+    /// The quote card `id` shows for deleted text, if it shows one.
+    func deletedQuote(onCard id: UInt64) throws -> String? {
+        texts(in: try card(id)).first { $0.toolTip == "The commented text was deleted" }?.stringValue
+    }
+
     /// Each message's author on card `id`, as shown (✦ for the agent's
     /// symbol).
     func authors(onCard id: UInt64) throws -> [String] {

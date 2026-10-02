@@ -107,7 +107,7 @@ impl Comments {
             for t in &mut self.threads {
                 let a = &mut t.anchor;
                 let now = match find_quote(text, a.quote(), a.start()) {
-                    Some(r) => Place::On(r),
+                    Some(r) => Place::of(text, r),
                     None => Place::Detached(a.start()),
                 };
                 a.follow(text, now);

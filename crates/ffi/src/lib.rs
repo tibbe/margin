@@ -1241,9 +1241,9 @@ pub fn map_places(old: String, new: String, places: Vec<AnchorPlace>) -> Vec<Anc
 
 fn place_to_ffi(p: &Place, text: &str, index: &Utf16Index) -> AnchorPlace {
     match p {
-        Place::On(r) => AnchorPlace::On {
-            start: index.u16_of(text, r.start),
-            end: index.u16_of(text, r.end),
+        Place::On(s) => AnchorPlace::On {
+            start: index.u16_of(text, s.range().start),
+            end: index.u16_of(text, s.range().end),
         },
         Place::Detached(at) => AnchorPlace::Detached {
             at: index.u16_of(text, *at),
@@ -1253,9 +1253,9 @@ fn place_to_ffi(p: &Place, text: &str, index: &Utf16Index) -> AnchorPlace {
 
 fn place_from_ffi(p: AnchorPlace, text: &str, index: &Utf16Index) -> Place {
     match p {
-        // Reversed, it is deleted text: `Anchor::follow` detaches it.
+        // Reversed, or on whitespace alone, it is deleted text.
         AnchorPlace::On { start, end } => {
-            Place::On(index.byte_of(text, start)..index.byte_of(text, end))
+            Place::of(text, index.byte_of(text, start)..index.byte_of(text, end))
         }
         AnchorPlace::Detached { at } => Place::Detached(index.byte_of(text, at)),
     }

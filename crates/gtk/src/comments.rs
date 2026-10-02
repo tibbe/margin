@@ -215,7 +215,7 @@ impl CommentLayer {
             .filter(|tu| tu.thread.is_open())
             .map(|tu| {
                 let mut t = tu.thread.clone();
-                t.anchor.follow(&text, self.place_of(tu));
+                t.anchor.follow(&text, self.place_of(&text, tu));
                 t
             })
             .collect()
@@ -247,15 +247,15 @@ impl CommentLayer {
         }
     }
 
-    /// Where a thread's text is in the buffer text now, by its marks
-    /// (marks that meet are deleted text).
-    fn place_of(&self, tu: &ThreadUi) -> Place {
+    /// Where a thread's text is in `text`, the buffer's text now, by its
+    /// marks (marks that meet are deleted text).
+    fn place_of(&self, text: &str, tu: &ThreadUi) -> Place {
         let a = self.buffer.byte_at(&self.buffer.iter_at_mark(&tu.start));
         if tu.thread.anchor.is_detached() {
             return Place::Detached(a);
         }
         let b = self.buffer.byte_at(&self.buffer.iter_at_mark(&tu.end));
-        Place::On(a..b)
+        Place::of(text, a..b)
     }
 
     /// Runs `f` on the stored threads with anchors brought up to date from
@@ -267,7 +267,7 @@ impl CommentLayer {
             .threads
             .borrow()
             .iter()
-            .map(|tu| (tu.thread.id, self.place_of(tu)))
+            .map(|tu| (tu.thread.id, self.place_of(&text, tu)))
             .collect();
         let result = store.update(|c| {
             c.sync(&text);
@@ -301,11 +301,11 @@ impl CommentLayer {
             .threads
             .borrow()
             .iter()
-            .map(|tu| self.place_of(tu))
+            .map(|tu| self.place_of(&old, tu))
             .collect();
         let draft = self.draft.borrow().as_ref().map(|d| {
             let at = |m| self.buffer.byte_at(&self.buffer.iter_at_mark(m));
-            Place::On(at(&d.start)..at(&d.end))
+            Place::of(&old, at(&d.start)..at(&d.end))
         });
         self.taking_in.set(true);
         self.buffer.apply_external(new);
@@ -314,7 +314,7 @@ impl CommentLayer {
         let map = OffsetMap::new(&old, &text);
         let move_marks = |start: &gtk::TextMark, end: &gtk::TextMark, p: &Place| {
             let r = match map.map(p) {
-                Place::On(r) => r,
+                Place::On(s) => s.range(),
                 Place::Detached(at) => at..at,
             };
             self.buffer
@@ -707,7 +707,7 @@ impl CommentLayer {
             .find(|t| t.thread.id == id)
             .map(|t| {
                 let mut th = t.thread.clone();
-                th.anchor.follow(&text, self.place_of(t));
+                th.anchor.follow(&text, self.place_of(&text, t));
                 th
             })
         else {

@@ -27,17 +27,50 @@ extension CommentThread {
 /// edits as the GTK editor's text marks do: text inserted at the start is
 /// excluded, text inserted at the end too. Outside changes they follow as
 /// the CLI's anchors do (see `CommentLayer.applyExternal`).
+///
+/// The item makes and updates its card, always from `thread`, so the card
+/// and the highlight show the same place.
 final class ThreadItem {
-    /// As the store last had it.
-    var thread: CommentThread
-    /// Where its text is now.
-    var place: AnchorPlace
+    /// As the store last had it, to tell what the store's next copy
+    /// changes. Its place can be behind the editor's.
+    private var stored: CommentThread
+    private var current: AnchorPlace
     let card: ThreadCard
 
-    init(thread: CommentThread, card: ThreadCard) {
-        self.thread = thread
-        place = thread.place
-        self.card = card
+    init(thread: CommentThread) {
+        stored = thread
+        current = thread.place
+        card = ThreadCard(thread: thread)
+    }
+
+    /// The thread as shown: the store's, where its text is now.
+    var thread: CommentThread {
+        var t = stored
+        t.place = current
+        return t
+    }
+
+    /// Where its text is now.
+    var place: AnchorPlace {
+        get { current }
+        set {
+            let flips = newValue.isDetached != current.isDetached
+            current = newValue
+            if flips { card.update(thread) }
+        }
+    }
+
+    /// Takes the store's copy of the thread. Its place is taken only when
+    /// the store detached or restored the thread; otherwise the editor's
+    /// own place, which follows edits as they happen, stays.
+    func take(_ t: CommentThread) {
+        let changed =
+            stored.resolved != t.resolved || stored.messages != t.messages
+            || stored.place.isDetached != t.place.isDetached
+        guard changed else { return }
+        if t.place.isDetached || stored.place.isDetached { current = t.place }
+        stored = t
+        card.update(thread)
     }
 
     /// Where its text starts, or was.
@@ -186,11 +219,7 @@ final class CommentLayer {
 
     /// Open threads, anchored where their text is now.
     func openThreads() -> [CommentThread] {
-        items.filter { !$0.thread.resolved }.map { it in
-            var t = it.thread
-            t.place = it.place
-            return t
-        }
+        items.map(\.thread).filter { !$0.resolved }
     }
 
     // MARK: - Store
@@ -265,15 +294,7 @@ final class CommentLayer {
         for t in threads {
             keep.insert(t.id)
             if let it = items.first(where: { $0.thread.id == t.id }) {
-                let changed =
-                    it.thread.resolved != t.resolved || it.thread.messages != t.messages
-                    || it.thread.place.isDetached != t.place.isDetached
-                if changed {
-                    let keepAnchor = !t.place.isDetached && !it.thread.place.isDetached
-                    it.thread = t
-                    if !keepAnchor { it.place = t.place }
-                    it.card.update(t)
-                }
+                it.take(t)
             } else {
                 items.append(makeItem(t))
             }
@@ -294,7 +315,8 @@ final class CommentLayer {
     }
 
     private func makeItem(_ t: CommentThread) -> ThreadItem {
-        let card = ThreadCard(thread: t)
+        let item = ThreadItem(thread: t)
+        let card = item.card
         let id = t.id
         card.onClick = { [weak self] in self?.activate(id, scroll: false, focusCard: true) }
         card.onResolve = { [weak self] r in self?.setResolved(forThread: id, to: r) }
@@ -307,7 +329,7 @@ final class CommentLayer {
         card.onResize = { [weak self] in self?.queueRelayout() }
         card.onLeave = { [weak self] in self?.leave() }
         gutter.addSubview(card)
-        return ThreadItem(thread: t, card: card)
+        return item
     }
 
     // MARK: - Commands
@@ -428,8 +450,7 @@ final class CommentLayer {
     func delete(_ id: UInt64) {
         guard let it = items.first(where: { $0.thread.id == id }) else { return }
         // Undo puts the thread back against the text as it is then.
-        var old = it.thread
-        old.place = it.place
+        let old = it.thread
         guard update(.delete(id: id)) != nil else { return }
         if active == id { focus = .none }
         undoable("Delete Comment", banner: "Comment deleted") { $0.restore(old) }

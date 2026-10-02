@@ -237,7 +237,7 @@ mod tests {
         new.thread_mut(2)
             .unwrap()
             .anchor
-            .follow(text, crate::comments::Place::On(4..13));
+            .follow(text, crate::comments::Place::of(text, 4..13));
         assert!(changes(&old.threads, &new.threads).is_empty());
     }
 
