@@ -19,7 +19,6 @@ Omarchy's look: **square, flat, muted.**
 - The accent color marks only what has focus: the focused comment card's
   border, a focused text box's border, the caret, and hover on the gutter's
   comment button.
-- No avatars or author names.
 - Header bars use the window background, so the chrome disappears into the
   page.
 
@@ -36,7 +35,7 @@ dark, and libadwaita is forced to match.
 | Background | `background`, `bg` | `#ffffff` | `#1e1e1e` |
 | Text | `foreground`, `fg` | `#1f1f1f` | `#e8e8e8` |
 | Headings | `bright_foreground`, `bright_fg` | `#000000` | `#ffffff` |
-| Dimmed text (syntax, times, H6) | `dark_foreground`, `dark_fg`, `muted` | `#6f6f6f` | `#9a9a9a` |
+| Dimmed text | `dark_foreground`, `dark_fg`, `muted` | `#6f6f6f` | `#9a9a9a` |
 | Borders | `muted`, `dark_foreground` | `#d0d0d0` | `#4a4a4a` |
 | Accent | `accent`, `blue` | `#1c71d8` | `#78aeed` |
 | Selection | `selection`, `selection_background`, `lighter_background` | `#c8ddf7` | `#2f4a6e` |
@@ -53,7 +52,8 @@ Without an Omarchy theme, Margin uses the Adwaita palette above and follows
 the desktop's light or dark preference.
 
 Derived colors: quotes are text at 78% opacity; strikethrough text at 65%;
-checked tasks at 50%.
+checked tasks at 50%; find matches are the accent at 25% (55% for the
+current match).
 
 ### Type
 
@@ -74,25 +74,24 @@ checked tasks at 50%.
 
 At a 16px (12pt) body, scaled with the text size:
 
-- Text column up to 760px (about 100 characters), at least 300px, centered,
-  with 28px side padding.
+- Text column up to 760px, at least 300px, centered, with 28px side
+  padding.
 - Comment cards 300px wide (scaled with the desktop's text scaling only),
   40px from the text. Cards stack with 10px between them.
-- Change bars 3px wide with round ends, 15px left of the text; a deletion
-  is a triangle 5px wide and 8px tall in the same place.
+- Change bars 3px wide with round ends, 15px left of the text; a
+  deletion's triangle 5px wide and 8px tall.
 - Default window 1340×920.
 
 ### Feedback
 
-- **Notifications** are libadwaita toasts at the bottom of the window. Undo
+- **Announcements** are libadwaita toasts at the bottom of the window. Undo
   is a toast button.
 - **Dialogs** are `AdwAlertDialog`s.
 
 ## Files
 
-- **Header bar** (`AdwHeaderBar`): the file name as title (prefixed with `•`
-  while unsaved) and its folder as subtitle (`~/…`, or "Not saved yet" for
-  untitled documents).
+- **Header bar** (`AdwHeaderBar`), whose title is prefixed with `•` while
+  unsaved.
 - The window manager's title is "name – Margin", for task switchers and the
   bar.
 - Dialogs: the conflict dialog (Keep My Version, Load Disk Version as
@@ -115,22 +114,20 @@ At a 16px (12pt) body, scaled with the text size:
 
 ## Comments
 
-- Card background, 1px border, padding 10px by 12px. The focused card's
-  border is the accent color. Resolved cards are at 70% opacity. A detached
-  thread's quote is struck through.
-- Times and "Resolved …" in dimmed text at 85% size; quotes dimmed, italic,
-  90%. Replies are separated by a 1px rule.
+- Cards have a 1px border and padding of 10px by 12px. The focused card's
+  border is the accent color. Resolved cards are at 70% opacity.
+- Times and "Resolved …" in dimmed text at 85% size; a detached thread's
+  quote at 90%. The rule between replies is 1px.
 - In the header row, the author is bold at 85% size; the buttons are a
   Resolve (or Reopen) icon button and a More menu with Delete thread.
 - The reply box and the draft's text box have a 1px border that turns the
-  accent color while focused. Buttons: Comment or Reply, and Cancel.
+  accent color while focused.
 - The gutter's comment button appears beside the top of a selection, with a
   card background and border.
-- On the right of the header bar: the open-comment count ("3 open
-  comments", "2 resolved"), Send to Agent (`mail-send-symbolic`), a comment
-  button, and the menu button.
+- The toolbar's items are on the right of the header bar, before the menu
+  button. Send to Agent is `mail-send-symbolic`.
 - While the agent works on a send, an `AdwSpinner` sits before Send to
-  Agent. A send's confirmation is a toast.
+  Agent.
 - **System notifications** (see the spec for when) are one `GNotification`
   per document, as GNOME Shell doesn't group them: replaced with the running
   totals ("3 new replies, 1 comment resolved") until the window is active
@@ -164,8 +161,8 @@ navigation commands are keyboard only.
 
 ### Key bindings
 
-Ctrl is the main modifier and Alt the second; the platform's conventions
-are GNOME's.
+Margin's own commands take the spec's keys as they are, with Ctrl for Mod.
+The standard ones follow GNOME's conventions:
 
 | Command | Keys |
 | --- | --- |
@@ -175,22 +172,6 @@ are GNOME's.
 | Find, Find and Replace | Ctrl+F, Ctrl+H |
 | Find Next, Find Previous | Ctrl+G, Ctrl+Shift+G |
 | Larger, Smaller, Reset Text Size | Ctrl++ (or Ctrl+=), Ctrl+-, Ctrl+0; also Ctrl+scroll |
-| Show Markdown, Reflow Paragraphs | Ctrl+/, Alt+Z |
-| Bold, Italic, Strikethrough, Inline Code | Ctrl+B, Ctrl+I, Ctrl+Shift+X, Ctrl+E |
-| Link | Ctrl+K |
-| Normal Text, Heading 1–6 | Ctrl+Alt+0, Ctrl+Alt+1…6 |
-| Numbered List, Bulleted List, Checklist | Ctrl+Shift+7, 8, 9 |
-| Quote, Code Block | Ctrl+Alt+Q, Ctrl+Alt+C |
-| Indent, Outdent | Tab or Ctrl+], Shift+Tab or Ctrl+[ |
-| Toggle Task | Ctrl+Enter |
-| Open Link | Alt+Enter; Ctrl+click under the pointer |
-| Comment on Selection | Ctrl+Alt+M |
-| Copy Open Comments | Ctrl+Shift+C |
-| Send to Agent | Ctrl+Shift+Enter |
-| Next Comment, Previous Comment | Ctrl+Alt+Down, Ctrl+Alt+Up |
-| Next Change, Previous Change | Ctrl+Alt+Shift+Down, Ctrl+Alt+Shift+Up |
-| Reply, Post | Ctrl+Alt+R, Ctrl+Enter |
-| Leave Comment, close Find | Escape |
 | Undo, Redo, Cut, Copy, Paste, Select All | GTK's: Ctrl+Z, Ctrl+Shift+Z, Ctrl+X, Ctrl+C, Ctrl+V, Ctrl+A |
 | Emoji, move focus out of the text | GTK's: Ctrl+., Ctrl+Tab |
 

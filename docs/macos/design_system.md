@@ -5,16 +5,11 @@ conventions of Apple's document apps (TextEdit, Pages, Notes).
 
 ## Foundations
 
-### Look
-
-- Light and dark follow the system appearance. The system accent color marks
-  focus.
-
 ### Color
 
-System semantic colors, so every appearance, accent and accessibility
-setting (Increase Contrast, Reduce Transparency) works, and one color of
-Margin's own:
+The spec's color roles are system semantic colors, so every appearance,
+accent and accessibility setting (Increase Contrast, Reduce Transparency)
+works, but for one color of Margin's own:
 
 - `commentHighlightColor`: Apple's purple author color, so commented text
   never looks like a find match (yellow). In light mode Pages' comment
@@ -27,9 +22,10 @@ Margin's own:
 | Background | `textBackgroundColor` |
 | Text | `textColor` |
 | Headings | `labelColor` |
-| Dimmed text (syntax, times, H6) | `secondaryLabelColor` |
-| Borders, rules, quote bars | `separatorColor` |
-| Accent, focus, checked boxes | `controlAccentColor` |
+| Dimmed text | `secondaryLabelColor` |
+| Borders | `separatorColor` |
+| Accent | `controlAccentColor` |
+| Selection | `selectedTextBackgroundColor` |
 | Code background | `quaternarySystemFill` |
 | Card background | `controlBackgroundColor` |
 | Comment highlight | `commentHighlightColor` |
@@ -49,18 +45,15 @@ Margin's own:
 - The page is centered: the text alone while there are no cards, the text
   and the cards together once there are. The first card moves the text
   left, and the last one resolved moves it back. Cards are 300pt wide,
-  growing to 400pt with half of any spare width; narrower windows narrow
-  the text instead.
+  growing to 400pt with half of any spare width.
 - Change bars are 3pt wide with round ends, 15pt left of the text; a
-  deletion is a triangle 5pt wide and 8pt tall in the same place. Both
-  scale with the text size.
+  deletion's triangle is 5pt wide and 8pt tall.
 
 ### Feedback
 
-A small banner at the bottom of the window, on the HUD material, says
-"Updated from disk", "1 new reply" and the like, and fades after 3 seconds,
-or 6 when it has an Undo button. It is also announced to VoiceOver. Apple
-sets no duration, and its HIG
+Announcements are a small banner at the bottom of the window, on the HUD
+material, also read out by VoiceOver, that fades after 3 seconds, or 6 when it has an Undo button.
+Apple sets no duration, and its HIG
 [discourages](https://developer.apple.com/design/human-interface-guidelines/accessibility)
 views that dismiss on a timer, so a banner only repeats what the window
 shows anyway: its Undo is the Edit menu's, and new replies are on their
@@ -72,11 +65,10 @@ Documents follow the spec's saving rules rather than the Mac's own autosave,
 so there is no version history (Revert To ▸ Browse All Versions) and no
 "changed by another application" alert.
 
-- Standard window with a unified toolbar. The title is the document name,
-  the subtitle its folder (`~/…`, or "Not saved yet"), with the document
-  proxy icon. Documents save themselves, so the edited dot on the close
-  button only shows while a save is failing, or on an untitled document with
-  text.
+- Standard window with a unified toolbar, and the document proxy icon
+  beside the title. Documents save themselves, so the edited dot on the
+  close button only shows while a save is failing, or on an untitled
+  document with text.
 - Saves keep the file's Finder tags and extended attributes too.
 - **Save As…** writes the document under a new name and continues there;
   its comments move along. **Rename…** and **Move To…** move the file itself,
@@ -94,11 +86,15 @@ so there is no version history (Revert To ▸ Browse All Versions) and no
 
 ## Rendering
 
-- Code blocks sit in a tinted box with a 6pt radius; quote bars are rounded.
-- Tables are grids in a box with a 6pt radius, the header row tinted like a
-  code block, with separator-colored lines between rows and columns. Cells
-  have 10pt of padding at the sides and 6pt above and below. Text is at 94%
-  of body size. A table wider than the page is cut off at its right edge.
+- Code blocks' boxes have a 6pt radius; quote bars are rounded.
+- Tables are grids: the `|`s, the cells' padding and the delimiter row are
+  hidden, columns take their widest cell's width and the delimiter row's
+  alignment, separator-colored lines run between the rows and the columns,
+  and the header row is bold and tinted like a code block. A row stays on
+  one line.
+- The grid is in a box with a 6pt radius. Cells have 10pt of padding at the
+  sides and 6pt above and below. Text is at 94% of body size. A table wider
+  than the page is cut off at its right edge.
 
 ## Editing
 
@@ -120,25 +116,19 @@ so there is no version history (Revert To ▸ Browse All Versions) and no
 
 ## Comments
 
-- The gutter is the page's margin: one text background behind the text and
-  the cards, with no separator. Each card sits beside the line it comments
-  on.
 - Clicking empty gutter space leaves the focused thread and returns the
   keyboard to the text, with the cursor where it was. Over the gutter the
   pointer is the arrow.
-- Clicking anywhere on a card, its text included, focuses the thread.
-  Dragging across a card's text, or double-clicking it, selects it, so the
+- Dragging across a card's text, or double-clicking it, selects it, so the
   pointer over the text is the I-beam.
-- Comment cards: the control background, an 8pt corner radius and a 1pt
-  separator border. Cards float beside the text, so their corners are
-  rounder than those of the blocks in it (6pt). The focused card (or the
-  draft) is raised on a soft shadow, as the open comments of Pages, Ulysses
-  and Final Draft are; no accent outline. Resolved cards are at 70%
-  opacity.
-- A comment or reply is typed straight onto the card, with no field border
-  or focus ring. Below a hairline, bezel-less text buttons: Cancel in the
-  secondary label color, Comment or Reply in the accent color, greyed while
-  empty.
+- Comment cards have an 8pt corner radius and a 1pt border. Cards float
+  beside the text, so their corners are rounder than those of the blocks in
+  it (6pt). The focused card (or the draft) is raised on a soft shadow, as
+  the open comments of Pages, Ulysses and Final Draft are; no accent
+  outline. Resolved cards are at 70% opacity.
+- A comment or reply has no field border or focus ring. Below a hairline,
+  bezel-less text buttons: Cancel in the secondary label color, Comment or
+  Reply in the accent color, greyed while empty.
 - A message's header row is 28pt tall. The author is in the small system
   font, semibold, in the label color, "Agent" after a `sparkles` symbol (as
   Copilot marks its reviews); the time is in the secondary label color.
@@ -158,10 +148,10 @@ so there is no version history (Revert To ▸ Browse All Versions) and no
 - Edit turns the message into a box on the card holding its text, with
   Cancel and Save. Undo is named for the step: Undo Edit, Undo Delete
   Reply, Undo Delete Comment.
-- Toolbar: the open-comment count, Send to Agent (`paperplane`) and a
-  comment button. Everything else is in the menu bar.
+- In the toolbar, Send to Agent is `paperplane`. Everything else is in the
+  menu bar.
 - While the agent works on a send, the count reads "2 open comments ·
-  Agent working". A send's confirmation is a banner.
+  Agent working".
 - The toolbar holds only standard items and plain text. On the macOS 26
   toolbar, a custom view such as a spinner is drawn inside the buttons'
   glass or in a pill of its own, and a badge is always the system's
@@ -219,35 +209,16 @@ clipboard, Find and its commands, Bold, Italic, Enter Full Screen, Larger
 and Smaller) have Apple's [standard keyboard
 shortcuts](https://developer.apple.com/design/human-interface-guidelines/keyboards#Standard-keyboard-shortcuts).
 Find and Replace is Cmd+Option+F, and Actual Size Cmd+0.
-Margin's own commands use Command, with Option or Shift as the second
-modifier:
-
-| Command | Keys |
-| --- | --- |
-| Show Markdown, Reflow Paragraphs | Cmd+/, Cmd+Option+Z |
-| Strikethrough, Inline Code | Cmd+Shift+X, Cmd+Shift+E |
-| Link | Cmd+K |
-| Normal Text, Heading 1–6 | Cmd+Option+0, Cmd+Option+1…6 |
-| Numbered List, Bulleted List, Checklist | Cmd+Shift+7, 8, 9 |
-| Quote, Code Block | Cmd+Option+Q, Cmd+Option+C |
-| Indent, Outdent | Tab or Cmd+], Shift+Tab or Cmd+[ |
-| Toggle Task | Cmd+Return |
-| Open Link | Cmd+click under the pointer; Cmd+Option+Return at the cursor |
-| Comment on Selection | Cmd+Option+M |
-| Copy Open Comments | Cmd+Shift+C |
-| Send to Agent | Cmd+Shift+Return |
-| Next Comment, Previous Comment | Cmd+Option+Down, Cmd+Option+Up |
-| Next Change, Previous Change | Cmd+Option+Shift+Down, Cmd+Option+Shift+Up |
-| Reply, Post | Cmd+Option+R, Cmd+Return |
-| Leave Comment, close Find | Escape |
-| Keyboard Shortcuts | in the Help menu |
-
-Keys macOS gives to something else:
+Margin's own commands take the spec's keys, with Command for Mod, Option
+for Alt and Return for Enter, but for the keys macOS gives to something
+else:
 
 - **Cmd+E** is Use Selection for Find, so Inline Code is Cmd+Shift+E.
 - **Option+letter types characters** (Option+Z is Ω), so no command is
-  Option-only.
-- **Cmd+?** opens the Help menu's search, so Keyboard Shortcuts has no key.
+  Option-only: Reflow Paragraphs is Cmd+Option+Z, and Open Link at the
+  cursor Cmd+Option+Return.
+- **Cmd+?** opens the Help menu's search, so Keyboard Shortcuts has no key;
+  it is in the Help menu.
 
 Standard shortcuts Margin gives to its own commands, since it has no use
 for theirs:

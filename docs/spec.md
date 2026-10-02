@@ -91,8 +91,8 @@ comments) and a **coding agent**.
   failed. Empty untitled documents are discarded silently.
 - Outside changes: reload if there are no unsaved edits; otherwise a
   three-way line merge against the last saved text, applied and saved when
-  clean; on overlap, ask Keep My Version or Load Disk Version. Say which
-  happened.
+  clean; on overlap, ask Keep My Version or Load Disk Version. Announce
+  which happened ("Updated from disk").
 - Comments are keyed by path. Save As moves them and drops any stored for a
   file it overwrites; moving a file outside Margin loses them.
 
@@ -111,19 +111,13 @@ comments) and a **coding agent**.
 
 - CommonMark with GitHub tables, strikethrough and task lists, and YAML front
   matter.
-- Tables show as grids: the `|`s, the cells' padding and the delimiter row
-  are hidden, columns take their widest cell's width and the delimiter row's
-  alignment, and the header row is bold. A row stays on one line. Where a
-  platform does not draw grids yet (see its design system), tables show as
-  source like HTML.
+- Tables show as grids.
 - HTML, front matter and link reference definitions show as dimmed
   monospace source; images as italic, link-colored alt text; bare URLs and
   autolinks as links with the URL visible. Checked tasks are struck through
   and dimmed; Heading 6 is dimmed.
-- Bullets change shape with nesting depth; a code block shows its language.
-- The text column holds about 100 characters, with the comment gutter to its
-  right. Spacing and sizes are proportional to the text size. Zoom is shared by all
-  windows and persisted, on top of the platform's text size.
+- Bullets change shape with nesting depth. A code block sits on a tinted
+  background and shows its language; a quote has a bar down its left side.
 - Reflow Paragraphs is off by default, global and persisted. Show Markdown is
   per window and not persisted.
 
@@ -206,6 +200,15 @@ Every editor produces the same source for the same keys. The choices:
   14:10"); at its end the message's buttons, Resolve (or Reopen) on the
   comment's row, and a menu for the rarer actions. Editing a message
   doesn't change its author.
+- Commented text is highlighted, more strongly for the focused thread.
+- A card has the card background and a thin border, and a rule between its
+  messages. The focused card stands out from the others.
+- A detached thread's card shows the quote below the comment's header row:
+  in quotation marks, dimmed, italic and struck through, with the tooltip
+  "The commented text was deleted".
+- A new comment or reply is typed on its card, with Cancel and Comment (or
+  Reply) below it.
+- Clicking anywhere on a card, its text included, focuses the thread.
 - A thread's anchor follows its text through edits, as the table after
   this list sets out.
 - A new comment's span is trimmed of whitespace and hidden syntax; without a
@@ -220,8 +223,6 @@ Every editor produces the same source for the same keys. The choices:
 - The page grows to fit cards that reach below the text. A clicked card that
   moves out of view is scrolled back into it.
 - When threads overlap, the cursor focuses the innermost.
-- Clicks in the gutter never move the text cursor, and document commands do
-  nothing while focus is in a card.
 - A message longer than seven lines is cut off at three, with Show More
   below it, as Google Docs and Pages do; Show Less cuts it off again.
   Each message is expanded on its own, and stays so until the window
@@ -241,7 +242,7 @@ Every editor produces the same source for the same keys. The choices:
   a message empty: deleting is its own command.
 - Nothing asks for confirmation: resolving, reopening, editing, deleting
   and Resolve All are undoable, and undo shows the thread it brings back.
-  All but editing can also be undone from the notification that reports
+  All but editing can also be undone from the announcement that reports
   them.
 - Copy Open Comments format, with paths relative to the git repository when
   there is one:
@@ -290,8 +291,8 @@ Every editor produces the same source for the same keys. The choices:
 - Send to Agent's tooltip says what it would send, or what is missing: an
   agent waiting, or an open comment. When the round has other documents,
   it says how many ("Send open comments on this and 2 other documents to
-  the agent"). A send confirms what went: "Sent 2 open comments to the
-  agent", or "Sent 5 open comments on 3 documents to the agent" for a
+  the agent"). A send's announcement says what went: "Sent 2 open comments
+  to the agent", or "Sent 5 open comments on 3 documents to the agent" for a
   round.
 
 How an anchor follows each kind of edit, shown on a thread on `quick fox`
@@ -343,17 +344,95 @@ put anchors in the same places:
   paragraphs after it changed.
 - A changed line has a bar in the left margin beside every line on screen
   that shows part of it, so a one-line paragraph is marked whole, in Show
-  Markdown and Reflow Paragraphs too. Added lines and changed lines have
-  different bars; where lines were deleted, a small mark sits between the
-  lines around them. Lines that show nothing, such as the blank lines
-  between paragraphs, have no bar, and a change to only those is marked as
-  a deletion is.
+  Markdown and Reflow Paragraphs too: a thin bar a little way left of the
+  text, green for added lines and blue for changed ones.
+  Where lines were deleted, a small red triangle sits between the lines
+  around them. Lines that show nothing, such as the blank lines between
+  paragraphs, have no bar, and a change to only those is marked as a
+  deletion is.
 - Margin shows neither which words changed nor the old text.
 - Next Change and Previous Change move the cursor to the start of the
   nearest change after or before it, wrapping around the document as Next
   Comment does, and scroll it into view. They are unavailable when nothing
   has changed.
 - Nothing about changes reaches the CLI.
+
+## Window
+
+- Light and dark follow the system's appearance. The accent color marks
+  focus.
+- The title is the document's name and the subtitle its folder (`~/…`
+  under the home folder), or "Not saved yet" for an untitled document.
+- The toolbar holds the open-comment count ("3 open comments", or "2
+  resolved" when none are open), with the agent's state beside it, Send to
+  Agent and a comment button. Every other command is in the menus.
+- The text column holds about 100 characters, with the comment gutter to
+  its right. The gutter is the page's margin: one background behind the
+  text and the cards. Spacing and sizes are proportional to the text
+  size. Zoom is shared by all windows and persisted, on top of the
+  platform's text size.
+- The body is in a proportional font, code and source shown as source in a
+  monospace one, and cards in the interface font.
+- Announcements ("Updated from disk", "1 new reply") are a short message
+  that goes away by itself, with an Undo button when what it reports can be
+  undone.
+
+Colors go by role:
+
+| Role | For |
+| --- | --- |
+| Background | The page, behind the text and the cards |
+| Text | Body text |
+| Headings | Headings 1–5 |
+| Dimmed text | Syntax and source, times, Heading 6 |
+| Borders | Cards, rules, quote bars |
+| Accent | Focus, checked boxes |
+| Selection | Selected text |
+| Code background | Code blocks, inline code, table headers |
+| Card background | Cards |
+| Comment highlight | Commented text, stronger for the focused thread |
+| Find matches | Find matches, stronger for the current one |
+| Links | Links, image alt text |
+| Change bars | Added, changed and deleted lines |
+
+## Commands
+
+Every editor has Margin's commands under these names and keys, beside the
+platform's standard commands (New, Open, Save, Print, Close, Quit, Undo,
+the clipboard, Find and its commands, text size, Full Screen), which keep
+the platform's names and keys.
+
+- A command's keys are, in order: the platform's own binding for it, if
+  the platform has one; else Google Docs' binding on that platform; else
+  Margin's own. A key the platform gives to something else (a system
+  shortcut, a standard command, a character it types) stays with that, and
+  the command takes a nearby combination. Margin's own commands keep the
+  same letter on every platform, under that platform's modifiers.
+- List shortcuts (numbered, bulleted, checklist) go by the number row's
+  physical keys, as in Google Docs, so they work on any keyboard layout.
+- Keyboard Shortcuts lists every shortcut.
+
+Mod is the platform's main modifier (Command on the Mac, Ctrl elsewhere)
+and Alt its second (Option on the Mac):
+
+| Command | Keys |
+| --- | --- |
+| Show Markdown, Reflow Paragraphs | Mod+/, Alt+Z |
+| Bold, Italic, Strikethrough, Inline Code | Mod+B, Mod+I, Mod+Shift+X, Mod+E |
+| Link | Mod+K |
+| Normal Text, Heading 1–6 | Mod+Alt+0, Mod+Alt+1…6 |
+| Numbered List, Bulleted List, Checklist | Mod+Shift+7, 8, 9 |
+| Quote, Code Block | Mod+Alt+Q, Mod+Alt+C |
+| Indent, Outdent | Tab or Mod+], Shift+Tab or Mod+[ |
+| Toggle Task | Mod+Enter |
+| Open Link | Mod+click under the pointer; Alt+Enter at the cursor |
+| Comment on Selection | Mod+Alt+M |
+| Copy Open Comments | Mod+Shift+C |
+| Send to Agent | Mod+Shift+Enter |
+| Next Comment, Previous Comment | Mod+Alt+Down, Mod+Alt+Up |
+| Next Change, Previous Change | Mod+Alt+Shift+Down, Mod+Alt+Shift+Up |
+| Reply, Post | Mod+Alt+R, Mod+Enter |
+| Leave Comment, close Find | Escape |
 
 ## CLI
 
@@ -461,11 +540,3 @@ every edit through the core.
   (the comment gutter, the drawn Markdown blocks).
 - Where platform conventions differ, each editor follows its own, even when
   that makes the editors differ; the behavior in this spec stays the same.
-- A command's keys are, in order: the platform's own binding for it, if
-  the platform has one; else Google Docs' binding on that platform; else
-  Margin's own. A key the platform gives to something else (a system
-  shortcut, a standard command, a character it types) stays with that, and
-  the command takes a nearby combination. Margin's own commands keep the
-  same letter on every platform, under that platform's modifiers.
-- List shortcuts (numbered, bulleted, checklist) go by the number row's
-  physical keys, as in Google Docs, so they work on any keyboard layout.
