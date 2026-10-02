@@ -57,6 +57,34 @@ final class PageTests: XCTestCase {
         XCTAssertEqual(h.fills("oov` now"), once, "light")
     }
 
+    /// A list item reflowed onto one line with the line below it: the
+    /// commented text after the joined break is filled once, like the text
+    /// before it, also where it wraps, and code there keeps its tint.
+    /// TextKit's own rectangles for that text are wrong: the whole line,
+    /// and nothing on the next.
+    @MainActor
+    func testHighlightsFillTextAfterAReflowedBreak() throws {
+        let words = "en mon `xx` ov nou som "
+        let h = try Harness(
+            "- **Cause:** we see users \(words)ever\n  more `xx` rows soon \(String(repeating: words, count: 4))once.\n"
+        )
+        defer { h.close() }
+        NSApp.appearance = NSAppearance(named: .darkAqua)
+        h.view.reflowsParagraphs = true
+        h.size(1240, 944)
+        h.wait(0.3)
+        let quote = "use:** we see users \(words)ever\n  more `xx` rows soon \(String(repeating: words, count: 4))once."
+        _ = h.margin("add", h.path, "--quote", quote, "Why?")
+        h.wait(0.3)
+        // Runs alternate between text and code, filled `a` and `b`.
+        let fills = h.fills(quote)
+        let runs = fills.matches(of: /"(.*?)":([a-z])/).map { (String($0.1), String($0.2)) }
+        XCTAssertEqual(runs.count, 13, fills)
+        for (text, fill) in runs {
+            XCTAssertEqual(fill, text == "xx" ? "b" : "a", "\(text.debugDescription) in \(fills)")
+        }
+    }
+
     /// An item starting with hidden syntax (bold) after a blank line, a
     /// heading or another item: its hidden prefix is laid out on the line
     /// before, and its marker must not follow it there.

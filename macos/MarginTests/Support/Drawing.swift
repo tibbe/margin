@@ -25,8 +25,15 @@ extension Harness {
         for ci in r.location..<NSMaxRange(r) where storage.attribute(.marginHidden, at: ci, effectiveRange: nil) == nil
         {
             let g = lm.glyphIndexForCharacter(at: ci)
-            let glyph = lm.boundingRect(forGlyphRange: NSRange(location: g, length: 1), in: tc)
-            let frag = lm.lineFragmentRect(forGlyphAt: g, effectiveRange: nil)
+            var line = NSRange()
+            let frag = lm.lineFragmentRect(forGlyphAt: g, effectiveRange: &line)
+            // From glyph locations, which TextKit gets right where its
+            // bounding rectangles aren't (after a reflowed line break).
+            let x0 = lm.location(forGlyphAt: g).x
+            let x1 =
+                g + 1 < NSMaxRange(line)
+                ? lm.location(forGlyphAt: g + 1).x : lm.lineFragmentUsedRect(forGlyphAt: g, effectiveRange: nil).maxX
+            let glyph = NSRect(x: frag.minX + x0, y: frag.minY, width: max(0, x1 - x0), height: frag.height)
             let font =
                 storage.attribute(.font, at: ci, effectiveRange: nil) as? NSFont ?? Theme.font(size: Theme.bodySize)
             let baseline = frag.minY + lm.location(forGlyphAt: g).y

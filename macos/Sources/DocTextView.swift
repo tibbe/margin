@@ -1921,13 +1921,54 @@ final class DocTextView: NSTextView, NSTextStorageDelegate, NSTextViewDelegate, 
     }
 }
 
-/// Leaves the lines images take to them: the selection and highlights
-/// there are drawn by each image itself, over it (see
-/// `DocTextView.drawObjects`), not behind it.
+/// Fills backgrounds (selection, comments, find, inline code), with two
+/// corrections to TextKit:
+///
+/// - Where a paragraph starts inside a line fragment, after a newline laid
+///   out as a space while reflowing, the rectangles come from glyph
+///   locations. TextKit's for such a paragraph's text are wrong: the whole
+///   fragment for the text on it, and empty on the fragments after.
+/// - It leaves the lines images take to them: the selection and highlights
+///   there are drawn by each image itself, over it (see
+///   `DocTextView.drawObjects`), not behind it.
 nonisolated final class DocLayoutManager: NSLayoutManager {
     weak var view: DocTextView?
+    private var origin = NSPoint.zero
+
+    override func drawBackground(forGlyphRange glyphsToShow: NSRange, at origin: NSPoint) {
+        self.origin = origin
+        super.drawBackground(forGlyphRange: glyphsToShow, at: origin)
+    }
 
     override func fillBackgroundRectArray(
+        _ rectArray: UnsafePointer<NSRect>, count rectCount: Int, forCharacterRange charRange: NSRange,
+        color: NSColor
+    ) {
+        guard charRange.length > 0, touchesJoinedParagraph(charRange) else {
+            return fill(rectArray, count: rectCount, forCharacterRange: charRange, color: color)
+        }
+        let glyphs = glyphRange(forCharacterRange: charRange, actualCharacterRange: nil)
+        var rects: [NSRect] = []
+        enumerateLineFragments(forGlyphRange: glyphs) { frag, used, _, line, _ in
+            let start = max(glyphs.location, line.location)
+            let end = min(NSMaxRange(glyphs), NSMaxRange(line))
+            guard start < end else { return }
+            // Glyph locations are from the fragment's origin.
+            let x0 = frag.minX + self.location(forGlyphAt: start).x
+            let x1 = end < NSMaxRange(line) ? frag.minX + self.location(forGlyphAt: end).x : used.maxX
+            guard x1 > x0 else { return }
+            rects.append(
+                NSRect(x: x0, y: frag.minY, width: x1 - x0, height: frag.height)
+                    .offsetBy(dx: self.origin.x, dy: self.origin.y))
+        }
+        guard !rects.isEmpty else { return }
+        rects.withUnsafeBufferPointer {
+            fill($0.baseAddress!, count: $0.count, forCharacterRange: charRange, color: color)
+        }
+    }
+
+    /// Fills `rectArray`, except on the lines images take.
+    private func fill(
         _ rectArray: UnsafePointer<NSRect>, count rectCount: Int, forCharacterRange charRange: NSRange,
         color: NSColor
     ) {
@@ -1947,6 +1988,24 @@ nonisolated final class DocLayoutManager: NSLayoutManager {
         clip.addClip()
         super.fillBackgroundRectArray(rectArray, count: rectCount, forCharacterRange: charRange, color: color)
         NSGraphicsContext.restoreGraphicsState()
+    }
+
+    /// Whether `range` reaches into a paragraph that starts inside the line
+    /// fragment of the newline before it.
+    private func touchesJoinedParagraph(_ range: NSRange) -> Bool {
+        guard let s = textStorage?.string as NSString? else { return false }
+        var p = s.paragraphRange(for: NSRange(location: range.location, length: 0)).location
+        while p < NSMaxRange(range) {
+            if p > 0 {
+                var line = NSRange()
+                lineFragmentRect(forGlyphAt: glyphIndexForCharacter(at: p - 1), effectiveRange: &line)
+                if NSLocationInRange(glyphIndexForCharacter(at: p), line) { return true }
+            }
+            let next = NSMaxRange(s.paragraphRange(for: NSRange(location: p, length: 0)))
+            if next <= p { break }
+            p = next
+        }
+        return false
     }
 }
 
