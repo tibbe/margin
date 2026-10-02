@@ -1,24 +1,11 @@
 #!/bin/sh
-# Builds this checkout's Margin.app and opens FILEs in it. Quits the
-# checkout's running Margin first, so the new build is the one that runs.
-# Pass -g to open it in the background, as tests do, so it doesn't take focus.
+# Builds this checkout's Margin.app and opens FILEs in it, as `margin FILE…`
+# does. Quits the checkout's running Margin first: files opened in it would
+# go to the running process, which still runs the build before this one.
 #
-#   macos/tools/run.sh [-g] [FILE…]
+#   macos/tools/run.sh [FILE…]
 set -eu
-background=
-case ${1:-} in
-    -g) background=-g; shift ;;
-    -*) echo "usage: macos/tools/run.sh [-g] [FILE…]" >&2; exit 2 ;;
-esac
-# open refuses missing files, so refuse them before quitting the running app.
-for file in "$@"; do
-    if [ ! -e "$file" ]; then
-        echo "error: $file does not exist" >&2
-        exit 1
-    fi
-done
-
-root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
+root=$(CDPATH='' cd -- "$(dirname -- "$0")/../.." && pwd)
 app=$root/macos/build/DerivedData/Build/Products/Debug/Margin.app
 # xcodebuild picks this destination itself, but warns that several match.
 xcodebuild -quiet -project "$root/macos/Margin.xcodeproj" -scheme Margin \
@@ -52,4 +39,4 @@ for pid in $pids; do
         sleep 0.1
     done
 done
-open ${background:+"$background"} -n -a "$app" "$@"
+exec "$app/Contents/Helpers/margin" "$@"
