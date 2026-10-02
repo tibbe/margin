@@ -245,6 +245,19 @@ pub struct TableCellInfo {
     pub lead: TextRange,
 }
 
+/// An image alone in its paragraph (see `margin_core::md::ImageBlock`),
+/// which the editor shows as the image: one object.
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct ImageBlockInfo {
+    /// The whole source, `![alt](url)`, within one line.
+    pub range: TextRange,
+    pub line: u32,
+    /// The destination, unescaped: a path or a URL.
+    pub url: String,
+    /// The alt text as shown, as ranges of the source.
+    pub alt: Vec<TextRange>,
+}
+
 #[derive(Debug, Clone, uniffi::Record)]
 pub struct Replacement {
     /// UTF-16 range of the text before the change.
@@ -633,6 +646,20 @@ impl Analysis {
             .collect()
     }
 
+    /// Images alone in their paragraphs, in source order.
+    pub fn image_blocks(&self) -> Vec<ImageBlockInfo> {
+        self.doc
+            .images
+            .iter()
+            .map(|im| ImageBlockInfo {
+                range: self.range(im.range.clone()),
+                line: im.line as u32,
+                url: im.url.clone(),
+                alt: im.alt.iter().map(|r| self.range(r.clone())).collect(),
+            })
+            .collect()
+    }
+
     /// Newlines inside paragraphs, which Reflow Paragraphs shows as spaces.
     pub fn soft_breaks(&self) -> Vec<u32> {
         self.doc.soft_breaks.iter().map(|&b| self.u(b)).collect()
@@ -801,11 +828,18 @@ impl Analysis {
             .map(|p| self.plan(p))
     }
 
-    /// Replace All: every match of `needle` (as shown) replaced by `with`,
-    /// in place where it lies in plain text, else deleted and retyped. One
-    /// plan of minimal changes against the current text.
-    pub fn replace_all(&self, needle: String, match_case: bool, with: String) -> Option<EditPlan> {
-        let matches = search::find_all(&self.text, &self.doc, &needle, match_case);
+    /// Replace All: every match of `needle` (as shown, as `find_all` finds
+    /// them) replaced by `with`, in place where it lies in plain text, else
+    /// deleted and retyped. One plan of minimal changes against the current
+    /// text.
+    pub fn replace_all(
+        &self,
+        needle: String,
+        match_case: bool,
+        with: String,
+        alt_text_images: Vec<u32>,
+    ) -> Option<EditPlan> {
+        let matches = self.find(&needle, match_case, &alt_text_images);
         let first = matches.first()?.start;
         // Last to first, so earlier matches keep their offsets.
         let mut text = self.text.clone();
@@ -850,11 +884,28 @@ impl Analysis {
         edit::copy_source(&self.text, &self.doc, self.bytes(start, end))
     }
 
-    pub fn find_all(&self, needle: String, match_case: bool) -> Vec<TextRange> {
-        search::find_all(&self.text, &self.doc, &needle, match_case)
+    /// Every match of `needle` in the text as shown. `alt_text_images` are
+    /// the image blocks (indices into `image_blocks`) shown as their alt
+    /// text, since they can't be loaded; the others show as images, which
+    /// match nothing.
+    pub fn find_all(
+        &self,
+        needle: String,
+        match_case: bool,
+        alt_text_images: Vec<u32>,
+    ) -> Vec<TextRange> {
+        self.find(&needle, match_case, &alt_text_images)
             .into_iter()
             .map(|r| self.range(r))
             .collect()
+    }
+}
+
+impl Analysis {
+    fn find(&self, needle: &str, match_case: bool, alt_text_images: &[u32]) -> Vec<Range<usize>> {
+        search::find_shown(&self.text, &self.doc, needle, match_case, |i| {
+            alt_text_images.contains(&(i as u32))
+        })
     }
 }
 

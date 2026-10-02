@@ -87,6 +87,7 @@ final class DocumentWindow: NSWindowController, NSWindowDelegate, NSToolbarDeleg
         openedText = text.text
         buildContent()
         textView.reflowsParagraphs = Prefs.reflowsParagraphs
+        textView.imageFolder = folder
         textView.setContents(text.text)
         readCommitted()
         layer.attach(try? CommentStore(document: path))
@@ -140,6 +141,10 @@ final class DocumentWindow: NSWindowController, NSWindowDelegate, NSToolbarDeleg
         textView.onLayout = { [weak self] in self?.layer.queueRelayout() }
         textView.onHighlight = { [weak self] in self?.layer.refreshHighlights() }
         textView.onOpenLink = { [weak self] url in self?.follow(link: url) }
+        textView.onImagesChanged = { [weak self] in
+            guard let self, self.findBar.isOpen else { return }
+            self.findBar.refresh(goingToMatchAtOrAfterCursor: false)
+        }
         textView.onEscape = { [weak self] in
             guard let self else { return }
             if !self.layer.escape() && self.findBar.isOpen { self.findBar.close() }
@@ -220,6 +225,9 @@ final class DocumentWindow: NSWindowController, NSWindowDelegate, NSToolbarDeleg
     var displayName: String {
         isDraft ? "Untitled" : (path as NSString).lastPathComponent
     }
+
+    /// The document's folder, which relative image paths start from.
+    private var folder: String { (path as NSString).deletingLastPathComponent }
 
     private func homeRelative(_ p: String) -> String {
         let home = NSHomeDirectory()
@@ -712,6 +720,7 @@ final class DocumentWindow: NSWindowController, NSWindowDelegate, NSToolbarDeleg
         storeWatcher?.cancel()
         path = canonical
         isDraft = false
+        textView.imageFolder = folder
         sync.wrote(ours: text)
         layer.attach(try? CommentStore(document: canonical))
         readCommitted()
@@ -799,8 +808,10 @@ final class DocumentWindow: NSWindowController, NSWindowDelegate, NSToolbarDeleg
 
     func windowDidBecomeKey(_ notification: Notification) {
         Notifier.shared.clear(path: path)
-        // Commits are made elsewhere, so look again on coming back.
+        // Commits are made elsewhere, so look again on coming back; and a
+        // missing image may have been put in place meanwhile.
         readCommitted()
+        ImageLibrary.shared.recheck()
     }
 
     func windowDidResignKey(_ notification: Notification) {
@@ -899,7 +910,7 @@ final class DocumentWindow: NSWindowController, NSWindowDelegate, NSToolbarDeleg
 
     @objc func printDocument(_ sender: Any?) {
         guard let window else { return }
-        printMarkdown(text: textView.string, title: displayName, window: window)
+        printMarkdown(text: textView.string, title: displayName, imageFolder: folder, window: window)
     }
 
     func validateMenuItem(_ item: NSMenuItem) -> Bool {

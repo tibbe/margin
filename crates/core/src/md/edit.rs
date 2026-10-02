@@ -11,7 +11,7 @@
     reason = "deletions are lists of byte ranges, often of one range"
 )]
 
-use super::doc::{Container, Doc, InlineKind, LineKind};
+use super::doc::{Container, Doc, ImageBlock, InlineKind, LineKind};
 use std::ops::Range;
 use unicode_segmentation::UnicodeSegmentation;
 
@@ -766,7 +766,11 @@ pub fn backspace(src: &str, doc: &Doc, pos: usize) -> Plan {
     if line.kind == LineKind::Blank {
         // Back to the end of the text above, over hidden blank lines, so
         // that Enter then Backspace is a round trip.
-        return match prev_visible_line(doc, li) {
+        let prev = prev_visible_line(doc, li);
+        if let Some(im) = prev.and_then(|pi| doc.image_block_on_line(pi)) {
+            return select_image(im);
+        }
+        return match prev {
             Some(pi) => {
                 let end = doc.lines[pi].end;
                 Plan::mapped(vec![Change::delete(end..line.end)], end, false)
@@ -902,6 +906,9 @@ fn backspace_at_start(src: &str, doc: &Doc, li: usize) -> Plan {
     let Some(pi) = prev_visible_line(doc, li) else {
         return Plan::cursor_only(line.content_start);
     };
+    if let Some(im) = doc.image_block_on_line(pi) {
+        return select_image(im);
+    }
     let prev = &doc.lines[pi];
     match prev.kind {
         LineKind::Rule => Plan::mapped(
@@ -928,6 +935,17 @@ fn backspace_at_start(src: &str, doc: &Doc, li: usize) -> Plan {
     }
 }
 
+/// Backspace or Delete toward an image block, which would join the lines
+/// and turn the image into running text: it selects the image instead,
+/// which the next press deletes.
+fn select_image(im: &ImageBlock) -> Plan {
+    Plan {
+        changes: Vec::new(),
+        cursor: im.range.end,
+        selection: Some(im.range.clone()),
+    }
+}
+
 pub fn delete_forward(src: &str, doc: &Doc, pos: usize) -> Plan {
     let p = visual_pos(doc, pos);
     let li = doc.line_index(p);
@@ -945,6 +963,11 @@ pub fn delete_forward(src: &str, doc: &Doc, pos: usize) -> Plan {
             return Plan::cursor_only(p);
         };
         let next = &doc.lines[ni];
+        if line.kind != LineKind::CodeContent
+            && let Some(im) = doc.image_block_on_line(ni)
+        {
+            return select_image(im);
+        }
         return match next.kind {
             LineKind::Rule => Plan::mapped(vec![Change::delete(line.end..next.end)], p, false),
             LineKind::Paragraph | LineKind::Heading(_) if line.kind != LineKind::CodeContent => {
@@ -1080,8 +1103,23 @@ pub fn word_at(src: &str, doc: &Doc, pos: usize) -> Option<Range<usize>> {
         .find(|r| r.start <= l.content_start + rel && l.content_start + rel <= r.end)
 }
 
-/// Shrinks `a..b` past hidden syntax and whitespace at both ends.
-pub fn trim_segment(src: &str, doc: &Doc, mut a: usize, mut b: usize) -> Option<Range<usize>> {
+/// Shrinks `a..b` past hidden syntax and whitespace at both ends. An image
+/// block it touches is one piece, so it is kept whole: a comment on an
+/// image is on all of its source.
+pub fn trim_segment(src: &str, doc: &Doc, a: usize, b: usize) -> Option<Range<usize>> {
+    let trimmed = trim_text(src, doc, a, b);
+    doc.images
+        .iter()
+        .filter(|im| im.range.start < b && a < im.range.end)
+        .fold(trimmed, |r, im| {
+            Some(match r {
+                Some(r) => r.start.min(im.range.start)..r.end.max(im.range.end),
+                None => im.range.clone(),
+            })
+        })
+}
+
+fn trim_text(src: &str, doc: &Doc, mut a: usize, mut b: usize) -> Option<Range<usize>> {
     loop {
         let (a0, b0) = (a, b);
         if a < b {
@@ -1121,11 +1159,17 @@ pub fn toggle_inline(src: &str, doc: &Doc, sel: Range<usize>, kind: InlineKind) 
         visual_pos(doc, sel.start)..visual_pos(doc, sel.end)
     };
 
-    // One segment per line, trimmed to visible, non-whitespace text.
+    // One segment per line, trimmed to visible, non-whitespace text. An
+    // image block has no text to format.
     let mut segments = Vec::new();
+    let mut images = false;
     for li in doc.line_index(sel.start)..=doc.line_index(sel.end) {
         let l = &doc.lines[li];
         if !matches!(l.kind, LineKind::Paragraph | LineKind::Heading(_)) {
+            continue;
+        }
+        if let Some(im) = doc.image_block_on_line(li) {
+            images |= im.range.start < sel.end && sel.start < im.range.end;
             continue;
         }
         let a = sel.start.max(l.content_start);
@@ -1135,7 +1179,10 @@ pub fn toggle_inline(src: &str, doc: &Doc, sel: Range<usize>, kind: InlineKind) 
         }
     }
     if segments.is_empty() {
-        return Plan::cursor_only(sel.end);
+        // A selected image stays selected.
+        let mut plan = Plan::cursor_only(sel.end);
+        plan.selection = images.then_some(sel);
+        return plan;
     }
 
     let enclosing = |r: &Range<usize>| {
@@ -2044,6 +2091,75 @@ mod tests {
     #[test]
     fn backspace_into_code_block_moves_cursor() {
         assert_eq!(bs("```\nx\n```\n\n|p\n"), "```\nx|\n```\n\np\n");
+    }
+
+    /// A command at the cursor `|`, with the selection it leaves marked
+    /// `[…]`, or else the cursor.
+    fn marked(src: &str, f: impl Fn(&str, &Doc, usize) -> Plan) -> String {
+        let pos = src.find('|').expect("cursor");
+        let text = src.replacen('|', "", 1);
+        let doc = parse(&text);
+        let plan = f(&text, &doc, pos);
+        let mut out = plan.apply(&text);
+        match &plan.selection {
+            Some(s) => {
+                out.insert(s.end, ']');
+                out.insert(s.start, '[');
+            }
+            None => out.insert(plan.cursor, '|'),
+        }
+        out
+    }
+
+    #[test]
+    fn backspace_and_delete_toward_an_image_select_it() {
+        assert_eq!(
+            marked("Intro.\n\n![a](a.png)\n\n|Next.\n", backspace),
+            "Intro.\n\n[![a](a.png)]\n\nNext.\n"
+        );
+        assert_eq!(marked("![a](a.png)\n\n|", backspace), "[![a](a.png)]\n\n");
+        assert_eq!(
+            marked("Intro.|\n\n![a](a.png)\n", delete_forward),
+            "Intro.\n\n[![a](a.png)]\n"
+        );
+        assert_eq!(
+            marked("- one|\n- ![a](a.png)\n", delete_forward),
+            "- one\n- [![a](a.png)]\n"
+        );
+        // An image in running text is text.
+        assert_eq!(
+            marked("Intro.\n\n![a](a.png) b\n\n|Next.\n", backspace),
+            "Intro.\n\n![a](a.png) b|Next.\n"
+        );
+    }
+
+    #[test]
+    fn a_selected_image_is_one_piece() {
+        let src = "Intro.\n\n![a *b*](a.png)\n\nNext.\n";
+        let doc = parse(src);
+        let im = doc.images[0].range.clone();
+        assert_eq!(
+            delete_range(src, &doc, im.clone()).apply(src),
+            "Intro.\n\n\n\nNext.\n"
+        );
+        assert_eq!(
+            replace_range(src, &doc, im.clone(), "x").apply(src),
+            "Intro.\n\nx\n\nNext.\n"
+        );
+        assert_eq!(copy_source(src, &doc, im.clone()), "![a *b*](a.png)");
+        // A comment takes it whole, even from part of its source.
+        assert_eq!(trim_segment(src, &doc, im.start, im.end), Some(im.clone()));
+        assert_eq!(
+            trim_segment(src, &doc, im.start + 2, im.start + 3),
+            Some(im.clone())
+        );
+        assert_eq!(trim_segment(src, &doc, 0, im.end), Some(0..im.end));
+        let empty = "![](a.png)\n";
+        assert_eq!(trim_segment(empty, &parse(empty), 0, 10), Some(0..10));
+        // It has no text to format, and stays selected.
+        let plan = toggle_inline(src, &doc, im.clone(), InlineKind::Strong);
+        assert!(plan.changes.is_empty());
+        assert_eq!(plan.selection, Some(im));
     }
 
     #[test]

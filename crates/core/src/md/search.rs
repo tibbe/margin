@@ -6,8 +6,24 @@ use std::ops::Range;
 
 /// The rendered text, one entry per visible character: the character and
 /// its byte offset in the source. Line breaks inside paragraphs read as
-/// spaces.
+/// spaces. Image blocks show their alt text, as in an editor that draws
+/// none of them.
 pub fn visible_chars(src: &str, doc: &Doc) -> Vec<(char, usize)> {
+    shown_chars(src, doc, &|_| true)
+}
+
+/// [`visible_chars`], where image block `i` (in [`Doc::images`]) shows its
+/// alt text when `shows_alt(i)`, else shows as the image, which reads as
+/// nothing.
+fn shown_chars(src: &str, doc: &Doc, shows_alt: &dyn Fn(usize) -> bool) -> Vec<(char, usize)> {
+    let pictures: Vec<Range<usize>> = (0..doc.images.len())
+        .filter(|&i| !shows_alt(i))
+        .map(|i| doc.images[i].range.clone())
+        .collect();
+    let in_picture = |p: usize| {
+        let i = pictures.partition_point(|r| r.end <= p);
+        pictures.get(i).is_some_and(|r| r.start <= p)
+    };
     let mut out = Vec::with_capacity(src.len());
     let mut soft = doc.soft_breaks.iter().peekable();
     for l in &doc.lines {
@@ -19,7 +35,7 @@ pub fn visible_chars(src: &str, doc: &Doc) -> Vec<(char, usize)> {
         }
         for (off, c) in src[l.content_start..l.end].char_indices() {
             let p = l.content_start + off;
-            if !doc.is_hidden_byte(p) {
+            if !doc.is_hidden_byte(p) && !in_picture(p) {
                 out.push((c, p));
             }
         }
@@ -36,8 +52,23 @@ fn fold(c: char) -> char {
     c.to_lowercase().next().unwrap_or(c)
 }
 
-/// Every match of `needle` in the visible text, as source byte ranges.
+/// Every match of `needle` in the visible text, as source byte ranges,
+/// with every image block showing its alt text (see [`visible_chars`]).
 pub fn find_all(src: &str, doc: &Doc, needle: &str, match_case: bool) -> Vec<Range<usize>> {
+    find_shown(src, doc, needle, match_case, |_| true)
+}
+
+/// Every match of `needle` in the text as shown, as source byte ranges.
+/// Image block `i` (in [`Doc::images`]) shows its alt text when
+/// `shows_alt(i)`, as one that can't be loaded does; drawn as the image,
+/// it matches nothing, neither its alt text nor its path.
+pub fn find_shown(
+    src: &str,
+    doc: &Doc,
+    needle: &str,
+    match_case: bool,
+    shows_alt: impl Fn(usize) -> bool,
+) -> Vec<Range<usize>> {
     let needle: Vec<char> = if match_case {
         needle.chars().collect()
     } else {
@@ -46,7 +77,7 @@ pub fn find_all(src: &str, doc: &Doc, needle: &str, match_case: bool) -> Vec<Ran
     if needle.is_empty() {
         return Vec::new();
     }
-    let hay = visible_chars(src, doc);
+    let hay = shown_chars(src, doc, &shows_alt);
     let eq = |a: char, b: char| if match_case { a == b } else { fold(a) == b };
     let mut out = Vec::new();
     let mut i = 0;
@@ -93,6 +124,26 @@ mod tests {
     fn soft_breaks_read_as_spaces() {
         assert_eq!(found("two\nweeks\n", "two weeks"), vec!["two\nweeks"]);
         assert!(found("# a\nb\n", "a b").is_empty());
+    }
+
+    #[test]
+    fn images_drawn_as_images_match_nothing() {
+        let src = "Intro ![shot](a.png) here.\n\n![shot](b.png)\n\n![shot](c.png)\n";
+        let doc = parse(src);
+        let found = |shows_alt: &dyn Fn(usize) -> bool| -> Vec<usize> {
+            find_shown(src, &doc, "shot", false, shows_alt)
+                .into_iter()
+                .map(|r| r.start)
+                .collect()
+        };
+        let starts: Vec<usize> = src.match_indices("shot").map(|(i, _)| i).collect();
+        // Only the image in running text shows its alt text.
+        assert_eq!(found(&|_| false), [starts[0]]);
+        // A missing image's alt text shows, so it matches.
+        assert_eq!(found(&|i| i == 1), [starts[0], starts[2]]);
+        assert!(find_shown(src, &doc, "c.png", false, |_| false).is_empty());
+        // Showing every image as its alt text, as `find_all` does.
+        assert_eq!(find_all(src, &doc, "shot", false).len(), 3);
     }
 
     #[test]

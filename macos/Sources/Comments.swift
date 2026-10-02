@@ -359,7 +359,7 @@ final class CommentLayer {
         focus = .draft(Draft(start: Int(range.start), end: Int(range.end), card: card))
         // The highlight marks what is being commented on; a selection
         // would hide it.
-        view.setSelectedRange(NSRange(location: Int(range.end), length: 0))
+        view.placeCursor(at: Int(range.end))
         sync()
         // Placed before it takes the keyboard, which scrolls to it.
         page.layoutSubtreeIfNeeded()
@@ -531,7 +531,7 @@ final class CommentLayer {
             let r = it.range ?? NSRange(location: it.start, length: 0)
             view.scrollRangeToVisible(r)
             // Moving the cursor may focus another thread's text.
-            view.setSelectedRange(NSRange(location: NSMaxRange(r), length: 0))
+            view.placeCursor(at: NSMaxRange(r))
             focus = .thread(id)
             sync()
         }
@@ -603,8 +603,10 @@ final class CommentLayer {
     }
 
     func cursorMoved() {
-        if takingIn || view.selection != nil || draft != nil { return }
-        let c = view.cursor
+        // A selected image is where the cursor would be in text.
+        let object = view.selectedObject
+        if takingIn || (view.selection != nil && object == nil) || draft != nil { return }
+        let c = object?.start ?? view.cursor
         let hit =
             items
             .compactMap { it in it.range.map { (it, $0) } }
@@ -640,10 +642,14 @@ final class CommentLayer {
         // gets none: a fill starting on it also covers the character
         // before, which a see-through highlight then shows doubled.
         let appearance = view.effectiveAppearance
+        // Images draw their own, over the layout manager's.
+        var marks: [(NSRange, NSColor)] = []
+        defer { view.objectHighlights = marks }
         func mark(_ a: Int, _ b: Int, _ color: NSColor) {
             let s = max(0, min(a, len))
             let e = max(0, min(b, len))
             guard s < e, let storage = view.textStorage else { return }
+            marks.append((NSRange(location: s, length: e - s), color))
             storage.enumerateAttributes(in: NSRange(location: s, length: e - s)) { attrs, r, _ in
                 if attrs[.marginHidden] != nil { return }
                 let c =

@@ -181,9 +181,10 @@ Every editor produces the same source for the same keys. The choices:
 - An image or diagram shown as such is one object, and the cursor never
   rests in its source. Left or Right toward it selects it, and the next
   press moves past it, as in Obsidian; Up and Down pass it keeping the
-  column; Shift extends a selection over it whole. A click selects it too.
-  Selected, Delete removes it, typing replaces it, and copying gives its
-  Markdown. Its source is edited in Show Markdown.
+  column; Shift extends a selection over it whole. A click selects it too,
+  and so do Backspace and Delete toward it, rather than joining its line to
+  the text beside it. Selected, Delete removes it, typing replaces it, and
+  copying gives its Markdown. Its source is edited in Show Markdown.
 - No automatic character substitution (smart quotes, dashes, autocorrect).
 - Links to `.md`/`.markdown` files open in Margin; other files in their
   default app.

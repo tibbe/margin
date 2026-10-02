@@ -72,6 +72,7 @@ final class Harness {
     /// Closes every window and forgets the preferences and appearance used.
     func close() {
         for w in TestApp.delegate.windows { w.window?.close() }
+        ImageLibrary.shared.fetch = ImageLibrary.read
         NSApp.appearance = nil
         UserDefaults.standard.removePersistentDomain(forName: defaultsSuite)
         Prefs.defaults = .standard

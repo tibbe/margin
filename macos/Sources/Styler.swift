@@ -10,6 +10,9 @@ extension NSAttributedString.Key {
     /// The one character left of a table cell's padding and `|`, laid out
     /// as space wide enough to reach the cell's column.
     static let marginTableGap = NSAttributedString.Key("marginTableGap")
+    /// The first character of an image shown as the image, laid out as the
+    /// space it is drawn in; the rest of its source is hidden.
+    static let marginObject = NSAttributedString.Key("marginObject")
 }
 
 /// The core's range. AppKit also brings in a `TextRange`, from the Apple
@@ -38,6 +41,8 @@ struct Span {
         case indent, above, strong, emphasis, strike, code, link, image, inlineHtml, tableHeader, taskDone, hidden
         /// Not from the core: added by the view for tables laid out as grids.
         case tableGap
+        /// Not from the core: added by the view for images shown as images.
+        case object
     }
 
     static func decode(_ data: Data) -> [Span] {
@@ -297,6 +302,7 @@ final class Styler {
             var strike = false
             var hidden = false
             var gap = false
+            var object = false
             // Later styles win, as in the GTK editor's tag priorities; the
             // codes are in that order.
             for s in ordered where s.start <= a && b <= s.end {
@@ -329,6 +335,9 @@ final class Styler {
                     if sourceMode || shown { color = Theme.dim } else { hidden = true }
                 case .tableGap:
                     gap = true
+                case .object:
+                    hidden = false
+                    object = true
                 default:
                     break
                 }
@@ -343,6 +352,7 @@ final class Styler {
             if strike { attrs[.strikethroughStyle] = NSUnderlineStyle.single.rawValue }
             if hidden { attrs[.marginHidden] = true }
             if gap { attrs[.marginTableGap] = true }
+            if object { attrs[.marginObject] = true }
             out.append((NSRange(location: a, length: b - a), attrs))
         }
         return out

@@ -1,7 +1,9 @@
 import AppKit
 
-/// Prints the document as shown, not its source, without comments.
-func printMarkdown(text: String, title: String, window: NSWindow) {
+/// Prints the document as shown, not its source, without comments. Images
+/// are printed once they have loaded (or failed to): printing waits for
+/// them.
+func printMarkdown(text: String, title: String, imageFolder: String, window: NSWindow) {
     let info = (NSPrintInfo.shared.copy() as! NSPrintInfo)
     info.horizontalPagination = .fit
     info.verticalPagination = .automatic
@@ -14,6 +16,21 @@ func printMarkdown(text: String, title: String, window: NSWindow) {
     let scale = 11 / Theme.bodySize
     info.scalingFactor = scale
     let width = (info.paperSize.width - info.leftMargin - info.rightMargin) / scale
+    let view = printView(text: text, imageFolder: imageFolder, width: width)
+    view.whenImagesSettled { [weak window] in
+        guard let window else { return }
+        view.sizeToFit()
+        let op = NSPrintOperation(view: view, printInfo: info)
+        op.jobTitle = title
+        op.showsPrintPanel = true
+        op.showsProgressPanel = true
+        op.runModal(for: window, delegate: nil, didRun: nil, contextInfo: nil)
+    }
+}
+
+/// The document laid out for paper, `width` wide, in the light
+/// appearance, without comments or change marks.
+func printView(text: String, imageFolder: String, width: CGFloat) -> DocTextView {
     let view = DocTextView.make()
     view.usesFullWidth = true
     view.isVerticallyResizable = true
@@ -22,13 +39,10 @@ func printMarkdown(text: String, title: String, window: NSWindow) {
     view.textContainerInset = NSSize(width: 0, height: 0)
     view.backgroundColor = .white
     view.appearance = NSAppearance(named: .aqua)
+    view.imageFolder = imageFolder
     view.setContents(text)
     view.updateGeometry(force: true)
     view.layoutManager?.ensureLayout(for: view.textContainer!)
     view.sizeToFit()
-    let op = NSPrintOperation(view: view, printInfo: info)
-    op.jobTitle = title
-    op.showsPrintPanel = true
-    op.showsProgressPanel = true
-    op.runModal(for: window, delegate: nil, didRun: nil, contextInfo: nil)
+    return view
 }

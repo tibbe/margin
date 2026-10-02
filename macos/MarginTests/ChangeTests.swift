@@ -124,9 +124,10 @@ extension Harness {
     }
 
     /// Where bars and marks are drawn, a little inside their left edge.
-    private var changeX: CGFloat { view.geometry.left - 18 * Theme.scale + 1.5 * Theme.scale }
+    var changeX: CGFloat { view.geometry.left - 18 * Theme.scale + 1.5 * Theme.scale }
 
-    private func change(at p: NSPoint) -> String {
+    /// The change mark drawn at `p`: `added`, `changed`, `deleted` or `none`.
+    func change(at p: NSPoint) -> String {
         view.ensureFresh()
         view.layoutManager?.ensureLayout(for: view.textContainer!)
         let b = view.bounds

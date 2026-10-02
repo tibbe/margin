@@ -142,7 +142,10 @@ final class FindBar: NSView, NSSearchFieldDelegate, NSTextFieldDelegate {
         let needle = search.stringValue
         matches =
             needle.isEmpty
-            ? [] : view.analysis.findAll(needle: needle, matchCase: matchCase.state == .on).map { NSRange($0) }
+            ? []
+            : view.analysis.findAll(
+                needle: needle, matchCase: matchCase.state == .on, altTextImages: view.altTextImages
+            ).map { NSRange($0) }
         if matches.isEmpty {
             current = nil
         } else if goingToMatchAtOrAfterCursor || current == nil {
@@ -216,7 +219,8 @@ final class FindBar: NSView, NSSearchFieldDelegate, NSTextFieldDelegate {
     func replaceAll() {
         view.ensureFresh()
         if let plan = view.analysis.replaceAll(
-            needle: search.stringValue, matchCase: matchCase.state == .on, with: replaceField.stringValue)
+            needle: search.stringValue, matchCase: matchCase.state == .on, with: replaceField.stringValue,
+            altTextImages: view.altTextImages)
         {
             view.apply(plan)
         }

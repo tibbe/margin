@@ -242,6 +242,22 @@ impl Inline {
     }
 }
 
+/// An image alone in its paragraph, in a list item or a quote too, which
+/// an editor shows as the image: one object, which the cursor never rests
+/// in. An image in running text is an [`Inline`] only, shown as its alt
+/// text.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ImageBlock {
+    /// The whole source, `![alt](url "title")`, within one line.
+    pub range: Range<usize>,
+    pub line: usize,
+    /// The destination, unescaped: a path or a URL.
+    pub url: String,
+    /// The alt text as shown, as source ranges: the text between `![` and
+    /// `]`, without the syntax inside it (emphasis markers, escapes).
+    pub alt: Vec<Range<usize>>,
+}
+
 #[derive(Clone, Debug, Default)]
 pub struct Doc {
     pub len: usize,
@@ -252,6 +268,8 @@ pub struct Doc {
     pub quotes: Vec<Quote>,
     pub code_blocks: Vec<CodeBlock>,
     pub tables: Vec<Table>,
+    /// In source order, at most one per line.
+    pub images: Vec<ImageBlock>,
     pub inlines: Vec<Inline>,
     /// Hidden inline syntax (emphasis markers, link destinations, escapes),
     /// sorted and merged. Block prefixes are described by
@@ -826,6 +844,7 @@ impl Builder<'_> {
         let hidden = merge(hidden);
         self.inlines.sort_by_key(|i| i.open.start);
         self.blocks.sort_by_key(|b| b.range.start);
+        let images = self.image_blocks(&hidden);
 
         Doc {
             len: self.src.len(),
@@ -836,6 +855,7 @@ impl Builder<'_> {
             quotes: self.quotes,
             code_blocks: self.code_blocks,
             tables: self.tables,
+            images,
             inlines: self.inlines,
             hidden,
             spans: self.spans,
@@ -1433,6 +1453,56 @@ fn merge(ranges: Vec<Range<usize>>) -> Vec<Range<usize>> {
 }
 
 impl Builder<'_> {
+    /// Images alone in their paragraphs ([`ImageBlock`]). A paragraph is a
+    /// tight list item's text too. `hidden` is the hidden inline syntax,
+    /// merged, which the alt text as shown leaves out.
+    fn image_blocks(&self, hidden: &[Range<usize>]) -> Vec<ImageBlock> {
+        let mut out = Vec::new();
+        for b in self
+            .blocks
+            .iter()
+            .filter(|b| b.kind == BlockKind::Paragraph)
+        {
+            let text = &self.src[b.range.clone()];
+            let start = b.range.start + (text.len() - text.trim_start().len());
+            let end = b.range.end - (text.len() - text.trim_end().len());
+            let Some(image) = self
+                .inlines
+                .iter()
+                .find(|i| i.kind == InlineKind::Image && i.range() == (start..end))
+            else {
+                continue;
+            };
+            let line = self.line_of(start);
+            if self.last_line_of(&(start..end)) != line {
+                continue;
+            }
+            let content = image.content();
+            let mut alt = Vec::new();
+            let mut p = content.start;
+            for h in &hidden[hidden.partition_point(|h| h.end <= p)..] {
+                if h.start >= content.end {
+                    break;
+                }
+                if h.start > p {
+                    alt.push(p..h.start);
+                }
+                p = p.max(h.end);
+            }
+            if p < content.end {
+                alt.push(p..content.end);
+            }
+            out.push(ImageBlock {
+                range: start..end,
+                line,
+                url: image.url.clone().unwrap_or_default(),
+                alt,
+            });
+        }
+        out.sort_by_key(|i| i.range.start);
+        out
+    }
+
     /// Each line's first shown byte ([`Line::visible_start`]): from its
     /// content start, past what the hidden spans cover.
     fn assign_visible_starts(&mut self) {
@@ -1555,6 +1625,12 @@ impl Doc {
 
     pub fn first_visible_line(&self) -> Option<usize> {
         self.lines.iter().position(|l| l.kind != LineKind::Blank)
+    }
+
+    /// The image block on `line`, if any.
+    pub fn image_block_on_line(&self, line: usize) -> Option<&ImageBlock> {
+        let i = self.images.partition_point(|im| im.line < line);
+        self.images.get(i).filter(|im| im.line == line)
     }
 }
 
@@ -1930,6 +2006,58 @@ mod tests {
     fn pending_hard_break_hidden() {
         let src = "a\\\n";
         assert_eq!(hidden_text(src, &parse(src)), "a\n");
+    }
+
+    #[test]
+    fn images_alone_in_their_paragraphs_are_blocks() {
+        /// Each image block's source, destination and alt text as shown.
+        fn blocks(src: &str) -> Vec<[String; 3]> {
+            parse(src)
+                .images
+                .iter()
+                .map(|im| {
+                    let alt = im.alt.iter().map(|r| &src[r.clone()]).collect();
+                    [src[im.range.clone()].to_string(), im.url.clone(), alt]
+                })
+                .collect()
+        }
+        let one = |s: &str, url: &str, alt: &str| vec![[s, url, alt].map(String::from)];
+        assert_eq!(
+            blocks("Intro.\n\n![A *shot*](img/a.png \"t\")  \n\nAfter.\n"),
+            one("![A *shot*](img/a.png \"t\")", "img/a.png", "A shot")
+        );
+        // In a list item, tight or loose, and in a quote.
+        assert_eq!(
+            blocks("- ![a](a.png)\n- text\n"),
+            one("![a](a.png)", "a.png", "a")
+        );
+        assert_eq!(
+            blocks("- x\n\n- ![a](a.png)\n"),
+            one("![a](a.png)", "a.png", "a")
+        );
+        assert_eq!(
+            blocks("> ![](/abs/b.png)\n"),
+            one("![](/abs/b.png)", "/abs/b.png", "")
+        );
+        // A reference image takes its definition's destination.
+        assert_eq!(
+            blocks("![a][r]\n\n[r]: r.png\n"),
+            one("![a][r]", "r.png", "a")
+        );
+        // Running text, a link around it, two images, a heading: not alone.
+        for src in [
+            "See ![a](a.png) here.\n",
+            "[![a](a.png)](https://x.y)\n",
+            "![a](a.png) ![b](b.png)\n",
+            "![a](a.png)\nmore\n",
+            "# ![a](a.png)\n",
+            "| ![a](a.png) |\n|---|\n",
+        ] {
+            assert!(parse(src).images.is_empty(), "{src:?}");
+        }
+        let doc = parse("a\n\n![a](a.png)\n");
+        assert_eq!(doc.image_block_on_line(2).map(|im| im.line), Some(2));
+        assert!(doc.image_block_on_line(0).is_none());
     }
 
     #[test]
