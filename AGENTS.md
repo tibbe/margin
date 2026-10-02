@@ -32,4 +32,5 @@ Keep the specs in step with user-visible behavior changes. Keep `margin --help` 
 ## Launching
 
 To launch Margin, run this checkout's build, not an installed one: the user
-wants to test the latest changes. On macOS: `macos/tools/run.sh FILE…`.
+wants to test the latest changes. On macOS, `macos/tools/run.sh FILE…` builds
+it and returns once the files are shown.
