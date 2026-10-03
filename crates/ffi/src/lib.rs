@@ -1788,7 +1788,7 @@ mod tests {
     fn places_map_across_a_change_in_utf16() {
         // "😀" is two UTF-16 units; "é" one, in two bytes.
         let old = "\u{1F600} is insensitive unless\n".to_string();
-        let new = "\u{1F600}\u{e9} is disabled while\n".to_string();
+        let new = "\u{1F600}\u{e9} is quite insensitive unless\n".to_string();
         let places = map_places(
             old,
             new,
@@ -1801,8 +1801,8 @@ mod tests {
         assert_eq!(
             places,
             [
-                AnchorPlace::On { start: 7, end: 15 },
-                AnchorPlace::On { start: 16, end: 21 },
+                AnchorPlace::On { start: 13, end: 24 },
+                AnchorPlace::On { start: 25, end: 31 },
                 AnchorPlace::Detached { at: 6 },
             ]
         );

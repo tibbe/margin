@@ -214,7 +214,7 @@ Every editor produces the same source for the same keys. The choices:
 7. As a writer, I want resolving, resolving all, editing and deleting to be undoable, so that a slip doesn't lose a thread.
 8. As a writer, I want resolved threads hidden unless I ask for them, so that the margin shows what is still open.
 9. As a writer, I want a thread whose text was deleted to stay, showing what it was about, so that feedback is never silently lost.
-10. As a writer, I want a thread to follow its text when it is reworded, so that a comment on "blue/green" follows the change to "canary".
+10. As a writer, I want a thread to stay on the text it was about for as long as any of it is left, never moving onto text that replaced it, so that a comment is never shown against words it wasn't about.
 11. As a writer, I want to be told when an agent adds, answers, resolves, reopens or deletes threads, even while I am in another app, so that I notice its answers when it replies asynchronously.
 12. As a writer, I want to copy the open comments as a list with locations, so that I can paste a review into an agent's chat.
 13. As a writer, I want to send the open comments to the agent waiting on a document in one step, so that I don't paste every round of review into its chat.
@@ -338,16 +338,19 @@ in `the quick fox jumps`. Brackets mark the anchor after the edit.
 | Edit | Anchor | After |
 | --- | --- | --- |
 | Elsewhere | Moves with it | `then the [quick fox] jumps` |
-| Inside it | Takes it in | `the [quick brown fox] jumps` |
-| Replacing all of it | Takes the new text | `the [lazy dog] jumps` |
+| Insertion inside it | Takes it in | `the [quick brown fox] jumps` |
 | Insertion at an edge | Leaves it out | `the very [quick fox] jumps` |
-| Across an edge | Loses what it covers | `the [quick].` |
+| Deleting part of it | Loses that part | `the [quick].` |
 | Deleting all of it | Detaches | `the jumps` |
 
-Formatting doesn't change these: replacing `quick fox` in
-`the **quick fox** jumps` gives `the **[lazy dog]** jumps`. Text with
-only whitespace left counts as deleted. A detached thread stays where its
-text was and keeps the old quote.
+The anchor is on characters: its first and last, and those between. A
+replacement is a deletion followed by an insertion, so replacing all of the
+text detaches the thread (`the lazy dog jumps`), and replacing a word at an
+edge leaves the new word out (`the slow[ fox] jumps`). Markup is text like
+any other: making the text bold inserts `**` at its edges, giving
+`the **[quick fox]** jumps`. Text with only whitespace left counts as
+deleted. A detached thread stays where its text was, after any text that
+replaced it, and keeps the old quote.
 
 An outside change to the file gives only the new text, not the edits that
 made it. The editor and the CLI work out the edits the same way, so they
@@ -355,11 +358,12 @@ put anchors in the same places:
 
 - They compare the lines, then the words of the lines that changed.
 - Words are compared whole, never letter by letter, so an anchor never ends
-  up on part of a word.
+  up on part of a word, and a word rewritten even slightly (`colour` to
+  `color`) counts as deleted.
 - The edits found needn't be the ones the writer made. Rewriting
   `[the round]; its tooltip` as `the spec and its tooltip` is found as
-  `round;` replaced by `spec and`, across the anchor's end, which leaves
-  `[the ]spec and its tooltip`.
+  `round;` replaced by `spec and`, which deletes the anchor's last word and
+  leaves `[the ]spec and its tooltip`.
 
 ## Changes
 

@@ -48,10 +48,10 @@ final class AnchorTests: XCTestCase {
                 separator: "\n"), listing)
     }
 
-    /// An agent rewrites the commented text: the thread moves to what
-    /// replaced it, the same as the CLI has it.
+    /// An agent rewrites the commented text: the thread detaches where it
+    /// was, keeping its quote, the same as the CLI has it.
     @MainActor
-    func testRewrittenTextKeepsItsThread() throws {
+    func testRewrittenTextDetachesItsThread() throws {
         let h = try Harness("Send to Agent is insensitive unless an agent is waiting.\n")
         defer { h.close() }
         h.select("insensitive")
@@ -62,13 +62,13 @@ final class AnchorTests: XCTestCase {
         h.external("Send to Agent is disabled while it can't send.\n")
         h.wait(forText: "disabled")
         h.wait(0.1)
-        XCTAssertEqual(h.comments, #"#1 open [17,25) ["Clearer?"]"# + "\nactive 1")
+        XCTAssertEqual(h.comments, #"#1 open detached [25,25) ["Clearer?"]"# + "\nactive none")
         XCTAssertEqual(
             h.margin("comments", "doc.md").split(separator: "\n").prefix(3).joined(separator: "\n"),
             """
             doc.md: 1 open thread
-            #1 doc.md:1:18 (open)
-              on "disabled"
+            #1 doc.md:1:26 (open, detached: the commented text was deleted)
+              on "insensitive"
             """)
     }
 

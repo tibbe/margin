@@ -82,8 +82,10 @@ what tells the editor you are ready.
   each thread's comment and latest message only, with a line like
   `(2 earlier replies: margin thread plan.md 3)`. Run that command when
   you no longer have those replies in context.
-- **Detached threads:** the text a thread was anchored to was deleted. The
-  thread still needs an answer; its quote shows what it was about.
+- **Detached threads:** the text a thread was anchored to was deleted. A
+  thread keeps to what is left of its text, so rewriting all of it, even
+  one word, detaches it too. The thread still needs an answer; its quote
+  shows what it was about.
 - **Your own threads.** `margin add FILE --quote "text" "question"` starts a
   thread, for when the user asks you to review a document or you need to ask
   about specific text. The quote must occur once in the file; if it occurs

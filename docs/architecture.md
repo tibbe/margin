@@ -22,6 +22,11 @@ the ones costly to change later. Each platform's own are in
   and written back. So an edit changes only the bytes it must, comments
   anchor to ranges of the file's text, and positions in the file map to
   positions on screen, for cards, find and change bars.
+- **Anchors are on characters.** An anchor is on its text's first and last
+  characters, with both edges closed, and moves as they do, whether the
+  edits are typed or worked out from an outside change. These are the
+  positions every text CRDT (Yjs, Loro, Automerge) has, so a collaborative
+  store could keep anchors as its positions without changing where they go.
 - **What is shown is a view of the source.** Hidden syntax, list markers,
   code boxes, tables, images and diagrams are drawn over, or in place of,
   the source they stand for. The core decides, for each range of the text:

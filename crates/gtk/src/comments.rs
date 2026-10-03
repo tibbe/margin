@@ -293,8 +293,8 @@ impl CommentLayer {
 
     /// Changes the text to `new`, made outside the editor, as
     /// `DocBuffer::apply_external` does. The anchors follow by what changed
-    /// between the two texts, as the CLI's do (see `OffsetMap`), rather than
-    /// as their marks would.
+    /// between the two texts, as the CLI's do (see `OffsetMap`), so the two
+    /// put them in the same places.
     pub fn apply_external(&self, new: &str) {
         let old = self.buffer.text_string();
         let threads: Vec<Place> = self

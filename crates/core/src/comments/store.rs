@@ -419,16 +419,16 @@ mod tests {
             .add(text, s..s + 10, "Canary instead?", Author::User)
             .unwrap();
         assert_eq!(id, 1);
-        let new = "Intro.\n\nDeploy with canary everywhere.\n";
+        let new = "Intro.\n\nDeploy with blue/green everywhere.\n";
         assert!(c.sync(new));
         let a = &c.thread(1).unwrap().anchor;
-        assert_eq!(&new[a.range().unwrap()], "canary");
-        assert_eq!(a.quote(), "canary");
-        let gone = "Intro.\n";
-        c.sync(gone);
+        assert_eq!(&new[a.range().unwrap()], "blue/green");
+        assert_eq!(a.quote(), "blue/green");
+        let rewritten = "Intro.\n\nDeploy with canary everywhere.\n";
+        c.sync(rewritten);
         let a = &c.thread(1).unwrap().anchor;
         assert!(a.is_detached());
-        assert_eq!(a.quote(), "canary");
+        assert_eq!(a.quote(), "blue/green");
     }
 
     #[test]

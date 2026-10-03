@@ -183,34 +183,33 @@ impl<'a> OffsetMap<'a> {
         }
     }
 
-    /// Maps a place, by these rules:
+    /// Maps a place, as if it were on its first and last characters,
+    /// with each edit a deletion followed by an insertion:
     /// - text that is kept keeps its place;
-    /// - an edit within the text, from edge to edge at most, becomes part
-    ///   of it, so replacing the text moves it to the replacement; except
-    ///   an insertion at an edge, which stays outside;
-    /// - an edit across an edge takes away the part it covers;
-    /// - text with nothing but whitespace left is detached where it was.
+    /// - an insertion inside the text becomes part of it, while one at an
+    ///   edge stays outside, so a replacement of the text's first or last
+    ///   words is left out of it;
+    /// - deleted text leaves it, so text with nothing but whitespace left,
+    ///   replaced text included, is detached where it was.
     pub fn map(&self, p: &Place) -> Place {
         match p {
             Place::On(s) => {
                 let r = s.range();
-                Place::of(self.new, self.map_start(&r)..self.map_end(&r))
+                Place::of(self.new, self.map_start(r.start)..self.map_end(r.end))
             }
-            Place::Detached(at) => Place::Detached(self.map_point(*at)),
+            Place::Detached(at) => Place::Detached(self.map_start(*at)),
         }
     }
 
-    /// Where the text on `r` starts now.
-    fn map_start(&self, r: &Range<usize>) -> usize {
-        let p = r.start;
+    /// Where the character at `p` is now or, if it was deleted, the first
+    /// one after it that is left: after text inserted at `p`.
+    fn map_start(&self, p: usize) -> usize {
         // An insertion at `p` is empty here, so it is passed over.
         for piece in &self.pieces {
             let o = &piece.old;
             if o.start <= p && p < o.end {
                 return if piece.kept {
                     piece.new.start + (p - o.start)
-                } else if o.start == p && o.end <= r.end {
-                    piece.new.start
                 } else {
                     piece.new.end
                 };
@@ -219,39 +218,22 @@ impl<'a> OffsetMap<'a> {
         self.new.len()
     }
 
-    /// Where the text on `r` ends now.
-    fn map_end(&self, r: &Range<usize>) -> usize {
-        let p = r.end;
+    /// Where the character before `p` ends now or, if it was deleted, where
+    /// the last one before it that is left ends: before text inserted at
+    /// `p`.
+    fn map_end(&self, p: usize) -> usize {
         // An insertion at `p` is empty here, so it is passed over.
         for piece in &self.pieces {
             let o = &piece.old;
             if o.start < p && p <= o.end {
                 return if piece.kept {
                     piece.new.start + (p - o.start)
-                } else if o.end == p && o.start >= r.start {
-                    piece.new.end
                 } else {
                     piece.new.start
                 };
             }
         }
         0
-    }
-
-    /// Where a point between characters is now: after text inserted at
-    /// it, before an edit that starts at it or around it.
-    fn map_point(&self, p: usize) -> usize {
-        for piece in &self.pieces {
-            let o = &piece.old;
-            if o.start <= p && p < o.end {
-                return if piece.kept {
-                    piece.new.start + (p - o.start)
-                } else {
-                    piece.new.start
-                };
-            }
-        }
-        self.new.len()
     }
 }
 
@@ -325,9 +307,9 @@ mod tests {
 ";
 
     #[test]
-    fn follows_rewritten_text() {
+    fn keeps_to_what_is_left_of_rewritten_text() {
         let m = |q| mapped(OLD_PARAGRAPH, NEW_PARAGRAPH, q);
-        assert_eq!(m("insensitive"), Ok("disabled".into()));
+        assert!(m("insensitive").is_err());
         assert_eq!(m("its tooltip"), Ok("its tooltip".into()));
         assert_eq!(m("AdwSpinner"), Ok("AdwSpinner".into()));
     }
@@ -338,17 +320,19 @@ mod tests {
         let m = |new| mapped("the quick fox jumps", new, "quick fox");
         assert_eq!(m("then the quick fox jumps"), Ok("quick fox".into()));
         assert_eq!(m("the quick brown fox jumps"), Ok("quick brown fox".into()));
-        assert_eq!(m("the lazy dog jumps"), Ok("lazy dog".into()));
         assert_eq!(m("the very quick fox jumps"), Ok("quick fox".into()));
+        assert_eq!(m("the quick fox now jumps"), Ok("quick fox".into()));
         assert_eq!(m("the quick."), Ok("quick".into()));
         assert_eq!(m("the jumps"), Err(4));
+        assert!(m("the lazy dog jumps").is_err());
+        assert_eq!(m("the slow fox jumps"), Ok(" fox".into()));
         assert_eq!(
             mapped(
+                "the quick fox jumps",
                 "the **quick fox** jumps",
-                "the **lazy dog** jumps",
                 "quick fox"
             ),
-            Ok("lazy dog".into())
+            Ok("quick fox".into())
         );
         assert_eq!(
             mapped(
@@ -374,12 +358,11 @@ mod tests {
         );
     }
 
+    /// Words are compared whole, so a rewritten word is replaced, never
+    /// kept in part.
     #[test]
-    fn follows_a_replaced_word() {
-        assert_eq!(
-            mapped("the colour is red", "the color is red", "colour"),
-            Ok("color".into())
-        );
+    fn detaches_from_a_replaced_word() {
+        assert!(mapped("the colour is red", "the color is red", "colour").is_err());
     }
 
     #[test]
@@ -408,19 +391,42 @@ mod tests {
     }
 
     #[test]
-    fn follows_replacement() {
+    fn detaches_when_replaced() {
         assert_eq!(
             mapped("use blue/green deploys", "use canary deploys", "blue/green"),
-            Ok("canary".into())
+            Err(10)
+        );
+        assert_eq!(
+            mapped("use **blue/green** now", "use **canary** now", "blue/green"),
+            Err(12)
         );
     }
 
     #[test]
-    fn follows_replacement_inside_markup() {
+    fn leaves_out_replacements_at_edges() {
         assert_eq!(
-            mapped("use **blue/green** now", "use **canary** now", "blue/green"),
-            Ok("canary".into())
+            mapped("the quick fox jumps", "the slow fox jumps", "quick fox"),
+            Ok(" fox".into())
         );
+        assert_eq!(
+            mapped("the quick fox jumps", "the quick dog jumps", "quick fox"),
+            Ok("quick ".into())
+        );
+        // Inside, it is taken in.
+        assert_eq!(
+            mapped("one two three", "one 2 three", "one two three"),
+            Ok("one 2 three".into())
+        );
+    }
+
+    /// A detached place keeps between the characters around it: after text
+    /// inserted there, and after what replaced the text around it.
+    #[test]
+    fn detached_places_follow_edits() {
+        let m = |new: &str| OffsetMap::new("ab cd", new).map(&Place::Detached(3));
+        assert_eq!(m("ab X cd"), Place::Detached(5));
+        assert_eq!(m("ab XY"), Place::Detached(5));
+        assert_eq!(m("Z ab cd"), Place::Detached(5));
     }
 
     #[test]
