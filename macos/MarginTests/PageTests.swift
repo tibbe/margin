@@ -83,6 +83,18 @@ final class PageTests: XCTestCase {
         }
     }
 
+    /// A printed page ends between lines, never through one.
+    @MainActor
+    func testPagesBreakBetweenLines() throws {
+        let view = printView(
+            text: (1...80).map { "Line \($0) of the document." }.joined(separator: "\n\n") + "\n", imageFolder: "/",
+            width: 500)
+        let line = try XCTUnwrap(view.laidOut.dropFirst(10).first?.lines.first)
+        var bottom: CGFloat = 0
+        view.adjustPageHeightNew(&bottom, top: 0, bottom: (line.top + line.bottom) / 2, limit: line.top - 100)
+        XCTAssertEqual(bottom, line.top)
+    }
+
     /// An item starting with hidden syntax (bold) after a blank line, a
     /// heading or another item: its hidden prefix is laid out on the line
     /// before, and its marker must not follow it there.

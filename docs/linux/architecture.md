@@ -6,8 +6,11 @@ are in `docs/architecture.md`.
 
 - The editor is written in Rust, with GTK 4 (4.20+) and libadwaita (1.8+)
   through their Rust bindings, and is part of the `margin` binary.
-- The document is one `GtkTextView` whose buffer holds the file's text.
-  Hidden syntax is an invisible tag.
+- The document is one `GtkTextView` whose buffer holds the file's text,
+  with the core's display decisions applied as tags: hidden syntax is an
+  invisible tag. GTK can't lay two lines out as one, so while reflowing
+  the buffer holds a space in place of each soft line break, and the file
+  gets its line breaks back when saved.
 - Visual components (code boxes, tables, images, diagrams) are drawn in the
   text view's snapshot, in space its layout leaves for them, over their
   hidden source. Not as child widgets or paintables: both insert a

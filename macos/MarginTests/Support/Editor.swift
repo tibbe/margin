@@ -49,6 +49,11 @@ final class Editor {
         return before.map(\.text).joined() + "|" + after.map(\.text).joined()
     }
 
+    /// Whether the caret is in the part of the document the window shows.
+    var caretInView: Bool {
+        h.view.visibleRect.contains(caretRect.insetBy(dx: 0.5, dy: 0.5))
+    }
+
     /// The file, once the editor has saved.
     var file: String {
         h.save()
@@ -181,6 +186,31 @@ final class Editor {
         h.key("cmd-enter")
         h.key("escape")
         h.wait(0.1)
+    }
+
+    /// The right-click menu on shown text: its items' titles.
+    func contextMenu(on s: String) -> [String] {
+        menu(on: s)?.items.map { $0.isSeparatorItem ? "—" : $0.title } ?? []
+    }
+
+    /// Chooses an item of the right-click menu on shown text.
+    func choose(_ title: String, inMenuOn s: String) {
+        guard let item = menu(on: s)?.items.first(where: { $0.title == title }), let action = item.action else {
+            return XCTFail("no \(title.debugDescription) in the menu on \(s.debugDescription)")
+        }
+        NSApp.sendAction(action, to: item.target ?? h.view, from: item)
+    }
+
+    private func menu(on s: String) -> NSMenu? {
+        guard let g = locate(s)?.first else { return nil }
+        h.layOut()
+        let p = h.view.convert(NSPoint(x: g.rect.midX, y: g.rect.midY), to: nil)
+        guard
+            let e = NSEvent.mouseEvent(
+                with: .rightMouseDown, location: p, modifierFlags: [], timestamp: 0, windowNumber: h.win.windowNumber,
+                context: nil, eventNumber: 1, clickCount: 1, pressure: 1)
+        else { return nil }
+        return h.view.menu(for: e)
     }
 
     /// An agent writes the file while it is open; the editor takes it in.

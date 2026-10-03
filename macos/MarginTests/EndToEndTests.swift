@@ -159,6 +159,15 @@ final class EndToEndTests: XCTestCase {
         XCTAssertEqual(e.file, "one\n\ntwo", "a paragraph of its own, not the one above continued")
     }
 
+    @MainActor
+    func testTypingKeepsTheCaretInView() throws {
+        let e = try Editor("start\n")
+        defer { e.close() }
+        e.click("start", offset: 5)
+        for i in 0..<60 { e.type("\nline \(i)") }
+        XCTAssertTrue(e.caretInView)
+    }
+
     // MARK: - Selecting
 
     @MainActor
@@ -274,6 +283,21 @@ final class EndToEndTests: XCTestCase {
         XCTAssertEqual(e.candidateWindow, "beside it")
         e.commit("日")
         XCTAssertEqual(e.file, item.replacingOccurrences(of: "Cause", with: "Ca日use"))
+    }
+
+    // MARK: - Spelling
+
+    /// A misspelled word offers corrections where it is, and a correction
+    /// keeps the formatting around it.
+    @MainActor
+    func testCorrectingAMisspelledWord() throws {
+        let e = try Editor("Some **teh** words here.\n")
+        defer { e.close() }
+        XCTAssertTrue(e.contextMenu(on: "teh").contains("the"), "\(e.contextMenu(on: "teh"))")
+        XCTAssertEqual(e.contextMenu(on: "words").first, "Comment on Selection")
+        XCTAssertFalse(e.contextMenu(on: "words").contains("Ignore Spelling"))
+        e.choose("the", inMenuOn: "teh")
+        XCTAssertEqual(e.file, "Some **the** words here.\n")
     }
 
     // MARK: - Agents editing the file

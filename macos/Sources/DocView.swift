@@ -106,9 +106,16 @@ final class DocView: NSView, NSTextInputClient, NSViewToolTipOwner, NSMenuItemVa
     }
     /// The view is at least this tall (the window, from the page).
     var minSize = NSSize.zero
-    /// No-ops kept for callers of a text view's API.
+    /// Kept for callers of a text view's API.
     var isVerticallyResizable = true
-    var isContinuousSpellCheckingEnabled = false
+    /// Spelling underlines, as Edit > Spelling and Grammar sets them.
+    var isContinuousSpellCheckingEnabled = true {
+        didSet { needsDisplay = true }
+    }
+    /// The spell checker's document: words ignored here are ignored here.
+    let spellTag = NSSpellChecker.uniqueSpellDocumentTag()
+    /// Misspelled words per typeset paragraph, as ranges of its text.
+    var misspellings: [ObjectIdentifier: [NSRange]] = [:]
 
     /// Comment and find highlights, later ones over earlier ones.
     var highlights: [(NSRange, NSColor)] = [] {
@@ -786,6 +793,7 @@ final class DocView: NSView, NSTextInputClient, NSViewToolTipOwner, NSMenuItemVa
             refresh()
             setSelectedRange(NSRange(location: p + n, length: 0))
             typing = (t.step, p + n)
+            scrollRangeToVisible(NSRange(location: p + n, length: 0))
             onChange?()
             return
         }
@@ -1199,7 +1207,8 @@ final class DocView: NSView, NSTextInputClient, NSViewToolTipOwner, NSMenuItemVa
     }
 
     /// The text's right-click menu leads with Comment on Selection, as in
-    /// Pages and Preview.
+    /// Pages and Preview, then corrections for a misspelled word under the
+    /// pointer.
     override func menu(for event: NSEvent) -> NSMenu? {
         let menu = NSMenu()
         menu.addItem(
@@ -1207,6 +1216,29 @@ final class DocView: NSView, NSTextInputClient, NSViewToolTipOwner, NSMenuItemVa
                 title: "Comment on Selection", action: #selector(DocumentWindow.marginCommentOnSelection(_:)),
                 keyEquivalent: ""))
         menu.addItem(.separator())
+        if let (word, range) = misspelledWord(at: convert(event.locationInWindow, from: nil)) {
+            let guesses =
+                NSSpellChecker.shared.guesses(
+                    forWordRange: NSRange(location: 0, length: (word as NSString).length), in: word, language: nil,
+                    inSpellDocumentWithTag: spellTag) ?? []
+            for g in guesses.prefix(6) {
+                let item = NSMenuItem(title: g, action: #selector(correctSpelling(_:)), keyEquivalent: "")
+                item.representedObject = [range.location, range.length] as [Int]
+                item.target = self
+                menu.addItem(item)
+            }
+            if guesses.isEmpty { menu.addItem(NSMenuItem(title: "No Guesses Found", action: nil, keyEquivalent: "")) }
+            let ignore = NSMenuItem(title: "Ignore Spelling", action: #selector(ignoreSpelling(_:)), keyEquivalent: "")
+            ignore.representedObject = word
+            ignore.target = self
+            let learn = NSMenuItem(title: "Learn Spelling", action: #selector(learnSpelling(_:)), keyEquivalent: "")
+            learn.representedObject = word
+            learn.target = self
+            menu.addItem(.separator())
+            menu.addItem(ignore)
+            menu.addItem(learn)
+            menu.addItem(.separator())
+        }
         menu.addItem(NSMenuItem(title: "Cut", action: #selector(cut(_:)), keyEquivalent: ""))
         menu.addItem(NSMenuItem(title: "Copy", action: #selector(copy(_:)), keyEquivalent: ""))
         menu.addItem(NSMenuItem(title: "Paste", action: #selector(paste(_:)), keyEquivalent: ""))
@@ -1214,7 +1246,37 @@ final class DocView: NSView, NSTextInputClient, NSViewToolTipOwner, NSMenuItemVa
     }
 
     func validateMenuItem(_ item: NSMenuItem) -> Bool {
-        validate(item.action)
+        if item.action == #selector(toggleContinuousSpellChecking(_:)) {
+            item.state = isContinuousSpellCheckingEnabled ? .on : .off
+        }
+        return validate(item.action)
+    }
+
+    // MARK: - Spelling
+
+    @objc func toggleContinuousSpellChecking(_ sender: Any?) {
+        isContinuousSpellCheckingEnabled.toggle()
+    }
+
+    /// A correction from the menu: it replaces the word through the
+    /// editing rules, keeping the formatting around it.
+    @objc func correctSpelling(_ sender: NSMenuItem) {
+        guard let r = sender.representedObject as? [Int], r.count == 2 else { return }
+        run { a, _, _ in a.replaceRange(start: UInt32(r[0]), end: UInt32(r[0] + r[1]), text: sender.title) }
+    }
+
+    @objc func ignoreSpelling(_ sender: NSMenuItem) {
+        guard let word = sender.representedObject as? String else { return }
+        NSSpellChecker.shared.ignoreWord(word, inSpellDocumentWithTag: spellTag)
+        misspellings = [:]
+        needsDisplay = true
+    }
+
+    @objc func learnSpelling(_ sender: NSMenuItem) {
+        guard let word = sender.representedObject as? String else { return }
+        NSSpellChecker.shared.learnWord(word)
+        misspellings = [:]
+        needsDisplay = true
     }
 
     func validateUserInterfaceItem(_ item: any NSValidatedUserInterfaceItem) -> Bool {

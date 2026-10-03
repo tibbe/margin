@@ -12,6 +12,16 @@ address the app by its path, as below.
 - Quit: `pkill -f "$PWD/macos/build/DerivedData/Build/Products/Debug/Margin.app/Contents/MacOS/Margin"`
 - CLI: `Contents/Helpers/margin` in the app.
 
+## Tests
+
+- `MarginTests/EndToEndTests.swift` drives a document as a writer does,
+  through `Support/Editor.swift`; only its "How the editor draws" section
+  knows the view, so a test of what a writer sees or does goes there.
+- Other tests use `Support/Harness.swift`: key presses, clicks, menus,
+  outside edits (`h.external`), the CLI (`h.margin`). Open menus through
+  it (`h.menu`), never by clicking: menus show on screen, though the
+  windows don't.
+
 ## Release
 
 1. Set the version in `MARKETING_VERSION` in

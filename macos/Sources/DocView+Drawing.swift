@@ -109,6 +109,23 @@ extension DocView {
             CTLineDraw(l.line, ctx)
         }
         ctx.restoreGState()
+        if isContinuousSpellCheckingEnabled && p.splice == nil {
+            NSColor.systemRed.withAlphaComponent(0.85).setFill()
+            for r in misspelled(pi) {
+                for l in p.lines {
+                    let i = NSIntersectionRange(r, l.range)
+                    guard i.length > 0 else { continue }
+                    // A dotted line under the word.
+                    let x0 = min(x(i.location, on: l), x(NSMaxRange(i), on: l))
+                    let x1 = max(x(i.location, on: l), x(NSMaxRange(i), on: l))
+                    var dx = x0
+                    while dx < x1 {
+                        NSBezierPath(ovalIn: NSRect(x: dx, y: l.baseline + 2, width: 2, height: 2)).fill()
+                        dx += 4
+                    }
+                }
+            }
+        }
         for l in p.lines {
             p.text.enumerateAttribute(.strikethroughStyle, in: NSIntersectionRange(all, l.range)) { value, r, _ in
                 guard value != nil, r.length > 0 else { return }
@@ -404,6 +421,67 @@ extension DocView {
     func imageToolTip(_ o: DocObject) -> String? {
         guard case .broken(let b) = look(of: o) else { return nil }
         return "\(o.source.location)\n\(b.reason)"
+    }
+
+    // MARK: - Spelling
+
+    /// Misspelled words in laid-out paragraph `pi`, as ranges of its text:
+    /// not in code, links, syntax shown or objects.
+    func misspelled(_ pi: Int) -> [NSRange] {
+        guard pi < previous.typesets.count, let t = previous.typesets[pi] else { return [] }
+        let id = ObjectIdentifier(t)
+        if let found = misspellings[id] { return found }
+        let text = t.text
+        let all = NSRange(location: 0, length: text.length)
+        var out: [NSRange] = []
+        let results = NSSpellChecker.shared.check(
+            text.string, range: all, types: NSTextCheckingResult.CheckingType.spelling.rawValue, options: nil,
+            inSpellDocumentWithTag: spellTag, orthography: nil, wordCount: nil)
+        for result in results where result.resultType == .spelling {
+            var skip = false
+            text.enumerateAttributes(in: result.range) { attrs, _, stop in
+                if attrs[.underlineStyle] != nil || attrs[.backgroundColor] != nil || attrs[.marginObject] != nil
+                    || attrs[.marginHidden] != nil || (attrs[.font] as? NSFont)?.isFixedPitch == true
+                {
+                    skip = true
+                    stop.pointee = true
+                }
+            }
+            if !skip { out.append(result.range) }
+        }
+        if misspellings.count > 4 * max(laidOut.count, 64) { misspellings = [:] }
+        misspellings[id] = out
+        return out
+    }
+
+    /// The misspelled word under a point: it, and its range in the source.
+    func misspelledWord(at p: NSPoint) -> (String, NSRange)? {
+        guard isContinuousSpellCheckingEnabled, let pi = laidOut.indices.last(where: { laidOut[$0].top <= p.y })
+        else { return nil }
+        let par = laidOut[pi]
+        guard let l = par.lines.last(where: { $0.top <= p.y }), p.y <= l.bottom else { return nil }
+        let o = CTLineGetStringIndexForPosition(l.line, CGPoint(x: p.x - l.x, y: 0))
+        guard let r = misspelled(pi).first(where: { $0.location <= o && o <= NSMaxRange($0) }) else { return nil }
+        let word = (par.text.string as NSString).substring(with: r)
+        let source = projection.sourceRange(
+            paragraph: UInt32(pi), start: UInt32(r.location), end: UInt32(NSMaxRange(r)))
+        return (word, NSRange(source))
+    }
+
+    // MARK: - Printing
+
+    /// Breaks pages between lines, never through one.
+    override func adjustPageHeightNew(
+        _ newBottom: UnsafeMutablePointer<CGFloat>, top oldTop: CGFloat, bottom oldBottom: CGFloat,
+        limit bottomLimit: CGFloat
+    ) {
+        newBottom.pointee = oldBottom
+        for p in laidOut where p.top < oldBottom && p.bottom > oldTop {
+            for l in p.lines where l.top < oldBottom && l.bottom > oldBottom && l.top > oldTop {
+                if l.top >= bottomLimit { newBottom.pointee = l.top }
+                return
+            }
+        }
     }
 
     // MARK: - Accessibility

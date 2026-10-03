@@ -470,6 +470,27 @@ impl Display {
             .unwrap_or(p.source.end)
     }
 
+    /// The source of the shown text from `start` to `end` of a paragraph:
+    /// from its first character's own position (past hidden syntax before
+    /// it) to just after its last character (before hidden syntax after
+    /// it), so a replacement keeps the formatting around it.
+    pub fn source_range(&self, paragraph: usize, start: usize, end: usize) -> Range<usize> {
+        let Some(p) = self.paragraphs.get(paragraph) else {
+            return self.len..self.len;
+        };
+        let a = self
+            .candidates(p, start)
+            .last()
+            .copied()
+            .unwrap_or(p.source.end);
+        let b = self
+            .candidates(p, end)
+            .first()
+            .copied()
+            .unwrap_or(p.source.end);
+        a..b.max(a)
+    }
+
     /// The first of `candidates` that takes the cursor.
     fn stop_in(&self, candidates: &[usize]) -> Option<usize> {
         candidates.iter().copied().find(|&c| self.takes_cursor(c))
@@ -831,6 +852,15 @@ mod tests {
         let d = map(src, &Options::default());
         assert_eq!(d.step(src, 1, true), 5);
         assert_eq!(d.step(src, 5, false), 1);
+    }
+
+    #[test]
+    fn shown_text_maps_to_the_source_of_its_characters() {
+        let src = "Some **teh** words";
+        let d = map(src, &Options::default());
+        // `teh` shows at 5..8: its own characters, not the markers.
+        assert_eq!(&src[d.source_range(0, 5, 8)], "teh");
+        assert_eq!(&src[d.source_range(0, 0, 4)], "Some");
     }
 
     #[test]

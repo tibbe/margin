@@ -106,19 +106,18 @@ so there is no version history (Revert To ▸ Browse All Versions) and no
 
 - Clicking the left margin places the cursor.
 - **No substitutions:** smart quotes, smart dashes, text replacement,
-  autocorrect and link detection are off. Inline predictions are on:
-  accepting one inserts text like typing does.
-- **Spelling** underlines are on, except in code, links and hidden syntax.
-  Grammar is off.
+  autocorrect, link detection and inline predictions are off.
+- **Spelling** underlines are on, except in code, links and hidden syntax;
+  the right-click menu offers corrections, Ignore Spelling and Learn
+  Spelling. Grammar is off.
 - **Input methods** (Japanese, Chinese, dead keys) compose where typed text
   would go (after a link, not inside it). Text being composed keeps its
   marked-text underline and is styled once committed. Press-and-hold accents
   replace the letter like typing does.
-- **Edits the system makes** (deleting a word, Transpose, dragging text,
-  spelling corrections, Writing Tools) follow the same editing rules as
-  typing. A multiple selection (Command-drag) becomes its first range.
-- **Writing Tools** run in their panel, not inline, and their results
-  arrive as ordinary replacements.
+- **Edits the system makes** (deleting a word, Transpose, spelling
+  corrections) follow the same editing rules as typing.
+- Text can't be dragged, and Writing Tools aren't available in the
+  document.
 
 ## Comments
 

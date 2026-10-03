@@ -2132,6 +2132,16 @@ impl Projection {
         }))
     }
 
+    /// The source of the shown text from `start` to `end` (UTF-16 offsets)
+    /// of a paragraph: its characters, without hidden syntax around them.
+    pub fn source_range(&self, paragraph: u32, start: u32, end: u32) -> TextRange {
+        let i = (paragraph as usize).min(self.texts.len().saturating_sub(1));
+        let r = self
+            .display
+            .source_range(i, self.shown_byte(i, start), self.shown_byte(i, end));
+        self.analysis.range(r)
+    }
+
     /// One press of Right (`forward`) or Left from source position `pos`.
     pub fn step(&self, pos: u32, forward: bool) -> u32 {
         let a = &self.analysis;
