@@ -2,16 +2,12 @@ import AppKit
 import margin_ffi
 
 extension NSAttributedString.Key {
-    /// Markdown syntax the rendered view hides (drawn as null glyphs).
+    /// Markdown syntax the rendered view hides, shown dimmed when revealed.
     static let marginHidden = NSAttributedString.Key("marginHidden")
     /// On a line's first character: the signature of the styling applied to
     /// the line, so unchanged lines are left alone.
     static let marginLineSig = NSAttributedString.Key("marginLineSig")
-    /// The one character left of a table cell's padding and `|`, laid out
-    /// as space wide enough to reach the cell's column.
-    static let marginTableGap = NSAttributedString.Key("marginTableGap")
-    /// The first character of an image shown as the image, laid out as the
-    /// space it is drawn in; the rest of its source is hidden.
+    /// The character an image or diagram is laid out as.
     static let marginObject = NSAttributedString.Key("marginObject")
 }
 
@@ -39,10 +35,6 @@ struct Span {
     enum Code: UInt32 {
         case para, heading, codeBlock, fence, table, htmlBlock, frontMatter, rule, raw, quote
         case indent, above, strong, emphasis, strike, code, link, image, inlineHtml, tableHeader, taskDone, hidden
-        /// Not from the core: added by the view for tables laid out as grids.
-        case tableGap
-        /// Not from the core: added by the view for images shown as images.
-        case object
     }
 
     static func decode(_ data: Data) -> [Span] {
@@ -114,7 +106,10 @@ final class Styler {
 
     /// Restyles lines of `storage`: those intersecting `dirty` (edited since
     /// the last call) and those whose spans changed.
-    func apply(lines: [LineInfo], spans: [Span], dirty: NSRange?, to storage: NSTextStorage, options: Options) {
+    func apply(
+        lines: [LineInfo], spans: [Span], dirty: NSRange?, to storage: NSTextStorage, options: Options,
+        only: IndexSet? = nil
+    ) {
         let length = storage.length
         let n = lines.count
         guard n > 0 else { metrics = []; return }
@@ -159,6 +154,7 @@ final class Styler {
         metrics.reserveCapacity(n)
         storage.beginEditing()
         for (i, line) in lines.enumerated() {
+            if let only, !only.contains(i), !dirtyLines.contains(i) { continue }
             let start = Int(line.start)
             let end = min(Int(line.end) + 1, length)
             let lineSpans = bucket[counts[i]..<counts[i + 1]].map { spans[$0] }
@@ -192,7 +188,7 @@ final class Styler {
             storage.addAttribute(.marginLineSig, value: sig, range: NSRange(location: start, length: 1))
         }
         storage.endEditing()
-        self.metrics = metrics
+        if only == nil { self.metrics = metrics }
     }
 
     /// Styling that covers a whole line.
@@ -301,8 +297,6 @@ final class Styler {
             var underline = false
             var strike = false
             var hidden = false
-            var gap = false
-            var object = false
             // Later styles win, as in the GTK editor's tag priorities; the
             // codes are in that order.
             for s in ordered where s.start <= a && b <= s.end {
@@ -333,11 +327,6 @@ final class Styler {
                 case .hidden:
                     let shown = revealed.contains { $0.location <= a && b <= NSMaxRange($0) }
                     if sourceMode || shown { color = Theme.dim } else { hidden = true }
-                case .tableGap:
-                    gap = true
-                case .object:
-                    hidden = false
-                    object = true
                 default:
                     break
                 }
@@ -351,8 +340,6 @@ final class Styler {
             if underline { attrs[.underlineStyle] = NSUnderlineStyle.single.rawValue }
             if strike { attrs[.strikethroughStyle] = NSUnderlineStyle.single.rawValue }
             if hidden { attrs[.marginHidden] = true }
-            if gap { attrs[.marginTableGap] = true }
-            if object { attrs[.marginObject] = true }
             out.append((NSRange(location: a, length: b - a), attrs))
         }
         return out

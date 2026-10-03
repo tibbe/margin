@@ -90,7 +90,7 @@ private struct Draft {
 /// cards beside the text, keeping focus in sync between highlights and
 /// cards, and reading and writing the store the CLI shares.
 final class CommentLayer {
-    unowned let view: DocTextView
+    unowned let view: DocView
     unowned let page: PageView
     private var gutter: GutterView { page.gutter }
     private(set) var store: CommentStore?
@@ -193,7 +193,7 @@ final class CommentLayer {
     }
 
     /// Changes the text to `new`, made outside the editor, as
-    /// `DocTextView.applyExternal` does. The anchors follow by what changed
+    /// `DocView.applyExternal` does. The anchors follow by what changed
     /// between the two texts, as the CLI's do (see `mapPlaces`), rather
     /// than edit by edit.
     func applyExternal(_ new: String, actionName: String = "Outside Change") {
@@ -632,31 +632,15 @@ final class CommentLayer {
     }
 
     func refreshHighlights() {
-        guard let lm = view.layoutManager else { return }
         let len = (view.string as NSString).length
-        let all = NSRange(location: 0, length: len)
-        lm.removeTemporaryAttribute(.backgroundColor, forCharacterRange: all)
         let dark = view.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-        // A highlight replaces the text's own background, so inline code
-        // gets its fill drawn over the highlight instead. Hidden syntax
-        // gets none: a fill starting on it also covers the character
-        // before, which a see-through highlight then shows doubled.
-        let appearance = view.effectiveAppearance
-        // Images draw their own, over the layout manager's.
+        // Later marks show over earlier ones. The view draws inline code's
+        // own fill over them, and images draw theirs.
         var marks: [(NSRange, NSColor)] = []
-        defer { view.objectHighlights = marks }
         func mark(_ a: Int, _ b: Int, _ color: NSColor) {
             let s = max(0, min(a, len))
             let e = max(0, min(b, len))
-            guard s < e, let storage = view.textStorage else { return }
-            marks.append((NSRange(location: s, length: e - s), color))
-            storage.enumerateAttributes(in: NSRange(location: s, length: e - s)) { attrs, r, _ in
-                if attrs[.marginHidden] != nil { return }
-                let c =
-                    (attrs[.backgroundColor] as? NSColor).map { Theme.composite($0, over: color, in: appearance) }
-                    ?? color
-                lm.addTemporaryAttribute(.backgroundColor, value: c, forCharacterRange: r)
-            }
+            if s < e { marks.append((NSRange(location: s, length: e - s), color)) }
         }
         for it in items where visible(it.thread) && it.thread.id != active {
             if let r = it.range {
@@ -672,6 +656,8 @@ final class CommentLayer {
         for (r, c) in extraHighlights?() ?? [] {
             mark(r.location, NSMaxRange(r), c)
         }
+        view.highlights = marks
+        view.objectHighlights = marks
     }
 
     /// Places the cards again in the page's next layout pass, which comes

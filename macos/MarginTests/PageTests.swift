@@ -60,8 +60,6 @@ final class PageTests: XCTestCase {
     /// A list item reflowed onto one line with the line below it: the
     /// commented text after the joined break is filled once, like the text
     /// before it, also where it wraps, and code there keeps its tint.
-    /// TextKit's own rectangles for that text are wrong: the whole line,
-    /// and nothing on the next.
     @MainActor
     func testHighlightsFillTextAfterAReflowedBreak() throws {
         let words = "en mon `xx` ov nou som "

@@ -23,7 +23,7 @@ enum FindMatch: Equatable {
 /// editing rules, so formatting around a match survives; matches in
 /// diagrams are skipped.
 final class FindBar: NSView, NSSearchFieldDelegate, NSTextFieldDelegate {
-    unowned let view: DocTextView
+    unowned let view: DocView
     let search = NSSearchField()
     let replaceField = NSTextField()
     private let count = NSTextField(labelWithString: "")
@@ -40,7 +40,7 @@ final class FindBar: NSView, NSSearchFieldDelegate, NSTextFieldDelegate {
     var onChange: (() -> Void)?
     var onClose: (() -> Void)?
 
-    init(view: DocTextView) {
+    init(view: DocView) {
         self.view = view
         // The scroll view's find bar slot sizes it by frame.
         super.init(frame: NSRect(x: 0, y: 0, width: 600, height: 40))

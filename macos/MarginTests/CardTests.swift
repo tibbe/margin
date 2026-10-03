@@ -159,7 +159,7 @@ final class CardTests: XCTestCase {
         h.click(x: 1100, y: 700)
         h.wait(0.1)
         XCTAssertEqual(h.comments, #"#1 open [0,5) ["Why?"]"# + "\nactive none")
-        XCTAssertEqual(h.focus, "DocTextView")
+        XCTAssertEqual(h.focus, "DocView")
 
         try h.click(card: 1)
         h.wait(0.2)
@@ -167,7 +167,7 @@ final class CardTests: XCTestCase {
         try h.click(button: "Cancel", onCard: 1)
         h.wait(0.2)
         XCTAssertEqual(h.comments, #"#1 open [0,5) ["Why?"]"# + "\nactive none")
-        XCTAssertEqual(h.focus, "DocTextView")
+        XCTAssertEqual(h.focus, "DocView")
         XCTAssertNil(try h.button("Cancel", onCard: 1))
     }
 }

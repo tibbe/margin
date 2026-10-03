@@ -30,8 +30,8 @@ func printMarkdown(text: String, title: String, imageFolder: String, window: NSW
 
 /// The document laid out for paper, `width` wide, in the light
 /// appearance, without comments or change marks.
-func printView(text: String, imageFolder: String, width: CGFloat) -> DocTextView {
-    let view = DocTextView.make()
+func printView(text: String, imageFolder: String, width: CGFloat) -> DocView {
+    let view = DocView.make()
     view.usesFullWidth = true
     view.isVerticallyResizable = true
     view.isContinuousSpellCheckingEnabled = false
@@ -42,7 +42,6 @@ func printView(text: String, imageFolder: String, width: CGFloat) -> DocTextView
     view.imageFolder = imageFolder
     view.setContents(text)
     view.updateGeometry(force: true)
-    view.layoutManager?.ensureLayout(for: view.textContainer!)
     view.sizeToFit()
     return view
 }

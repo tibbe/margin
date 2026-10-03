@@ -129,7 +129,6 @@ extension Harness {
     /// The change mark drawn at `p`: `added`, `changed`, `deleted` or `none`.
     func change(at p: NSPoint) -> String {
         view.ensureFresh()
-        view.layoutManager?.ensureLayout(for: view.textContainer!)
         let b = view.bounds
         guard let rep = view.bitmapImageRepForCachingDisplay(in: b) else { return "no bitmap" }
         view.cacheDisplay(in: b, to: rep)

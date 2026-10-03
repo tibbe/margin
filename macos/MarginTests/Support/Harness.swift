@@ -53,7 +53,7 @@ final class Harness {
 
     var path: String { doc.path }
     var win: NSWindow { doc.window! }
-    var view: DocTextView { doc.textView }
+    var view: DocView { doc.textView }
     var layer: CommentLayer { doc.layer }
 
     init(_ text: String = "") throws {
@@ -364,11 +364,7 @@ final class Harness {
     func click(text s: String, mods: NSEvent.ModifierFlags = []) {
         let r = (view.string as NSString).range(of: s)
         XCTAssertNotEqual(r.location, NSNotFound, "\(s) not found")
-        let lm = view.layoutManager!
-        lm.ensureLayout(for: view.textContainer!)
-        let g = lm.glyphRange(forCharacterRange: r, actualCharacterRange: nil)
-        let rect = lm.boundingRect(forGlyphRange: g, in: view.textContainer!)
-            .offsetBy(dx: view.textContainerOrigin.x, dy: view.textContainerOrigin.y)
+        guard let rect = view.rects(forSource: r).first else { return XCTFail("\(s) not drawn") }
         click(view, at: NSPoint(x: rect.midX, y: rect.midY), mods: mods)
     }
 

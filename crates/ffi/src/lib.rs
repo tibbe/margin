@@ -442,13 +442,63 @@ impl Analysis {
             .collect()
     }
 
+    /// A hash per line of what styles it: its length and kind and the
+    /// spans over it, relative to its start, as little-endian `u64`s. Lines
+    /// whose hash is as before are styled as before.
+    pub fn line_style_hashes(&self) -> Vec<u8> {
+        use std::hash::{Hash, Hasher};
+        let lines = &self.doc.lines;
+        let mut hashers: Vec<std::collections::hash_map::DefaultHasher> = lines
+            .iter()
+            .map(|_| std::collections::hash_map::DefaultHasher::new())
+            .collect();
+        for (h, l) in hashers.iter_mut().zip(lines) {
+            (self.u(l.end) - self.u(l.start)).hash(h);
+            (l.kind, l.content_start - l.start).hash(h);
+        }
+        for sp in &self.doc.spans {
+            let first = self.doc.line_index(sp.range.start);
+            let last = self
+                .doc
+                .line_index(sp.range.end.saturating_sub(1).max(sp.range.start));
+            for li in first..=last.min(lines.len().saturating_sub(1)) {
+                let l = &lines[li];
+                let a = self.u(sp.range.start.max(l.start)) - self.u(l.start);
+                let b = self.u(sp.range.end.min(l.end + 1).max(l.start)) - self.u(l.start);
+                (a, b, sp.style).hash(&mut hashers[li]);
+            }
+        }
+        hashers
+            .iter()
+            .flat_map(|h| h.finish().to_le_bytes())
+            .collect()
+    }
+
     /// The style spans packed for speed: four little-endian `u32`s each,
     /// start, end (UTF-16), style code and parameter. Codes follow
     /// [`SpanStyle`]'s order; the parameter is the heading level, the space
     /// above in pixels, or quotes << 8 | items for indentation.
     pub fn spans_packed(&self) -> Vec<u8> {
+        self.pack_spans(0, usize::MAX)
+    }
+
+    /// [`Analysis::spans_packed`], only the spans over UTF-16 range
+    /// `start..end`.
+    pub fn spans_packed_between(&self, start: u32, end: u32) -> Vec<u8> {
+        let r = self.bytes(start, end);
+        self.pack_spans(r.start, r.end)
+    }
+}
+
+impl Analysis {
+    fn pack_spans(&self, from: usize, to: usize) -> Vec<u8> {
         let mut out = Vec::with_capacity(self.doc.spans.len() * 16);
-        for s in &self.doc.spans {
+        for s in self
+            .doc
+            .spans
+            .iter()
+            .filter(|s| s.range.end >= from && s.range.start <= to)
+        {
             let (code, param): (u32, u32) = match s.style {
                 Style::Para => (0, 0),
                 Style::Heading(level) => (1, level as u32),
@@ -479,7 +529,10 @@ impl Analysis {
         }
         out
     }
+}
 
+#[uniffi::export]
+impl Analysis {
     /// The lines packed for speed: seven little-endian `u32`s each: start,
     /// end, content start, visible start (UTF-16), kind (in [`LineType`]'s
     /// order), quotes and items.
@@ -1841,5 +1894,247 @@ mod tests {
         assert_eq!(p.changes.len(), 1);
         assert_eq!((p.changes[0].start, p.changes[0].end), (3, 8));
         assert_eq!(p.cursor, 3);
+    }
+}
+
+// MARK: - The display map
+
+/// How a stretch of source shows (see `md::display::Piece`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum PieceKind {
+    Shown,
+    Hidden,
+    /// As other text: a soft line break as a space, a table cell's gap as
+    /// a tab.
+    Replaced,
+    /// An image or a diagram, shown as one object character (U+FFFC).
+    Object,
+}
+
+/// A stretch of a shown paragraph's source, in UTF-16 units.
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct ShownPiece {
+    pub kind: PieceKind,
+    pub source_start: u32,
+    pub source_end: u32,
+    /// Where it is in the paragraph's shown text, and how long it is there.
+    pub shown_start: u32,
+    pub shown_len: u32,
+}
+
+/// One shown paragraph: one source line, or several joined while
+/// reflowing. Positions in UTF-16 units.
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct ShownParagraph {
+    /// Its source, without the line break that ends it, with any collapsed
+    /// lines before it.
+    pub source_start: u32,
+    pub source_end: u32,
+    /// The source lines it shows; `first_line == end_line` for the empty
+    /// paragraph after a final line break.
+    pub first_line: u32,
+    pub end_line: u32,
+    pub text: String,
+    pub pieces: Vec<ShownPiece>,
+}
+
+/// A paragraph and a UTF-16 offset in its shown text.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Record)]
+pub struct ShownPos {
+    pub paragraph: u32,
+    pub offset: u32,
+}
+
+/// A document as shown, and where each shown character comes from: the
+/// display map. Every position the editor needs goes through it.
+#[derive(uniffi::Object)]
+pub struct Projection {
+    analysis: Arc<Analysis>,
+    display: md::display::Display,
+    /// Each paragraph's shown text, and the byte offset of each of its
+    /// UTF-16 units (and one past its end).
+    texts: Vec<(String, Vec<usize>)>,
+}
+
+impl Projection {
+    /// A UTF-16 offset in paragraph `i`'s shown text, as a byte offset.
+    fn shown_byte(&self, i: usize, u: u32) -> usize {
+        let bytes = &self.texts[i].1;
+        bytes[(u as usize).min(bytes.len() - 1)]
+    }
+
+    fn shown_u16(&self, i: usize, b: usize) -> u32 {
+        self.texts[i].1.partition_point(|&x| x < b) as u32
+    }
+}
+
+#[uniffi::export]
+impl Analysis {
+    /// The display map: what shows, with `reflow` (soft breaks as spaces)
+    /// and in `source_mode` (everything as it is), with `reveal`'s hidden
+    /// syntax shown.
+    pub fn project(
+        self: Arc<Self>,
+        reflow: bool,
+        source_mode: bool,
+        reveal: Vec<TextRange>,
+    ) -> Arc<Projection> {
+        let opts = md::display::Options {
+            reflow,
+            source_mode,
+            reveal: reveal.iter().map(|r| self.bytes(r.start, r.end)).collect(),
+        };
+        let display = md::display::project(&self.text, &self.doc, &opts);
+        let texts = display
+            .paragraphs
+            .iter()
+            .map(|p| {
+                let t = p.text(&self.text);
+                let mut at = Vec::with_capacity(t.len() + 1);
+                for (i, c) in t.char_indices() {
+                    for _ in 0..c.len_utf16() {
+                        at.push(i);
+                    }
+                }
+                at.push(t.len());
+                (t, at)
+            })
+            .collect();
+        Arc::new(Projection {
+            analysis: self,
+            display,
+            texts,
+        })
+    }
+
+    /// The syntax the cursor at `cursor` needs to see: the blank line it is
+    /// on, the fences of the code block it is in.
+    pub fn reveal_at(&self, cursor: u32) -> Vec<TextRange> {
+        md::display::reveal_at(&self.doc, self.b(cursor))
+            .into_iter()
+            .map(|r| self.range(r))
+            .collect()
+    }
+}
+
+#[uniffi::export]
+impl Projection {
+    pub fn paragraphs(&self) -> Vec<ShownParagraph> {
+        let a = &self.analysis;
+        self.display
+            .paragraphs
+            .iter()
+            .enumerate()
+            .map(|(i, p)| {
+                let mut x = 0;
+                let pieces = p
+                    .pieces
+                    .iter()
+                    .map(|piece| {
+                        use md::display::Piece;
+                        let r = piece.source();
+                        let kind = match piece {
+                            Piece::Shown(_) => PieceKind::Shown,
+                            Piece::Hidden(_) => PieceKind::Hidden,
+                            Piece::Replaced(..) => PieceKind::Replaced,
+                            Piece::Object(_) => PieceKind::Object,
+                        };
+                        let len = match piece {
+                            Piece::Shown(r) => a.text[r.clone()].encode_utf16().count(),
+                            Piece::Hidden(_) => 0,
+                            Piece::Replaced(_, t) => t.encode_utf16().count(),
+                            Piece::Object(_) => 1,
+                        } as u32;
+                        let out = ShownPiece {
+                            kind,
+                            source_start: a.u(r.start),
+                            source_end: a.u(r.end),
+                            shown_start: x,
+                            shown_len: len,
+                        };
+                        x += len;
+                        out
+                    })
+                    .collect();
+                ShownParagraph {
+                    source_start: a.u(p.source.start),
+                    source_end: a.u(p.source.end),
+                    first_line: p.lines.start as u32,
+                    end_line: p.lines.end as u32,
+                    text: self.texts[i].0.clone(),
+                    pieces,
+                }
+            })
+            .collect()
+    }
+
+    /// [`Projection::paragraphs`] packed as little-endian `u32`s, which
+    /// Swift reads far faster than records: the paragraph count, then per
+    /// paragraph its source start and end, first and end line and piece
+    /// count, then per piece its kind (shown, hidden, replaced, object),
+    /// source start and end, shown start and length, and for a replaced
+    /// piece the character it shows as. Without the shown text, which is
+    /// the source's but for those characters.
+    pub fn paragraphs_packed(&self) -> Vec<u8> {
+        use md::display::{OBJECT, Piece};
+        let a = &self.analysis;
+        let mut out: Vec<u32> = Vec::with_capacity(1 + self.display.paragraphs.len() * 12);
+        out.push(self.display.paragraphs.len() as u32);
+        for p in &self.display.paragraphs {
+            out.extend([
+                a.u(p.source.start),
+                a.u(p.source.end),
+                p.lines.start as u32,
+                p.lines.end as u32,
+                p.pieces.len() as u32,
+            ]);
+            let mut x = 0u32;
+            for piece in &p.pieces {
+                let r = piece.source();
+                let (kind, len, ch) = match piece {
+                    Piece::Shown(r) => (0, (a.u(r.end) - a.u(r.start)), 0),
+                    Piece::Hidden(_) => (1, 0, 0),
+                    Piece::Replaced(_, t) => (
+                        2,
+                        t.encode_utf16().count() as u32,
+                        t.chars().next().map_or(0, u32::from),
+                    ),
+                    Piece::Object(_) => (3, 1, u32::from(OBJECT)),
+                };
+                out.extend([kind, a.u(r.start), a.u(r.end), x, len, ch]);
+                x += len;
+            }
+        }
+        out.iter().flat_map(|v| v.to_le_bytes()).collect()
+    }
+
+    pub fn paragraph_count(&self) -> u32 {
+        self.display.paragraphs.len() as u32
+    }
+
+    /// Where source position `pos` shows: hidden syntax where it starts.
+    pub fn to_shown(&self, pos: u32) -> ShownPos {
+        let s = self.display.to_shown(self.analysis.b(pos));
+        ShownPos {
+            paragraph: s.paragraph as u32,
+            offset: self.shown_u16(s.paragraph, s.offset),
+        }
+    }
+
+    /// Where the cursor goes for a shown position (see
+    /// `Display::to_source`).
+    pub fn to_source(&self, at: ShownPos) -> u32 {
+        let i = (at.paragraph as usize).min(self.texts.len().saturating_sub(1));
+        let offset = self.shown_byte(i, at.offset);
+        self.analysis.u(self.display.to_source(md::display::Shown {
+            paragraph: i,
+            offset,
+        }))
+    }
+
+    /// One press of Right (`forward`) or Left from source position `pos`.
+    pub fn step(&self, pos: u32, forward: bool) -> u32 {
+        let a = &self.analysis;
+        a.u(self.display.step(&a.text, a.b(pos), forward))
     }
 }

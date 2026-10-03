@@ -34,7 +34,7 @@ func isDraftPath(_ path: String) -> Bool {
 final class DocumentWindow: NSWindowController, NSWindowDelegate, NSToolbarDelegate, NSMenuItemValidation {
     private(set) var path: String
     private(set) var isDraft: Bool
-    let textView = DocTextView.make()
+    let textView = DocView.make()
     private(set) lazy var page = PageView(textView: textView)
     let scrollView = NSScrollView()
     private(set) var layer: CommentLayer!
@@ -900,7 +900,6 @@ final class DocumentWindow: NSWindowController, NSWindowDelegate, NSToolbarDeleg
         let before = textView.location(of: textView.cursor).minY - clip.bounds.minY
         let inView = before >= 0 && before <= clip.bounds.height
         f()
-        textView.layoutManager?.ensureLayout(for: textView.textContainer!)
         if inView {
             let after = textView.location(of: textView.cursor).minY
             clip.scroll(to: NSPoint(x: 0, y: max(0, after - before)))

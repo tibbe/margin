@@ -8,7 +8,7 @@ import AppKit
 /// AppKit lays out before it draws, so a card is never drawn where its
 /// text was.
 final class PageView: NSView {
-    let textView: DocTextView
+    let textView: DocView
     let gutter = GutterView()
     /// Places the cards beside the laid-out text; returns how far down they
     /// reach, in page coordinates.
@@ -23,7 +23,7 @@ final class PageView: NSView {
     private var gutterExtent: CGFloat = 0
     private var laying = false
 
-    init(textView: DocTextView) {
+    init(textView: DocView) {
         self.textView = textView
         super.init(frame: NSRect(x: 0, y: 0, width: 1200, height: 800))
         textView.autoresizingMask = []

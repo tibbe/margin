@@ -240,63 +240,37 @@ final class Editor {
         return nil
     }
 
-    /// TextKit 1: each line fragment with height is a drawn line; its
-    /// glyphs, less null (hidden) ones, are what is drawn on it, and a
-    /// newline laid out as a space (Reflow Paragraphs) is a space. Positions
-    /// come from glyph locations, which TextKit keeps right where its range
-    /// rectangles aren't.
+    /// DocView: each laid-out line is a drawn line, its characters what is
+    /// drawn on it (an object's character, drawn as the object, left out),
+    /// each where Core Text puts it.
     private var drawnLines: [DrawnLine] {
         let v = h.view
-        guard let lm = v.layoutManager, let tc = v.textContainer, let storage = v.textStorage else { return [] }
-        lm.ensureLayout(for: tc)
-        let s = storage.string as NSString
-        let origin = v.textContainerOrigin
         var out: [DrawnLine] = []
-        lm.enumerateLineFragments(forGlyphRange: NSRange(location: 0, length: lm.numberOfGlyphs)) {
-            frag, used, _, range, _ in
-            guard frag.height > 0.5 else { return }
-            var glyphs: [Glyph] = []
-            var g = range.location
-            while g < NSMaxRange(range) {
-                let ci = lm.characterIndexForGlyph(at: g)
-                let seq = s.rangeOfComposedCharacterSequence(at: ci)
-                let next = max(g + 1, NSMaxRange(lm.glyphRange(forCharacterRange: seq, actualCharacterRange: nil)))
-                defer { g = next }
-                let prop = lm.propertyForGlyph(at: g)
-                if prop.contains(.null) { continue }
-                var text = s.substring(with: seq)
-                if text == "\n" {
-                    guard v.reflowsParagraphs && !v.sourceMode && v.softBreaks.contains(ci) else { continue }
-                    text = " "
+        for p in v.laidOut {
+            let s = p.text.string as NSString
+            for l in p.lines {
+                var glyphs: [Glyph] = []
+                var i = l.range.location
+                while i < NSMaxRange(l.range) {
+                    let seq = s.rangeOfComposedCharacterSequence(at: i)
+                    defer { i = NSMaxRange(seq) }
+                    let t = s.substring(with: seq)
+                    if t == "\u{FFFC}" { continue }
+                    let x0 = l.x + CTLineGetOffsetForStringIndex(l.line, seq.location, nil)
+                    let x1 = l.x + CTLineGetOffsetForStringIndex(l.line, NSMaxRange(seq), nil)
+                    let font =
+                        p.text.attribute(.font, at: seq.location, effectiveRange: nil) as? NSFont
+                        ?? Theme.font(size: Theme.bodySize)
+                    let lineRect = NSRect(
+                        x: v.geometry.left, y: l.top, width: v.geometry.docWidth, height: l.bottom - l.top)
+                    glyphs.append(
+                        Glyph(
+                            text: t,
+                            rect: NSRect(x: min(x0, x1), y: l.top, width: abs(x1 - x0), height: l.bottom - l.top),
+                            lineRect: lineRect, baseline: l.baseline, xHeight: font.xHeight))
                 }
-                // Up to the next drawn glyph on the line, or the line's end.
-                var k = next
-                while k < NSMaxRange(range) && lm.propertyForGlyph(at: k).contains(.null) { k += 1 }
-                let x0 = frag.minX + lm.location(forGlyphAt: g).x
-                let x1 = k < NSMaxRange(range) ? frag.minX + lm.location(forGlyphAt: k).x : used.maxX
-                let font =
-                    storage.attribute(.font, at: ci, effectiveRange: nil) as? NSFont ?? Theme.font(size: Theme.bodySize)
-                let lineRect = frag.offsetBy(dx: origin.x, dy: origin.y)
-                glyphs.append(
-                    Glyph(
-                        text: text,
-                        rect: NSRect(
-                            x: x0 + origin.x, y: lineRect.minY, width: max(0, x1 - x0), height: lineRect.height),
-                        lineRect: lineRect, baseline: lineRect.minY + lm.location(forGlyphAt: g).y,
-                        xHeight: font.xHeight))
+                out.append(DrawnLine(glyphs: glyphs, top: l.top, bottom: l.bottom, left: l.x))
             }
-            let r = frag.offsetBy(dx: origin.x, dy: origin.y)
-            // Fragments of one drawn line (none here) would share a top.
-            if let last = out.last, abs(last.top - r.minY) < 0.5 {
-                out[out.count - 1].glyphs += glyphs
-            } else {
-                out.append(DrawnLine(glyphs: glyphs, top: r.minY, bottom: r.maxY, left: r.minX + used.minX - frag.minX))
-            }
-        }
-        let extra = lm.extraLineFragmentRect
-        if extra.height > 0.5 {
-            let r = extra.offsetBy(dx: origin.x, dy: origin.y)
-            out.append(DrawnLine(glyphs: [], top: r.minY, bottom: r.maxY, left: r.minX))
         }
         return out
     }

@@ -32,6 +32,16 @@ final class EndToEndTests: XCTestCase {
         XCTAssertEqual(e.lines, ["Title", "Some bold, code and a link."])
     }
 
+    /// Opening a document again styles all of it, not only what changed.
+    @MainActor
+    func testReopeningStylesEverything() throws {
+        let e = try Editor("one **bold** text\n\nsome `code` here\n")
+        defer { e.close() }
+        e.h.reset("one **bold** text\n\nsome `code` here\n")
+        e.h.wait(0.1)
+        XCTAssertEqual(e.fills("some code here"), #""some ":a "code":b " here":a"#)
+    }
+
     @MainActor
     func testReflowShowsAHardWrappedItemAsOneParagraph() throws {
         let off = try Editor(item)

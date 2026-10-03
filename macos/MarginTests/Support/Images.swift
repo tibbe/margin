@@ -60,7 +60,6 @@ extension Harness {
     /// Where image `i` is drawn, in the text view.
     func imageRect(_ i: Int = 0) -> NSRect {
         view.ensureFresh()
-        view.layoutManager?.ensureLayout(for: view.textContainer!)
         let o = view.objects[i]
         return view.objectRect(o, look: view.look(of: o)) ?? .zero
     }
@@ -70,7 +69,6 @@ extension Harness {
     /// its components.
     func color(at p: NSPoint, in v: NSView? = nil) -> String {
         let v = v ?? view
-        view.layoutManager?.ensureLayout(for: view.textContainer!)
         let b = v.bounds
         guard let rep = v.bitmapImageRepForCachingDisplay(in: b) else { return "no bitmap" }
         // Images are decoded when first drawn: draw again once they are.

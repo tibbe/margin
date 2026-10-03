@@ -349,33 +349,33 @@ func buildMainMenu() -> NSMenu {
                     ]),
             ]))
 
-    var headings = [item("Normal Text", #selector(DocTextView.marginNormalText(_:)), "0", [.command, .option])]
+    var headings = [item("Normal Text", #selector(DocView.marginNormalText(_:)), "0", [.command, .option])]
     for n in 1...6 {
         headings.append(
-            item("Heading \(n)", #selector(DocTextView.marginHeading(_:)), "\(n)", [.command, .option], tag: n))
+            item("Heading \(n)", #selector(DocView.marginHeading(_:)), "\(n)", [.command, .option], tag: n))
     }
     main.addItem(
         submenu(
             "Format",
             headings + [
                 .separator(),
-                // Matched by physical key in DocTextView; shown here.
-                item("Bulleted List", #selector(DocTextView.marginBulletedList(_:)), "8", [.command, .shift]),
-                item("Numbered List", #selector(DocTextView.marginNumberedList(_:)), "7", [.command, .shift]),
-                item("Checklist", #selector(DocTextView.marginChecklist(_:)), "9", [.command, .shift]),
-                item("Quote", #selector(DocTextView.marginQuote(_:)), "q", [.command, .option]),
-                item("Code Block", #selector(DocTextView.marginCodeBlock(_:)), "c", [.command, .option]),
+                // Matched by physical key in DocView; shown here.
+                item("Bulleted List", #selector(DocView.marginBulletedList(_:)), "8", [.command, .shift]),
+                item("Numbered List", #selector(DocView.marginNumberedList(_:)), "7", [.command, .shift]),
+                item("Checklist", #selector(DocView.marginChecklist(_:)), "9", [.command, .shift]),
+                item("Quote", #selector(DocView.marginQuote(_:)), "q", [.command, .option]),
+                item("Code Block", #selector(DocView.marginCodeBlock(_:)), "c", [.command, .option]),
                 .separator(),
-                item("Bold", #selector(DocTextView.marginBold(_:)), "b"),
-                item("Italic", #selector(DocTextView.marginItalic(_:)), "i"),
-                item("Strikethrough", #selector(DocTextView.marginStrikethrough(_:)), "x", [.command, .shift]),
-                item("Inline Code", #selector(DocTextView.marginInlineCode(_:)), "e", [.command, .shift]),
-                item("Link…", #selector(DocTextView.marginLink(_:)), "k"),
+                item("Bold", #selector(DocView.marginBold(_:)), "b"),
+                item("Italic", #selector(DocView.marginItalic(_:)), "i"),
+                item("Strikethrough", #selector(DocView.marginStrikethrough(_:)), "x", [.command, .shift]),
+                item("Inline Code", #selector(DocView.marginInlineCode(_:)), "e", [.command, .shift]),
+                item("Link…", #selector(DocView.marginLink(_:)), "k"),
                 .separator(),
-                item("Indent", #selector(DocTextView.marginIndent(_:)), "]"),
-                item("Outdent", #selector(DocTextView.marginOutdent(_:)), "["),
-                item("Toggle Task", #selector(DocTextView.marginToggleTask(_:)), ret),
-                item("Open Link", #selector(DocTextView.marginOpenLink(_:)), ret, [.command, .option]),
+                item("Indent", #selector(DocView.marginIndent(_:)), "]"),
+                item("Outdent", #selector(DocView.marginOutdent(_:)), "["),
+                item("Toggle Task", #selector(DocView.marginToggleTask(_:)), ret),
+                item("Open Link", #selector(DocView.marginOpenLink(_:)), ret, [.command, .option]),
             ]))
 
     main.addItem(
