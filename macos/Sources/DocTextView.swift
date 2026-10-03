@@ -200,12 +200,29 @@ final class DocTextView: NSTextView, NSTextStorageDelegate, NSTextViewDelegate, 
         didChangeText()
     }
 
+    /// The characters the edit being processed changed. By the end of
+    /// processing, the storage has widened its edited range over the
+    /// attributes it fixed, which would read as more text replaced.
+    private var charactersEdited: (range: NSRange, delta: Int)?
+
+    func textStorage(
+        _ textStorage: NSTextStorage, willProcessEditing editedMask: NSTextStorageEditActions,
+        range editedRange: NSRange, changeInLength delta: Int
+    ) {
+        if editedMask.contains(.editedCharacters) { charactersEdited = (editedRange, delta) }
+    }
+
     func textStorage(
         _ textStorage: NSTextStorage, didProcessEditing editedMask: NSTextStorageEditActions,
         range editedRange: NSRange, changeInLength delta: Int
     ) {
         guard editedMask.contains(.editedCharacters) else { return }
+        let edit = charactersEdited ?? (editedRange, delta)
+        charactersEdited = nil
         stale = true
+        // Soft breaks follow the edit until the next analysis, which waits
+        // while an input method composes: layout reads them meanwhile.
+        softBreaks = Set(softBreaks.compactMap { mapped($0, through: edit) })
         let loc = editedRange.location
         let oldEnd = loc + editedRange.length - delta
         func map(_ p: Int) -> Int { p <= loc ? p : (p >= oldEnd ? p + delta : NSMaxRange(editedRange)) }
@@ -216,6 +233,14 @@ final class DocTextView: NSTextView, NSTextStorageDelegate, NSTextViewDelegate, 
         } else {
             pendingDirty = editedRange
         }
+    }
+
+    /// Where a character at `p` is after `edit`; nil when it was replaced.
+    private func mapped(_ p: Int, through edit: (range: NSRange, delta: Int)) -> Int? {
+        let oldEnd = edit.range.location + edit.range.length - edit.delta
+        if p < edit.range.location { return p }
+        if p >= oldEnd { return p + edit.delta }
+        return nil
     }
 
     override func didChangeText() {
@@ -1368,6 +1393,29 @@ final class DocTextView: NSTextView, NSTextStorageDelegate, NSTextViewDelegate, 
         return li < lines.count && Int(lines[li].contentStart) == p
     }
 
+    /// The stop where the hidden syntax right before `p` starts, which shows
+    /// in the same place; nil when there is none on `p`'s line.
+    private func start(ofHiddenBefore p: Int) -> Int? {
+        let s = string as NSString
+        var q = p
+        while q > 0 && isHidden(q - 1) && s.character(at: q - 1) != 10 { q -= 1 }
+        return q < p && isStop(q) ? q : nil
+    }
+
+    /// How many characters show between `a` and `b`: a key moving one
+    /// character crosses one, though TextKit takes hidden syntax after it
+    /// along (`d**` in `**bold**`).
+    private func shownCharacters(between a: Int, and b: Int) -> Int {
+        let s = string as NSString
+        var (i, n) = (min(a, b), 0)
+        while i < min(max(a, b), s.length) {
+            let r = s.rangeOfComposedCharacterSequence(at: i)
+            if !isHidden(i) { n += 1 }
+            i = NSMaxRange(r)
+        }
+        return n
+    }
+
     /// The next place the cursor may go after `p`, in text order: a stop,
     /// as an empty range, or an image, which it selects whole.
     private func landing(from p: Int, forward: Bool) -> NSRange {
@@ -1418,9 +1466,31 @@ final class DocTextView: NSTextView, NSTextStorageDelegate, NSTextViewDelegate, 
 
     /// Whether Left and Right go from stop to stop here, rather than as
     /// TextKit moves: in a table row, from a selected image, and on with a
-    /// selection extended that way.
+    /// selection extended that way; and on any line of left-to-right text.
+    /// TextKit's own movement steps past a stop at the edge of hidden
+    /// syntax, and from one goes nowhere sensible (to the line's start); it
+    /// stays for right-to-left text, which it moves through visually.
     private var movesByStops: Bool {
-        inTableRow || selectedObject != nil || (stopsAnchor.map { $0.selection == selectedRange() } ?? false)
+        if inTableRow || selectedObject != nil || (stopsAnchor.map { $0.selection == selectedRange() } ?? false) {
+            return true
+        }
+        return !sourceMode && !stale && !lineHasRightToLeft
+    }
+
+    /// Whether the line at the cursor has right-to-left text.
+    private var lineHasRightToLeft: Bool {
+        guard !lines.isEmpty else { return false }
+        let li = Int(analysis.lineIndex(pos: UInt32(cursor)))
+        guard li < lines.count else { return false }
+        let r = NSRange(location: Int(lines[li].start), length: Int(lines[li].end) - Int(lines[li].start))
+        return (string as NSString).substring(with: r).unicodeScalars.contains {
+            switch $0.value {
+            // Hebrew through the Arabic extensions, their presentation
+            // forms, and the right-to-left scripts beyond the BMP.
+            case 0x0590...0x08FF, 0xFB1D...0xFDFF, 0xFE70...0xFEFF, 0x10800...0x10FFF, 0x1E800...0x1EFFF: true
+            default: false
+            }
+        }
     }
 
     private func moveByStops(forward: Bool, extending: Bool) {
@@ -1574,11 +1644,20 @@ final class DocTextView: NSTextView, NSTextStorageDelegate, NSTextViewDelegate, 
             let p = r.location
             if isStop(p) { return r }
             if let obj = objectZone(at: p) { return obj.range }
-            let stepped = o.length == 0 && abs(p - o.location) <= 2
-            var q =
-                stepped || inCollapsedLine(p)
-                ? landing(from: p, forward: p > o.location)
-                : NSRange(location: Int(analysis.visualPos(pos: UInt32(p))), length: 0)
+            let shown = o.length == 0 ? shownCharacters(between: o.location, and: p) : -1
+            var q: NSRange
+            if shown == 1 {
+                // A key moving one character: to the next stop after it,
+                // though TextKit went past one (over `d**` to the space).
+                q = landing(from: o.location, forward: p > o.location)
+            } else if shown == 0 || inCollapsedLine(p) {
+                q = landing(from: p, forward: p > o.location)
+            } else {
+                q = NSRange(location: Int(analysis.visualPos(pos: UInt32(p))), length: 0)
+                // Right after hidden syntax: where it starts shows in the
+                // same place (`bold|**` for `bold**|`).
+                if !isStop(q.location), let start = start(ofHiddenBefore: q.location) { q.location = start }
+            }
             // In a table's hidden padding, which the core does not know of.
             if q.length == 0 && !isStop(q.location) { q = landing(from: q.location, forward: true) }
             return q
@@ -2044,6 +2123,35 @@ final class DocTextView: NSTextView, NSTextStorageDelegate, NSTextViewDelegate, 
 nonisolated final class DocLayoutManager: NSLayoutManager {
     weak var view: DocTextView?
     private var origin = NSPoint.zero
+
+    /// TextKit lays an edited paragraph out again from its start, as the
+    /// start of a line. While reflowing, a paragraph joined onto the one
+    /// before it starts inside that one's last line, so its lines are laid
+    /// out again from where the joined paragraphs start.
+    override func processEditing(
+        for textStorage: NSTextStorage, edited editMask: NSTextStorageEditActions, range newCharRange: NSRange,
+        changeInLength delta: Int, invalidatedRange invalidatedCharRange: NSRange
+    ) {
+        super.processEditing(
+            for: textStorage, edited: editMask, range: newCharRange, changeInLength: delta,
+            invalidatedRange: invalidatedCharRange)
+        let at = invalidatedCharRange.location
+        let s = textStorage.string as NSString
+        guard at > 0, at <= s.length else { return }
+        // Edits happen on the main thread.
+        let view = view
+        let soft = MainActor.assumeIsolated { () -> Set<Int> in
+            guard let v = view, v.reflowsParagraphs, !v.sourceMode else { return [] }
+            return v.softBreaks
+        }
+        var start = s.paragraphRange(for: NSRange(location: min(at, s.length - 1), length: 0)).location
+        while start > 0 && soft.contains(start - 1) {
+            start = s.paragraphRange(for: NSRange(location: start - 1, length: 0)).location
+        }
+        if start < at {
+            invalidateLayout(forCharacterRange: NSRange(location: start, length: at - start), actualCharacterRange: nil)
+        }
+    }
 
     override func drawBackground(forGlyphRange glyphsToShow: NSRange, at origin: NSPoint) {
         self.origin = origin
