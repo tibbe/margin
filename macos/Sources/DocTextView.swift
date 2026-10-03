@@ -92,8 +92,9 @@ final class DocTextView: NSTextView, NSTextStorageDelegate, NSTextViewDelegate, 
 
     /// The text changed (after restyling).
     var onChange: (() -> Void)?
-    /// Raw edit notifications, for anchors: the edited range in the new
-    /// text and the change in length.
+    /// Each edit to the characters as it is made, for anchors: the range
+    /// of what replaced the old text, in the new text, and the change in
+    /// length (see `DocStorage`).
     var onEdit: ((NSRange, Int) -> Void)?
     var onSelectionChange: (() -> Void)?
     /// Positions of lines changed: the gutter follows.
@@ -107,7 +108,7 @@ final class DocTextView: NSTextView, NSTextStorageDelegate, NSTextViewDelegate, 
     var onHighlight: (() -> Void)?
 
     static func make() -> DocTextView {
-        let storage = NSTextStorage()
+        let storage = DocStorage()
         let lm = DocLayoutManager()
         storage.addLayoutManager(lm)
         let container = NSTextContainer(size: NSSize(width: 700, height: CGFloat.greatestFiniteMagnitude))
@@ -117,6 +118,9 @@ final class DocTextView: NSTextView, NSTextStorageDelegate, NSTextViewDelegate, 
         lm.addTextContainer(container)
         let view = DocTextView(frame: NSRect(x: 0, y: 0, width: 1200, height: 800), textContainer: container)
         lm.view = view
+        storage.onReplace = { [weak view] r, length in
+            view?.onEdit?(NSRange(location: r.location, length: length), length - r.length)
+        }
         view.setUp()
         return view
     }
@@ -184,7 +188,6 @@ final class DocTextView: NSTextView, NSTextStorageDelegate, NSTextViewDelegate, 
         raw += 1
         breakUndoCoalescing()
         undoManager?.beginUndoGrouping()
-        // One edit at a time, so anchors hear about each.
         for c in changes.reversed() {
             let r = NSRange(from: c.start, to: c.end)
             if shouldChangeText(in: r, replacementString: c.text) {
@@ -213,7 +216,6 @@ final class DocTextView: NSTextView, NSTextStorageDelegate, NSTextViewDelegate, 
         } else {
             pendingDirty = editedRange
         }
-        onEdit?(editedRange, delta)
     }
 
     override func didChangeText() {
