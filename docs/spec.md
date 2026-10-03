@@ -39,10 +39,8 @@ choices; none makes them all.
   have many copies at once, each with its own review and its own agent, so
   several sessions work on one spec in parallel without mixing. Google Docs
   has one document that everyone edits.
-- **The file is the source of truth.** The editor edits the Markdown text
-  directly and never re-serializes it; an edit changes only the bytes it
-  must, so diffs and merges in git keep working. Rich editors rewrite the
-  file on save; Google Docs keeps no file in the project at all.
+- **The file is the source of truth.** Saving adds no noise to the file's
+  diffs: they show only what was edited.
 - **Markdown, because both sides write it.** Agents write Markdown well and
   people write it easily. In Margin it is an input method: typed syntax
   formats as you type and is hidden.
