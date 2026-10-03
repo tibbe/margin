@@ -486,7 +486,11 @@ extension DocView {
 
     // MARK: - Accessibility
 
+    // As a text view: its value is the file's text, as Markdown.
     override func isAccessibilityElement() -> Bool { true }
     override func accessibilityRole() -> NSAccessibility.Role? { .textArea }
-    override func accessibilityValue() -> Any? { visibleText(NSRange(location: 0, length: text.length)) }
+    override func accessibilityValue() -> Any? { string }
+    override func accessibilityNumberOfCharacters() -> Int { text.length }
+    override func accessibilitySelectedTextRange() -> NSRange { sourceSelection }
+    override func accessibilitySelectedText() -> String? { text.substring(with: sourceSelection) }
 }
