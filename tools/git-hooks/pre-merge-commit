@@ -1,0 +1,3 @@
+#!/bin/sh
+# Runs the checks for a merge's result, as pre-commit does for a commit.
+exec tools/check.sh

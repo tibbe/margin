@@ -1,8 +1,5 @@
 # Rust crates
 
-## Checks
-
-- `cargo fmt --all`
-- `CARGO_BUILD_WARNINGS=deny cargo clippy --workspace --all-targets`
-- `cargo test` (the default members, which the app's build shares)
-- `CARGO_BUILD_WARNINGS=deny cargo doc --workspace --no-deps`
+`tools/check.sh` runs the crates' checks: `cargo fmt`, clippy, the tests and
+the docs, with warnings denied. While working, run the tests at hand, e.g.
+`cargo test -p margin-core anchor`, and `cargo fmt --all` to format.

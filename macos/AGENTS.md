@@ -25,7 +25,10 @@ new version and checksum to `Casks/margin.rb` on `main`.
 
 ## Checks
 
-- `swift format -i -p -r macos/Sources macos/App macos/MarginTests macos/MarginUITests macos/tools`
-- `swift format lint --strict -p -r macos/Sources macos/App macos/MarginTests macos/MarginUITests macos/tools`
-- `xcodebuild -project macos/Margin.xcodeproj -scheme Margin -derivedDataPath macos/build/DerivedData test -only-testing:MarginTests SWIFT_TREAT_WARNINGS_AS_ERRORS=YES`
+`tools/check.sh` runs the format lint and the unit tests, for changes here
+and in `crates/core` and `crates/ffi`, which the app is built on. While
+working:
+
+- Format: `swift format -i -p -r macos/Sources macos/App macos/MarginTests macos/MarginUITests macos/tools`
+- One test: `xcodebuild -quiet -project macos/Margin.xcodeproj -scheme Margin -derivedDataPath macos/build/DerivedData test -only-testing:MarginTests/CLASS/TEST`
   (builds the app too; the unit tests don't launch it)

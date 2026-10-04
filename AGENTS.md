@@ -37,6 +37,15 @@ to build, run and test it.
   - `ffi`: the core for Swift, through UniFFI.
 - `macos/` (`macos/AGENTS.md`): the macOS editor.
 
+## Checks
+
+Every commit and merge runs `tools/check.sh`, through the hooks in
+`tools/git-hooks` (enable them once per clone with
+`git config core.hooksPath tools/git-hooks`): the checks for the staged
+files. It takes a minute or two, longer on a fresh checkout's first build,
+so give `git commit` a 10-minute timeout. While working, run the tests you
+are changing.
+
 ## Launching
 
 To launch Margin, run this checkout's build, not an installed one: the user

@@ -1,0 +1,4 @@
+#!/bin/sh
+# Runs the checks for what is being committed. Enable the hooks here once
+# per clone: git config core.hooksPath tools/git-hooks
+exec tools/check.sh
