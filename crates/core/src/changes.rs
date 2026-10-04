@@ -201,7 +201,15 @@ mod tests {
         }
 
         fn git(&self, args: &[&str]) {
-            let ok = Command::new("git")
+            let mut cmd = Command::new("git");
+            // Run from a git hook, git's variables would point these
+            // commands at the repository being committed to.
+            for (k, _) in std::env::vars_os() {
+                if k.to_string_lossy().starts_with("GIT_") {
+                    cmd.env_remove(k);
+                }
+            }
+            let ok = cmd
                 .arg("-C")
                 .arg(&self.0)
                 .args(["-c", "user.name=T", "-c", "user.email=t@example.com"])
