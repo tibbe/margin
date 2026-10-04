@@ -115,7 +115,8 @@ so there is no version history (Revert To ▸ Browse All Versions) and no
   marked-text underline and is styled once committed. Press-and-hold accents
   replace the letter like typing does.
 - **Edits the system makes** (deleting a word, Transpose, spelling
-  corrections) follow the same editing rules as typing.
+  corrections) follow the same editing rules as typing. Transpose swaps the
+  characters shown on either side of the cursor, never hidden syntax.
 - Text can't be dragged, and Writing Tools aren't available in the
   document.
 

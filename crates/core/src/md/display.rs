@@ -101,10 +101,12 @@ impl Paragraph {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Display {
     pub paragraphs: Vec<Paragraph>,
-    /// Per source line: where its text starts (past its block syntax), and
-    /// whether it is collapsed (every character, line break included,
-    /// hidden), so neither shows nor takes the cursor.
-    content_start: Vec<usize>,
+    /// Per source line: where the cursor's stops on it start (past its
+    /// block syntax, which shows as a marker or not at all; in Show
+    /// Markdown, at its start), and whether it is collapsed (every
+    /// character, line break included, hidden), so neither shows nor takes
+    /// the cursor.
+    stops_from: Vec<usize>,
     collapsed: Vec<bool>,
     line_starts: Vec<usize>,
     /// Positions inside table rows' padding and `|` (sorted, disjoint),
@@ -113,11 +115,34 @@ pub struct Display {
     len: usize,
 }
 
-/// A shown position: a paragraph and a byte offset in its shown text.
+/// A shown position: a paragraph and a byte offset in its shown text. Only
+/// the map makes them, from a source position ([`Display::to_shown`]) or
+/// from an offset the editor gives ([`Display::position`]), which it puts
+/// between characters, so a shown position never splits one.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Shown {
-    pub paragraph: usize,
-    pub offset: usize,
+    paragraph: usize,
+    offset: usize,
+}
+
+impl Shown {
+    pub fn paragraph(&self) -> usize {
+        self.paragraph
+    }
+
+    pub fn offset(&self) -> usize {
+        self.offset
+    }
+}
+
+/// What Transpose does: it moves `moved`, a shown character's own source,
+/// to `to`, as if deleted and typed there, and leaves the cursor at
+/// `cursor`; all in the source as it is.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Transpose {
+    pub moved: Range<usize>,
+    pub to: usize,
+    pub cursor: usize,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -281,7 +306,17 @@ pub fn project(src: &str, doc: &Doc, opts: &Options) -> Display {
     Display {
         paragraphs,
         no_stops,
-        content_start: doc.lines.iter().map(|l| l.content_start).collect(),
+        stops_from: doc
+            .lines
+            .iter()
+            .map(|l| {
+                if opts.source_mode {
+                    l.start
+                } else {
+                    l.content_start
+                }
+            })
+            .collect(),
         collapsed,
         line_starts: doc.lines.iter().map(|l| l.start).collect(),
         len,
@@ -455,6 +490,23 @@ impl Display {
         Shown { paragraph, offset }
     }
 
+    /// The shown position at `offset` of `paragraph`, as an editor gives
+    /// one (where a click lands, a laid-out line's end): in the document,
+    /// and between characters (grapheme clusters), at the start of one it
+    /// falls inside, so no position the editor maps back splits one.
+    pub fn position(&self, src: &str, paragraph: usize, offset: usize) -> Shown {
+        let paragraph = paragraph.min(self.paragraphs.len() - 1);
+        let text = self.paragraphs[paragraph].text(src);
+        let offset = text
+            .grapheme_indices(true)
+            .map(|(i, _)| i)
+            .chain([text.len()])
+            .take_while(|&i| i <= offset)
+            .last()
+            .unwrap_or(0);
+        Shown { paragraph, offset }
+    }
+
     /// Where the cursor goes for a shown position: the first source
     /// position showing there that may take the cursor. Not inside hidden
     /// syntax, not on a collapsed line, not in a line's block syntax (`- `,
@@ -470,16 +522,22 @@ impl Display {
             .unwrap_or(p.source.end)
     }
 
-    /// The source of the shown text from `start` to `end` of a paragraph:
-    /// from its first character's own position (past hidden syntax before
-    /// it) to just after its last character (before hidden syntax after
-    /// it), so a replacement keeps the formatting around it.
-    pub fn source_range(&self, paragraph: usize, start: usize, end: usize) -> Range<usize> {
-        let Some(p) = self.paragraphs.get(paragraph) else {
+    /// The source of the shown text from `start` to `end`, in `start`'s
+    /// paragraph (an `end` past it reads as its end): from its first
+    /// character's own position (past hidden syntax before it) to just
+    /// after its last character (before hidden syntax after it), so a
+    /// replacement keeps the formatting around it.
+    pub fn source_range(&self, start: Shown, end: Shown) -> Range<usize> {
+        let Some(p) = self.paragraphs.get(start.paragraph) else {
             return self.len..self.len;
         };
+        let end = if end.paragraph == start.paragraph {
+            end.offset
+        } else {
+            p.shown_len()
+        };
         let a = self
-            .candidates(p, start)
+            .candidates(p, start.offset)
             .last()
             .copied()
             .unwrap_or(p.source.end);
@@ -560,7 +618,7 @@ impl Display {
             .saturating_sub(1);
         let i = self.no_stops.partition_point(|r| r.end <= c);
         let passed = self.no_stops.get(i).is_some_and(|r| r.start <= c);
-        !self.collapsed[li] && c >= self.content_start[li] && !passed
+        !self.collapsed[li] && c >= self.stops_from[li] && !passed
     }
 
     /// Where the cursor at `pos` goes with one press of Right (`forward`)
@@ -621,6 +679,89 @@ impl Display {
         }
     }
 
+    /// Where Option-Right (`forward`) or Option-Left takes the cursor at
+    /// `pos`: to the end of the word it is in or the next one, or to the
+    /// start of the word it is in or the one before, in the shown text, as
+    /// Unicode's word boundaries have words; from a paragraph's edge, to
+    /// the next paragraph's.
+    pub fn word(&self, src: &str, pos: usize, forward: bool) -> usize {
+        let at = self.to_shown(pos);
+        let i = at.paragraph;
+        let text = self.paragraphs[i].text(src);
+        let mut words = text
+            .split_word_bound_indices()
+            .filter(|(_, w)| w.chars().any(char::is_alphanumeric))
+            .map(|(a, w)| a..a + w.len());
+        let offset = if forward {
+            if at.offset >= text.len() {
+                return if i + 1 < self.paragraphs.len() {
+                    self.to_source(self.at(i + 1, 0))
+                } else {
+                    self.len
+                };
+            }
+            words
+                .find(|w| w.end > at.offset)
+                .map_or(text.len(), |w| w.end)
+        } else {
+            if at.offset == 0 {
+                return match i.checked_sub(1) {
+                    Some(prev) => self.to_source(self.at(prev, self.paragraphs[prev].shown_len())),
+                    None => self.to_source(at),
+                };
+            }
+            words
+                .take_while(|w| w.start < at.offset)
+                .last()
+                .map_or(0, |w| w.start)
+        };
+        self.to_source(self.at(i, offset))
+    }
+
+    /// What Transpose (Ctrl+T) does at `pos`: the shown characters on
+    /// either side of it swap, or at a paragraph's end the two before it,
+    /// and the cursor ends after them. The first moves past the second; if
+    /// the first shows as other text (a soft line break), the second moves
+    /// before it instead. None without two characters to swap, or when
+    /// neither is its own source (an object, a table's gap).
+    pub fn transposed(&self, src: &str, pos: usize) -> Option<Transpose> {
+        let at = self.to_shown(pos);
+        let i = at.paragraph;
+        let text = self.paragraphs[i].text(src);
+        let bounds: Vec<usize> = text
+            .grapheme_indices(true)
+            .map(|(b, _)| b)
+            .chain([text.len()])
+            .collect();
+        let last = bounds.len() - 1;
+        let mut k = bounds.partition_point(|&b| b <= at.offset) - 1;
+        if k == last {
+            k = k.checked_sub(1)?;
+        }
+        if k == 0 {
+            return None;
+        }
+        let (a, b) = (bounds[k - 1]..bounds[k], bounds[k]..bounds[k + 1]);
+        let source = |r: &Range<usize>| self.source_range(self.at(i, r.start), self.at(i, r.end));
+        let own = |r: &Range<usize>| src[source(r)] == text[r.clone()];
+        let after = self.to_source(self.at(i, b.end));
+        if own(&a) && !text[b.clone()].contains(OBJECT) {
+            Some(Transpose {
+                moved: source(&a),
+                to: after,
+                cursor: after,
+            })
+        } else if own(&b) && !text[a.clone()].contains(OBJECT) {
+            Some(Transpose {
+                moved: source(&b),
+                to: self.to_source(self.at(i, a.start)),
+                cursor: after,
+            })
+        } else {
+            None
+        }
+    }
+
     /// The source length the map was made for.
     pub fn len(&self) -> usize {
         self.len
@@ -659,7 +800,8 @@ mod tests {
     /// The source position the cursor takes at the `|` in `shown` (one
     /// shown paragraph's text).
     fn stop(src: &str, opts: &Options, paragraph: usize, offset: usize) -> String {
-        let p = map(src, opts).to_source(Shown { paragraph, offset });
+        let d = map(src, opts);
+        let p = d.to_source(d.position(src, paragraph, offset));
         format!("{}|{}", &src[..p], &src[p..])
     }
 
@@ -859,8 +1001,96 @@ mod tests {
         let src = "Some **teh** words";
         let d = map(src, &Options::default());
         // `teh` shows at 5..8: its own characters, not the markers.
-        assert_eq!(&src[d.source_range(0, 5, 8)], "teh");
-        assert_eq!(&src[d.source_range(0, 0, 4)], "Some");
+        assert_eq!(
+            &src[d.source_range(d.position(src, 0, 5), d.position(src, 0, 8))],
+            "teh"
+        );
+        assert_eq!(
+            &src[d.source_range(d.position(src, 0, 0), d.position(src, 0, 4))],
+            "Some"
+        );
+    }
+
+    #[test]
+    fn a_position_from_the_editor_never_splits_a_character() {
+        // A family emoji is one character of 25 bytes.
+        let src = "\u{1F468}\u{200D}\u{1F469}\u{200D}\u{1F467}\u{200D}\u{1F466} next";
+        let d = map(src, &Options::default());
+        assert_eq!(d.position(src, 0, 4).offset(), 0);
+        assert_eq!(d.position(src, 0, 25).offset(), 25);
+        assert_eq!(d.position(src, 0, 99).offset(), src.len());
+        assert_eq!(d.position(src, 9, 0).paragraph(), 0);
+    }
+
+    #[test]
+    fn words_are_shown_words() {
+        let o = Options::default();
+        let family = "\u{1F468}\u{200D}\u{1F469}\u{200D}\u{1F467}\u{200D}\u{1F466}";
+        let src = format!("{family} next");
+        let d = map(&src, &o);
+        assert_eq!(
+            d.word(&src, 0, true),
+            src.len(),
+            "past the emoji, to the word's end"
+        );
+        assert_eq!(d.word(&src, src.len(), false), family.len() + 1);
+        let src = "say **don't** go\n";
+        let d = map(src, &o);
+        assert_eq!(d.word(src, 0, true), 3);
+        assert_eq!(d.word(src, 3, true), 11, "to `don't|**`");
+        assert_eq!(d.word(src, 11, false), 4, "to `|**don't`");
+        assert_eq!(d.word(src, 16, true), 17, "on to the next paragraph");
+    }
+
+    #[test]
+    fn transposing_moves_the_character_before_the_cursor_past_the_next() {
+        let o = Options::default();
+        let src = "one **bold** now";
+        let d = map(src, &o);
+        // At `bold|`: `d` moves past the space.
+        assert_eq!(
+            d.transposed(src, 10),
+            Some(Transpose {
+                moved: 9..10,
+                to: 13,
+                cursor: 13
+            })
+        );
+        // At the end: the two before it.
+        assert_eq!(
+            d.transposed(src, src.len()),
+            Some(Transpose {
+                moved: 14..15,
+                to: 16,
+                cursor: 16
+            })
+        );
+        assert_eq!(d.transposed(src, 0), None);
+        assert_eq!(map("a", &o).transposed("a", 1), None);
+        // Before a soft break shown as a space, the character after it moves.
+        let src = "- ab\n  cd\n";
+        let d = map(src, &reflow());
+        assert_eq!(
+            d.transposed(src, 7),
+            Some(Transpose {
+                moved: 7..8,
+                to: 4,
+                cursor: 8
+            })
+        );
+    }
+
+    #[test]
+    fn show_markdown_stops_in_block_syntax() {
+        let o = Options {
+            source_mode: true,
+            ..Options::default()
+        };
+        let src = "# Title\n- item\n";
+        let d = map(src, &o);
+        assert_eq!(d.step(src, 0, true), 1);
+        assert_eq!(d.step(src, 8, true), 9);
+        assert_eq!(stop(src, &o, 1, 0), "# Title\n|- item\n");
     }
 
     #[test]

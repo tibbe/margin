@@ -135,12 +135,15 @@ final class DocView: NSView, NSTextInputClient, NSViewToolTipOwner, NSMenuItemVa
     /// The selection's fixed end and its moving end (the cursor).
     private(set) var anchor = 0
     private(set) var head = 0
+    /// Where the cursor shows when `head` is where a line wraps, which is
+    /// both the end of one laid-out line and the start of the next: at the
+    /// end of the line before (`.upstream`) or at the start of the line
+    /// after.
+    private(set) var affinity: NSSelectionAffinity = .downstream
     /// The x Up and Down keep.
     var goalX: CGFloat?
-    /// Text an input method is composing, shown at `markedAt` but not yet
-    /// in the source.
-    private(set) var marked: (text: String, selected: NSRange)?
-    private(set) var markedAt = 0
+    /// The text an input method is composing, if any.
+    private(set) var composition: Composition?
 
     // MARK: Layout (see DocView+Layout)
 
@@ -234,7 +237,8 @@ final class DocView: NSView, NSTextInputClient, NSViewToolTipOwner, NSMenuItemVa
         typing = nil
         anchor = 0
         head = 0
-        marked = nil
+        affinity = .downstream
+        composition = nil
         refresh()
         selectionChanged()
     }
@@ -590,7 +594,7 @@ final class DocView: NSView, NSTextInputClient, NSViewToolTipOwner, NSMenuItemVa
     /// The selection, as a text view and an input method see it: in the
     /// text being composed while there is some.
     func selectedRange() -> NSRange {
-        if let m = marked { return NSRange(location: markedAt + m.selected.location, length: m.selected.length) }
+        if let c = composition { return NSRange(location: c.at + c.selected.location, length: c.selected.length) }
         return sourceSelection
     }
 
@@ -612,11 +616,14 @@ final class DocView: NSView, NSTextInputClient, NSViewToolTipOwner, NSMenuItemVa
         select(anchor: r.location, head: NSMaxRange(r))
     }
 
-    /// Selects from `anchor` to `head`, which the arrows move.
-    func select(anchor a: Int, head h: Int, keepGoal: Bool = false) {
+    /// Selects from `anchor` to `head`, which the arrows move, with the
+    /// cursor shown on the line `affinity` says when `head` is at a wrap.
+    func select(
+        anchor a: Int, head h: Int, keepGoal: Bool = false, affinity: NSSelectionAffinity = .downstream
+    ) {
         let len = text.length
         var (a, h) = (min(max(0, a), len), min(max(0, h), len))
-        if marked == nil {
+        if composition == nil {
             if a == h, let o = object(at: a), a > o.start, a < o.end {
                 (a, h) = (o.start, o.end)
             } else {
@@ -633,6 +640,7 @@ final class DocView: NSView, NSTextInputClient, NSViewToolTipOwner, NSMenuItemVa
         let changed = a != anchor || h != head
         anchor = a
         head = h
+        self.affinity = affinity
         if !keepGoal { goalX = nil }
         if changed { typing = nil }
         selectionChanged()
@@ -655,7 +663,7 @@ final class DocView: NSView, NSTextInputClient, NSViewToolTipOwner, NSMenuItemVa
         }
         updateCaret()
         needsDisplay = true
-        if marked == nil { onSelectionChange?() }
+        if composition == nil { onSelectionChange?() }
     }
 
     /// Puts the cursor at `p`, or past the image `p` is on.
@@ -676,8 +684,7 @@ final class DocView: NSView, NSTextInputClient, NSViewToolTipOwner, NSMenuItemVa
             setSelectedRange(sel)
             return
         }
-        perform(changes, selecting: sel)
-        scrollRangeToVisible(selectedRange())
+        edit(changes, selecting: sel)
     }
 
     /// Runs an editing command against the cursor and selection.
@@ -687,14 +694,26 @@ final class DocView: NSView, NSTextInputClient, NSViewToolTipOwner, NSMenuItemVa
         }
     }
 
+    /// The writer's edit: `changes` (ranges in the current text, disjoint)
+    /// as one undo step, selecting `selecting`, which stays in view.
+    func edit(_ changes: [(NSRange, String)], selecting: NSRange, actionName: String? = nil) {
+        perform(changes, selecting: selecting, actionName: actionName)
+        scrollRangeToVisible(selectedRange())
+    }
+
     /// Makes `changes` (ranges in the current text, disjoint) as one undo
-    /// step, then selects `selecting`; nil keeps the selection on its text.
-    func perform(_ changes: [(NSRange, String)], selecting: NSRange?, actionName: String? = nil) {
+    /// step, then selects `selecting`; nil keeps the selection on its text,
+    /// as for an outside change, which leaves the reading place alone.
+    private func perform(_ changes: [(NSRange, String)], selecting: NSRange?, actionName: String? = nil) {
         let before = sourceSelection
         let step = EditStep(selection: before)
         step.inverse = replace(changes)
+        finish(step, selecting: selecting ?? mapped(before, through: changes), actionName: actionName)
+    }
+
+    /// Registers `step`, made, and selects `after`.
+    private func finish(_ step: EditStep, selecting after: NSRange, actionName: String?) {
         typing = nil
-        let after = selecting ?? mapped(before, through: changes)
         step.after = after
         register(step, actionName: actionName)
         refresh()
@@ -861,14 +880,14 @@ final class DocView: NSView, NSTextInputClient, NSViewToolTipOwner, NSMenuItemVa
     @objc override func deleteBackward(_ sender: Any?) {
         if let sel = selection {
             return sourceMode
-                ? perform([(sel, "")], selecting: NSRange(location: sel.location, length: 0))
+                ? edit([(sel, "")], selecting: NSRange(location: sel.location, length: 0))
                 : deleteSelectionThroughCore()
         }
         let p = cursor
         guard p > 0 else { return }
         if sourceMode {
             let r = text.rangeOfComposedCharacterSequence(at: p - 1)
-            return perform([(r, "")], selecting: NSRange(location: r.location, length: 0))
+            return edit([(r, "")], selecting: NSRange(location: r.location, length: 0))
         }
         apply(analysis.backspace(pos: UInt32(p)))
     }
@@ -876,14 +895,14 @@ final class DocView: NSView, NSTextInputClient, NSViewToolTipOwner, NSMenuItemVa
     @objc override func deleteForward(_ sender: Any?) {
         if let sel = selection {
             return sourceMode
-                ? perform([(sel, "")], selecting: NSRange(location: sel.location, length: 0))
+                ? edit([(sel, "")], selecting: NSRange(location: sel.location, length: 0))
                 : deleteSelectionThroughCore()
         }
         let p = cursor
         guard p < text.length else { return }
         if sourceMode {
             let r = text.rangeOfComposedCharacterSequence(at: p)
-            return perform([(r, "")], selecting: NSRange(location: p, length: 0))
+            return edit([(r, "")], selecting: NSRange(location: p, length: 0))
         }
         run { a, c, _ in a.deleteForward(pos: UInt32(c)) }
     }
@@ -900,16 +919,21 @@ final class DocView: NSView, NSTextInputClient, NSViewToolTipOwner, NSMenuItemVa
 
     @objc override func deleteToBeginningOfLine(_ sender: Any?) {
         if selection != nil { return deleteBackward(sender) }
-        deleteTo(lineEdge(from: cursor, end: false))
+        deleteTo(lineEdge(from: cursor, affinity: affinity, end: false).position)
     }
 
     @objc override func deleteToEndOfLine(_ sender: Any?) {
         if selection != nil { return deleteForward(sender) }
-        deleteTo(lineEdge(from: cursor, end: true))
+        deleteTo(lineEdge(from: cursor, affinity: affinity, end: true).position)
     }
 
+    /// Control-K: deletes to the end of the paragraph, or at its end, the
+    /// line break after it.
     @objc override func deleteToEndOfParagraph(_ sender: Any?) {
-        deleteToEndOfLine(sender)
+        if selection != nil { return deleteForward(sender) }
+        let end = paragraphEdge(from: cursor, end: true)
+        if end == cursor { return deleteForward(sender) }
+        deleteTo(end)
     }
 
     /// Deletes from the cursor to `p` through the editing rules.
@@ -917,19 +941,26 @@ final class DocView: NSView, NSTextInputClient, NSViewToolTipOwner, NSMenuItemVa
         let c = cursor
         guard p != c else { return }
         let r = NSRange(location: min(p, c), length: abs(p - c))
-        if sourceMode { return perform([(r, "")], selecting: NSRange(location: r.location, length: 0)) }
+        if sourceMode { return edit([(r, "")], selecting: NSRange(location: r.location, length: 0)) }
         run { a, _, _ in a.deleteRange(start: UInt32(r.location), end: UInt32(NSMaxRange(r))) }
     }
 
-    /// Ctrl+T: swaps the characters around the cursor.
+    /// Control-T: swaps the characters shown on either side of the cursor
+    /// (at a paragraph's end, the two before it), through the editing
+    /// rules; in Show Markdown, the file's characters, as they are.
     @objc override func transpose(_ sender: Any?) {
+        guard selection == nil else { return }
+        if !sourceMode {
+            if let plan = projection.transpose(pos: UInt32(cursor)) { apply(plan) }
+            return
+        }
         let p = cursor
-        guard selection == nil, p > 0, p < text.length else { return }
+        guard p > 0, p < text.length else { return }
         let a = text.rangeOfComposedCharacterSequence(at: p - 1)
         let b = text.rangeOfComposedCharacterSequence(at: p)
-        let swapped = text.substring(with: b) + text.substring(with: a)
-        let r = NSRange(location: a.location, length: NSMaxRange(b) - a.location)
-        run { an, _, _ in an.replaceRange(start: UInt32(r.location), end: UInt32(NSMaxRange(r)), text: swapped) }
+        edit(
+            [(NSUnionRange(a, b), text.substring(with: b) + text.substring(with: a))],
+            selecting: NSRange(location: NSMaxRange(b), length: 0))
     }
 
     /// The Spelling panel's Change: the correction replaces the selection.
@@ -950,7 +981,7 @@ final class DocView: NSView, NSTextInputClient, NSViewToolTipOwner, NSMenuItemVa
     /// Show Markdown: text goes in as typed.
     private func insertRaw(_ s: String) {
         let sel = sourceSelection
-        perform([(sel, s)], selecting: NSRange(location: sel.location + (s as NSString).length, length: 0))
+        edit([(sel, s)], selecting: NSRange(location: sel.location + (s as NSString).length, length: 0))
     }
 
     @objc override func selectAll(_ sender: Any?) {
@@ -960,37 +991,24 @@ final class DocView: NSView, NSTextInputClient, NSViewToolTipOwner, NSMenuItemVa
     // MARK: - NSTextInputClient
 
     /// The input method's view of the text: the source, with the text being
-    /// composed in it at `markedAt`.
+    /// composed in it.
     private var clientText: NSString {
-        guard let m = marked else { return text }
+        guard let c = composition else { return text }
         let s = NSMutableString(string: text)
-        s.insert(m.text, at: markedAt)
+        s.insert(c.text, at: c.at)
         return s
     }
 
     /// A position in the input method's text, in the source.
-    private func sourcePosition(client p: Int) -> Int {
-        guard let m = marked else { return p }
-        let n = (m.text as NSString).length
-        return p <= markedAt ? p : (p <= markedAt + n ? markedAt : p - n)
+    func sourcePosition(client p: Int) -> Int {
+        guard let c = composition else { return p }
+        let n = (c.text as NSString).length
+        return p <= c.at ? p : (p <= c.at + n ? c.at : p - n)
     }
 
     func insertText(_ string: Any, replacementRange: NSRange) {
         let s = (string as? NSAttributedString)?.string ?? (string as? String) ?? ""
-        if marked != nil {
-            marked = nil
-            if !s.isEmpty {
-                // As composed, where it was composed.
-                let n = (s as NSString).length
-                perform(
-                    [(NSRange(location: markedAt, length: 0), s)], selecting: NSRange(location: markedAt + n, length: 0)
-                )
-            } else {
-                relayout()
-                updateCaret()
-            }
-            return
-        }
+        if let c = composition { return endComposition(c, committing: s) }
         if replacementRange.location != NSNotFound && replacementRange != selectedRange() {
             setSelectedRange(replacementRange)
         }
@@ -1007,42 +1025,67 @@ final class DocView: NSView, NSTextInputClient, NSViewToolTipOwner, NSMenuItemVa
 
     func setMarkedText(_ string: Any, selectedRange: NSRange, replacementRange: NSRange) {
         let s = (string as? NSAttributedString)?.string ?? (string as? String) ?? ""
-        if marked == nil {
-            if replacementRange.location != NSNotFound {
-                // Reconverting committed text: it is composed again.
-                let r = NSRange(
-                    location: sourcePosition(client: replacementRange.location),
-                    length: sourcePosition(client: NSMaxRange(replacementRange))
-                        - sourcePosition(client: replacementRange.location))
-                if r.length > 0 { perform([(r, "")], selecting: NSRange(location: r.location, length: 0)) }
-            } else if let sel = selection {
-                // Composing over a selection replaces it in place, keeping
-                // the formatting around it, as in any text view.
-                perform([(sel, "")], selecting: NSRange(location: sel.location, length: 0))
-                markedAt = sel.location
-                marked = s.isEmpty ? nil : (s, selectedRange)
-                relayout()
-                updateCaret()
-                return
-            }
-            markedAt = sourceMode ? cursor : Int(analysis.insertionPoint(pos: UInt32(cursor)))
-        }
-        marked = s.isEmpty ? nil : (s, selectedRange)
+        var c = composition ?? startComposition(replacing: replacementRange)
+        // Nothing left composed: the composition is over.
+        if s.isEmpty { return endComposition(c, committing: "") }
+        c.text = s
+        c.selected = selectedRange
+        composition = c
         relayout()
         updateCaret()
     }
 
+    /// A composition starting: over the text it replaces, a selection or
+    /// committed text being composed again (`replacing`), which leaves the
+    /// source until the composition ends.
+    private func startComposition(replacing r: NSRange) -> Composition {
+        let before = sourceSelection
+        let taken = r.location != NSNotFound ? r : before
+        guard taken.length > 0 else {
+            let at = sourceMode ? cursor : Int(analysis.insertionPoint(pos: UInt32(cursor)))
+            return Composition(at: at, replaced: "", before: before)
+        }
+        let replaced = text.substring(with: taken)
+        replace([(taken, "")])
+        typing = nil
+        refresh()
+        // Committed text composed again goes where typing would; text
+        // composed over a selection replaces it in place, keeping the
+        // formatting around it, as in any text view.
+        let at =
+            r.location == NSNotFound || sourceMode
+            ? taken.location : Int(analysis.insertionPoint(pos: UInt32(taken.location)))
+        setSelectedRange(NSRange(location: at, length: 0))
+        return Composition(at: at, replaced: replaced, before: before)
+    }
+
+    /// Puts `s` where it was composed, as one edit with the text the
+    /// composition replaced, which one Undo puts back.
+    private func endComposition(_ c: Composition, committing s: String) {
+        composition = nil
+        let n = (s as NSString).length
+        guard n > 0 || !c.replaced.isEmpty else {
+            relayout()
+            updateCaret()
+            return
+        }
+        replace([(NSRange(location: c.at, length: 0), s)])
+        let step = EditStep(selection: c.before)
+        step.inverse = [(NSRange(location: c.at, length: n), c.replaced)]
+        finish(step, selecting: NSRange(location: c.at + n, length: 0), actionName: nil)
+        scrollRangeToVisible(selectedRange())
+    }
+
     func unmarkText() {
-        guard let m = marked else { return }
-        insertText(m.text, replacementRange: NSRange(location: NSNotFound, length: 0))
+        if let c = composition { endComposition(c, committing: c.text) }
     }
 
     func markedRange() -> NSRange {
-        guard let m = marked else { return NSRange(location: NSNotFound, length: 0) }
-        return NSRange(location: markedAt, length: (m.text as NSString).length)
+        guard let c = composition else { return NSRange(location: NSNotFound, length: 0) }
+        return NSRange(location: c.at, length: (c.text as NSString).length)
     }
 
-    func hasMarkedText() -> Bool { marked != nil }
+    func hasMarkedText() -> Bool { composition != nil }
 
     func attributedSubstring(forProposedRange range: NSRange, actualRange: NSRangePointer?) -> NSAttributedString? {
         let t = clientText
@@ -1069,8 +1112,8 @@ final class DocView: NSView, NSTextInputClient, NSViewToolTipOwner, NSMenuItemVa
         guard let window else { return NSNotFound }
         let p = convert(window.convertPoint(fromScreen: point), from: nil)
         let s = position(at: p)
-        guard let m = marked, s > markedAt else { return s }
-        return s + (m.text as NSString).length
+        guard let c = composition, s > c.at else { return s }
+        return s + (c.text as NSString).length
     }
 
     // MARK: - Clipboard
@@ -1313,6 +1356,22 @@ final class DocView: NSView, NSTextInputClient, NSViewToolTipOwner, NSMenuItemVa
         }
         return super.performKeyEquivalent(with: event)
     }
+}
+
+/// Text an input method is composing: shown at `at`, and not in the source
+/// until it is committed. What it replaces is out of the source meanwhile,
+/// so that the composition, committed, is one edit.
+struct Composition {
+    var text = ""
+    /// The input method's selection in it.
+    var selected = NSRange(location: 0, length: 0)
+    /// Where it goes in the source.
+    let at: Int
+    /// The text it replaces, taken out when it started: a selection, or
+    /// committed text composed again.
+    let replaced: String
+    /// The selection when it started, which undoing it restores.
+    let before: NSRange
 }
 
 /// One undoable edit: the changes that undo it, and the selections around

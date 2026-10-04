@@ -1957,10 +1957,13 @@ pub struct Projection {
 }
 
 impl Projection {
-    /// A UTF-16 offset in paragraph `i`'s shown text, as a byte offset.
-    fn shown_byte(&self, i: usize, u: u32) -> usize {
+    /// A paragraph and a UTF-16 offset in its shown text, as the editor
+    /// gives them, as a shown position (see `Display::position`).
+    fn position(&self, paragraph: u32, offset: u32) -> md::display::Shown {
+        let i = (paragraph as usize).min(self.texts.len() - 1);
         let bytes = &self.texts[i].1;
-        bytes[(u as usize).min(bytes.len() - 1)]
+        let b = bytes[(offset as usize).min(bytes.len() - 1)];
+        self.display.position(&self.analysis.text, i, b)
     }
 
     fn shown_u16(&self, i: usize, b: usize) -> u32 {
@@ -2116,29 +2119,26 @@ impl Projection {
     pub fn to_shown(&self, pos: u32) -> ShownPos {
         let s = self.display.to_shown(self.analysis.b(pos));
         ShownPos {
-            paragraph: s.paragraph as u32,
-            offset: self.shown_u16(s.paragraph, s.offset),
+            paragraph: s.paragraph() as u32,
+            offset: self.shown_u16(s.paragraph(), s.offset()),
         }
     }
 
     /// Where the cursor goes for a shown position (see
     /// `Display::to_source`).
     pub fn to_source(&self, at: ShownPos) -> u32 {
-        let i = (at.paragraph as usize).min(self.texts.len().saturating_sub(1));
-        let offset = self.shown_byte(i, at.offset);
-        self.analysis.u(self.display.to_source(md::display::Shown {
-            paragraph: i,
-            offset,
-        }))
+        self.analysis.u(self
+            .display
+            .to_source(self.position(at.paragraph, at.offset)))
     }
 
     /// The source of the shown text from `start` to `end` (UTF-16 offsets)
     /// of a paragraph: its characters, without hidden syntax around them.
     pub fn source_range(&self, paragraph: u32, start: u32, end: u32) -> TextRange {
-        let i = (paragraph as usize).min(self.texts.len().saturating_sub(1));
-        let r = self
-            .display
-            .source_range(i, self.shown_byte(i, start), self.shown_byte(i, end));
+        let r = self.display.source_range(
+            self.position(paragraph, start),
+            self.position(paragraph, end),
+        );
         self.analysis.range(r)
     }
 
@@ -2146,5 +2146,20 @@ impl Projection {
     pub fn step(&self, pos: u32, forward: bool) -> u32 {
         let a = &self.analysis;
         a.u(self.display.step(&a.text, a.b(pos), forward))
+    }
+
+    /// One press of Option-Right (`forward`) or Option-Left from source
+    /// position `pos`: to a shown word's end or start.
+    pub fn word(&self, pos: u32, forward: bool) -> u32 {
+        let a = &self.analysis;
+        a.u(self.display.word(&a.text, a.b(pos), forward))
+    }
+
+    /// Transpose (Ctrl+T) at source position `pos`, through the editing
+    /// rules; nil where there is nothing to swap.
+    pub fn transpose(&self, pos: u32) -> Option<EditPlan> {
+        let a = &self.analysis;
+        let t = self.display.transposed(&a.text, a.b(pos))?;
+        Some(a.plan(edit::move_text(&a.text, &a.doc, t.moved, t.to, t.cursor)))
     }
 }

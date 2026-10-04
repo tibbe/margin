@@ -194,7 +194,7 @@ extension DocView {
         var y = textContainerInset.height
         var out: [LaidParagraph] = []
         out.reserveCapacity(shown.count)
-        let composing = marked.map { _ in projection.toShown(pos: UInt32(markedAt)) }
+        let composing = composition.map { projection.toShown(pos: UInt32($0.at)) }
         let appearance = effectiveAppearance.name.rawValue
         var cache: [TypesetKey: Typeset] = [:]
         var typesets: [Typeset?] = []
@@ -205,7 +205,7 @@ extension DocView {
         effectiveAppearance.performAsCurrentDrawingAppearance {
             for (i, p) in shown.enumerated() {
                 var splice: (at: Int, length: Int)?
-                if let m = marked, let c = composing, Int(c.paragraph) == i {
+                if let m = composition, let c = composing, Int(c.paragraph) == i {
                     splice = (Int(c.offset), (m.text as NSString).length)
                 }
                 let t: Typeset
@@ -460,7 +460,7 @@ extension DocView {
                 out.append(NSAttributedString(string: "\u{FFFC}", attributes: attrs))
             }
         }
-        if let s = splice, let m = marked {
+        if let s = splice, let m = composition {
             let at = min(s.at, out.length)
             var attrs = at > 0 ? out.attributes(at: at - 1, effectiveRange: nil) : [.font: font]
             attrs[.ctRunDelegate] = nil
@@ -579,21 +579,23 @@ extension DocView {
     // MARK: - Where things are
 
     /// Where source position `p` is laid out: a paragraph, a line in it, and
-    /// an offset in its laid-out text.
-    func laid(_ p: Int) -> (paragraph: Int, line: Int, offset: Int)? {
+    /// an offset in its laid-out text. At a wrap, on the line `affinity`
+    /// says.
+    func laid(_ p: Int, affinity: NSSelectionAffinity = .downstream) -> (paragraph: Int, line: Int, offset: Int)? {
         guard !laidOut.isEmpty else { return nil }
         let at = projection.toShown(pos: UInt32(min(max(0, p), text.length)))
         let pi = min(Int(at.paragraph), laidOut.count - 1)
         var o = Int(at.offset)
-        if let s = laidOut[pi].splice, o > s.at || (o == s.at && p > markedAt) { o += s.length }
-        return (pi, lineIndex(pi, offset: o), o)
+        if let s = laidOut[pi].splice, let c = composition, o > s.at || (o == s.at && p > c.at) { o += s.length }
+        return (pi, lineIndex(pi, offset: o, affinity: affinity), o)
     }
 
     /// The line of paragraph `pi` holding offset `o`: at a wrap, the line
-    /// after it.
-    func lineIndex(_ pi: Int, offset o: Int) -> Int {
+    /// after it, or with `.upstream` the line before.
+    func lineIndex(_ pi: Int, offset o: Int, affinity: NSSelectionAffinity = .downstream) -> Int {
         let ls = laidOut[pi].lines
-        for (i, l) in ls.enumerated() where o < NSMaxRange(l.range) || i == ls.count - 1 {
+        for (i, l) in ls.enumerated()
+        where o < NSMaxRange(l.range) || (affinity == .upstream && o == NSMaxRange(l.range)) || i == ls.count - 1 {
             return i
         }
         return 0
@@ -639,31 +641,25 @@ extension DocView {
 
     /// Where a range of the input method's text is drawn.
     func clientRects(_ r: NSRange) -> [NSRect] {
-        guard let m = marked, let at = laid(markedAt), let s = laidOut[at.paragraph].splice else {
+        guard let c = composition, let at = laid(c.at), let s = laidOut[at.paragraph].splice else {
             return rects(forSource: r)
         }
-        let n = (m.text as NSString).length
-        if r.location >= markedAt && NSMaxRange(r) <= markedAt + n {
-            let a = s.at + r.location - markedAt
+        let n = (c.text as NSString).length
+        if r.location >= c.at && NSMaxRange(r) <= c.at + n {
+            let a = s.at + r.location - c.at
             return rects(paragraph: at.paragraph, from: a, to: a + r.length)
         }
-        return rects(forSource: NSRange(location: sourcePositionOfClient(r.location), length: 0))
-    }
-
-    private func sourcePositionOfClient(_ p: Int) -> Int {
-        guard let m = marked else { return p }
-        let n = (m.text as NSString).length
-        return p <= markedAt ? p : (p <= markedAt + n ? markedAt : p - n)
+        return rects(forSource: NSRange(location: sourcePosition(client: r.location), length: 0))
     }
 
     /// Where the caret is drawn.
     func caretRect() -> NSRect {
         let line: LaidLine
         let o: Int
-        if let m = marked, let at = laid(markedAt), let s = laidOut[at.paragraph].splice {
-            o = s.at + m.selected.location
+        if let c = composition, let at = laid(c.at), let s = laidOut[at.paragraph].splice {
+            o = s.at + c.selected.location
             line = laidOut[at.paragraph].lines[lineIndex(at.paragraph, offset: o)]
-        } else if let at = laid(head) {
+        } else if let at = laid(head, affinity: affinity) {
             o = at.offset
             line = laidOut[at.paragraph].lines[at.line]
         } else {
@@ -677,7 +673,7 @@ extension DocView {
         let r = caretRect()
         caretView.frame = NSRect(x: r.minX - 1, y: r.minY, width: 2, height: r.height)
         let focused = window?.firstResponder === self
-        caretView.displayMode = focused && (selection == nil || marked != nil) ? .automatic : .hidden
+        caretView.displayMode = focused && (selection == nil || composition != nil) ? .automatic : .hidden
     }
 
     /// The paragraph laid out at y, or the nearest.
@@ -693,29 +689,45 @@ extension DocView {
     }
 
     /// The source position nearest a point: where a click puts the cursor.
-    func position(at p: NSPoint) -> Int {
-        guard let pi = paragraph(atY: p.y) else { return 0 }
-        let ls = laidOut[pi].lines
-        let li = ls.lastIndex { $0.top <= p.y } ?? 0
-        let l = ls[li]
-        var o = CTLineGetStringIndexForPosition(l.line, CGPoint(x: p.x - l.x, y: 0))
+    func position(at p: NSPoint) -> Int { caret(at: p).position }
+
+    /// Where a click at a point puts the cursor, and on which line.
+    func caret(at p: NSPoint) -> (position: Int, affinity: NSSelectionAffinity) {
+        guard let pi = paragraph(atY: p.y) else { return (0, .downstream) }
+        let li = laidOut[pi].lines.lastIndex { $0.top <= p.y } ?? 0
+        return caret(paragraph: pi, line: li, x: p.x)
+    }
+
+    /// The cursor nearest `x` on line `li` of paragraph `pi`.
+    private func caret(paragraph pi: Int, line li: Int, x: CGFloat) -> (position: Int, affinity: NSSelectionAffinity) {
+        let l = laidOut[pi].lines[li]
+        var o = CTLineGetStringIndexForPosition(l.line, CGPoint(x: x - l.x, y: 0))
         if o == kCFNotFound { o = l.range.location }
-        o = min(max(o, l.range.location), NSMaxRange(l.range))
-        // A click past a wrapped line's end goes before its last space.
-        if o == NSMaxRange(l.range), li < ls.count - 1, o > l.range.location,
-            let c = (laidOut[pi].text.string as NSString).substring(with: NSRange(location: o - 1, length: 1)).first,
-            c.isWhitespace
-        {
-            o -= 1
+        return caret(paragraph: pi, line: li, offset: min(max(o, l.range.location), NSMaxRange(l.range)))
+    }
+
+    /// The cursor at offset `o` of line `li` of paragraph `pi`. At the end
+    /// of a line that wraps, which is also where the next line starts: before
+    /// the space it wraps at, or where it wraps inside a word, at its end,
+    /// shown there (`.upstream`).
+    func caret(paragraph pi: Int, line li: Int, offset o: Int) -> (position: Int, affinity: NSSelectionAffinity) {
+        let ls = laidOut[pi].lines
+        let l = ls[li]
+        guard o == NSMaxRange(l.range), li < ls.count - 1, o > l.range.location else {
+            return (source(paragraph: pi, offset: o), .downstream)
         }
-        return source(paragraph: pi, offset: o)
+        let t = laidOut[pi].text.string as NSString
+        if t.substring(with: t.rangeOfComposedCharacterSequence(at: o - 1)).first?.isWhitespace ?? false {
+            return (source(paragraph: pi, offset: o - 1), .downstream)
+        }
+        return (source(paragraph: pi, offset: o), .upstream)
     }
 
     /// The source position for an offset in a laid-out paragraph.
     func source(paragraph pi: Int, offset o: Int) -> Int {
         var o = o
-        if let s = laidOut[pi].splice {
-            if o > s.at + s.length { o -= s.length } else if o > s.at { return markedAt }
+        if let s = laidOut[pi].splice, let c = composition {
+            if o > s.at + s.length { o -= s.length } else if o > s.at { return c.at }
         }
         return Int(projection.toSource(at: ShownPos(paragraph: UInt32(pi), offset: UInt32(o))))
     }
@@ -869,10 +881,12 @@ extension DocView {
     // MARK: - Moving the cursor
 
     /// Moves the cursor to `p`, or the selection's moving end with
-    /// `extending`.
-    private func moveHead(to p: Int, extending: Bool, keepGoal: Bool = false) {
-        select(anchor: extending ? anchor : p, head: p, keepGoal: keepGoal)
-        scrollRangeToVisible(NSRange(location: head, length: 0))
+    /// `extending`, shown on the line `affinity` says.
+    private func moveHead(
+        to p: Int, extending: Bool, keepGoal: Bool = false, affinity: NSSelectionAffinity = .downstream
+    ) {
+        select(anchor: extending ? anchor : p, head: p, keepGoal: keepGoal, affinity: affinity)
+        scrollToVisible(caretRect().insetBy(dx: 0, dy: -8))
     }
 
     /// Right (`forward`) or Left: one shown character over. Toward an image
@@ -922,9 +936,8 @@ extension DocView {
         if !extending, let sel = selection, selectedObject == nil {
             select(anchor: sel.location, head: sel.location)
         }
-        guard let at = laid(head) else { return }
-        let caret = laidOut[at.paragraph].lines[at.line]
-        let gx = goalX ?? x(at.offset, on: caret)
+        guard let at = laid(head, affinity: affinity) else { return }
+        let gx = goalX ?? x(at.offset, on: laidOut[at.paragraph].lines[at.line])
         var pi = at.paragraph
         var li = at.line
         while true {
@@ -945,21 +958,14 @@ extension DocView {
                     li = laidOut[pi].lines.count - 1
                 }
             }
-            let l = laidOut[pi].lines[li]
-            var o = CTLineGetStringIndexForPosition(l.line, CGPoint(x: gx - l.x, y: 0))
-            if o == kCFNotFound { o = l.range.location }
-            o = min(max(o, l.range.location), NSMaxRange(l.range))
-            if o == NSMaxRange(l.range), li < laidOut[pi].lines.count - 1, o > l.range.location { o -= 1 }
-            let p = source(paragraph: pi, offset: o)
+            let (p, affinity) = caret(paragraph: pi, line: li, x: gx)
             // Up and Down pass an image, keeping the column.
             if let obj = object(at: p), objects.contains(where: { $0.start == obj.start }) {
                 let only = laidOut[pi].text.string.trimmingCharacters(in: .whitespaces) == "\u{FFFC}"
                 if only { continue }
             }
             goalX = gx
-            select(anchor: extending ? anchor : p, head: p, keepGoal: true)
-            scrollRangeToVisible(NSRange(location: head, length: 0))
-            return
+            return moveHead(to: p, extending: extending, keepGoal: true, affinity: affinity)
         }
     }
 
@@ -968,46 +974,19 @@ extension DocView {
     @objc override func moveUpAndModifySelection(_ sender: Any?) { vertical(down: false, extending: true) }
     @objc override func moveDownAndModifySelection(_ sender: Any?) { vertical(down: true, extending: true) }
 
-    /// The start or end of the laid-out line holding `p`.
-    func lineEdge(from p: Int, end: Bool) -> Int {
-        guard let at = laid(p) else { return p }
-        let ls = laidOut[at.paragraph].lines
-        let l = ls[at.line]
-        var o = end ? NSMaxRange(l.range) : l.range.location
-        if end, at.line < ls.count - 1, o > l.range.location,
-            (laidOut[at.paragraph].text.string as NSString).character(at: o - 1) == 32
-        {
-            o -= 1
-        }
-        return source(paragraph: at.paragraph, offset: o)
+    /// The start or end of the laid-out line `p` shows on, with `affinity`.
+    func lineEdge(
+        from p: Int, affinity: NSSelectionAffinity, end: Bool
+    ) -> (position: Int, affinity: NSSelectionAffinity) {
+        guard let at = laid(p, affinity: affinity) else { return (p, .downstream) }
+        let l = laidOut[at.paragraph].lines[at.line]
+        return caret(paragraph: at.paragraph, line: at.line, offset: end ? NSMaxRange(l.range) : l.range.location)
     }
 
-    /// The next word boundary from `p` in the shown text, over paragraph
-    /// ends.
+    /// The end of the word at `p` or the next one (`forward`), or the
+    /// start of the word at `p` or the one before, as shown.
     func wordBoundary(from p: Int, forward: Bool) -> Int {
-        guard let at = laid(p) else { return p }
-        let t = laidOut[at.paragraph].text
-        if forward && at.offset >= t.length {
-            return at.paragraph + 1 < laidOut.count ? source(paragraph: at.paragraph + 1, offset: 0) : text.length
-        }
-        if !forward && at.offset == 0 {
-            return at.paragraph > 0
-                ? source(paragraph: at.paragraph - 1, offset: laidOut[at.paragraph - 1].text.length) : 0
-        }
-        var o = t.nextWord(from: at.offset, forward: forward)
-        if forward {
-            // To the word's end, as the arrows go on macOS.
-            let s = t.string as NSString
-            o = at.offset
-            while o < s.length && !isWordCharacter(s.character(at: o)) { o += 1 }
-            while o < s.length && isWordCharacter(s.character(at: o)) { o += 1 }
-        }
-        return source(paragraph: at.paragraph, offset: o)
-    }
-
-    private func isWordCharacter(_ c: unichar) -> Bool {
-        guard let u = Unicode.Scalar(c) else { return true }
-        return CharacterSet.alphanumerics.contains(u) || c == 0x27 || c == 0x2019
+        Int(projection.word(pos: UInt32(p), forward: forward))
     }
 
     @objc override func moveWordLeft(_ sender: Any?) {
@@ -1027,19 +1006,21 @@ extension DocView {
     @objc override func moveWordBackwardAndModifySelection(_ sender: Any?) { moveWordLeftAndModifySelection(sender) }
     @objc override func moveWordForwardAndModifySelection(_ sender: Any?) { moveWordRightAndModifySelection(sender) }
 
-    @objc override func moveToBeginningOfLine(_ sender: Any?) {
-        moveHead(to: lineEdge(from: head, end: false), extending: false)
+    /// Command-Left (`end` false) or Right, extending the selection or not.
+    private func moveToLineEdge(end: Bool, extending: Bool) {
+        let to = lineEdge(from: head, affinity: affinity, end: end)
+        moveHead(to: to.position, extending: extending, affinity: to.affinity)
     }
-    @objc override func moveToEndOfLine(_ sender: Any?) {
-        moveHead(to: lineEdge(from: head, end: true), extending: false)
-    }
+
+    @objc override func moveToBeginningOfLine(_ sender: Any?) { moveToLineEdge(end: false, extending: false) }
+    @objc override func moveToEndOfLine(_ sender: Any?) { moveToLineEdge(end: true, extending: false) }
     @objc override func moveToLeftEndOfLine(_ sender: Any?) { moveToBeginningOfLine(sender) }
     @objc override func moveToRightEndOfLine(_ sender: Any?) { moveToEndOfLine(sender) }
     @objc override func moveToBeginningOfLineAndModifySelection(_ sender: Any?) {
-        moveHead(to: lineEdge(from: head, end: false), extending: true)
+        moveToLineEdge(end: false, extending: true)
     }
     @objc override func moveToEndOfLineAndModifySelection(_ sender: Any?) {
-        moveHead(to: lineEdge(from: head, end: true), extending: true)
+        moveToLineEdge(end: true, extending: true)
     }
     @objc override func moveToLeftEndOfLineAndModifySelection(_ sender: Any?) {
         moveToBeginningOfLineAndModifySelection(sender)
@@ -1049,7 +1030,7 @@ extension DocView {
     }
 
     /// The start or end of the shown paragraph holding `p`.
-    private func paragraphEdge(from p: Int, end: Bool) -> Int {
+    func paragraphEdge(from p: Int, end: Bool) -> Int {
         guard let at = laid(p) else { return p }
         return source(paragraph: at.paragraph, offset: end ? laidOut[at.paragraph].text.length : 0)
     }
@@ -1066,12 +1047,16 @@ extension DocView {
     @objc override func moveToEndOfParagraphAndModifySelection(_ sender: Any?) {
         moveHead(to: paragraphEdge(from: head, end: true), extending: true)
     }
-    @objc override func moveParagraphBackwardAndModifySelection(_ sender: Any?) {
-        moveToBeginningOfParagraphAndModifySelection(sender)
+    /// Option-Shift-Down (`forward`) and Up: to the end of the paragraph,
+    /// or from there the next one's, as Option-Down's Move Forward then Move
+    /// to End of Paragraph go.
+    private func paragraphMove(forward: Bool) {
+        let next = Int(projection.step(pos: UInt32(head), forward: forward))
+        moveHead(to: paragraphEdge(from: next, end: forward), extending: true)
     }
-    @objc override func moveParagraphForwardAndModifySelection(_ sender: Any?) {
-        moveToEndOfParagraphAndModifySelection(sender)
-    }
+
+    @objc override func moveParagraphBackwardAndModifySelection(_ sender: Any?) { paragraphMove(forward: false) }
+    @objc override func moveParagraphForwardAndModifySelection(_ sender: Any?) { paragraphMove(forward: true) }
 
     private var documentStart: Int { laidOut.isEmpty ? 0 : source(paragraph: 0, offset: 0) }
 
@@ -1104,8 +1089,8 @@ extension DocView {
     private func page(down: Bool, extending: Bool) {
         let c = caretRect()
         let h = max(visibleRect.height - 40, 40)
-        let p = position(at: NSPoint(x: c.minX, y: c.midY + (down ? h : -h)))
-        moveHead(to: p, extending: extending)
+        let p = caret(at: NSPoint(x: c.minX, y: c.midY + (down ? h : -h)))
+        moveHead(to: p.position, extending: extending, affinity: p.affinity)
     }
 
     // MARK: - The mouse
@@ -1127,7 +1112,7 @@ extension DocView {
             setSelectedRange(event.modifierFlags.contains(.shift) ? NSUnionRange(sel, o.range) : o.range)
             return
         }
-        let at = position(at: p)
+        let (at, affinity) = caret(at: p)
         let start: Int
         switch event.clickCount {
         case 2:
@@ -1139,10 +1124,10 @@ extension DocView {
             start = anchor
         default:
             if event.modifierFlags.contains(.shift) {
-                select(anchor: anchor, head: at)
+                select(anchor: anchor, head: at, affinity: affinity)
                 start = anchor
             } else {
-                select(anchor: at, head: at)
+                select(anchor: at, head: at, affinity: affinity)
                 start = at
             }
         }
@@ -1150,8 +1135,8 @@ extension DocView {
         guard event.clickCount <= 1, let window else { return }
         while let e = window.nextEvent(matching: [.leftMouseDragged, .leftMouseUp]) {
             if e.type == .leftMouseUp { break }
-            let q = position(at: convert(e.locationInWindow, from: nil))
-            select(anchor: start, head: q)
+            let q = caret(at: convert(e.locationInWindow, from: nil))
+            select(anchor: start, head: q.position, affinity: q.affinity)
             autoscroll(with: e)
         }
         // A selection over an image takes it whole.

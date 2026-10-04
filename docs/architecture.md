@@ -37,8 +37,11 @@ the ones costly to change later. Each platform's own are in
     image, a diagram), or shows on a line laid out as nothing (a blank
     line, a fence);
   - when the cursor reveals its source;
-  - where the cursor may stop: never in hidden syntax, at the left edge of
-    inline syntax, past a line's block syntax;
+  - where the cursor may stop: never in hidden syntax or inside a character
+    (a grapheme cluster), at the left edge of inline syntax, past a line's
+    block syntax but in Show Markdown;
+  - the characters and words the cursor moves by, and those Transpose
+    swaps;
   - the text as shown, for find.
 
   Paragraphs are those shown: a reflowed paragraph is one, though the file

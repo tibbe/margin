@@ -112,6 +112,16 @@ final class EndToEndTests: XCTestCase {
         XCTAssertEqual(e.file, "a😀Zx\n")
     }
 
+    @MainActor
+    func testOptionRightKeepsAnEmojiWhole() throws {
+        let e = try Editor("👨‍👩‍👧‍👦 next\n")
+        defer { e.close() }
+        e.click("👨‍👩‍👧‍👦")
+        e.key("opt-right")
+        e.type("X")
+        XCTAssertEqual(e.file, "👨‍👩‍👧‍👦 nextX\n")
+    }
+
     /// The spec: typing at the end of bold continues the bold only when the
     /// cursor is inside it. The arrows stop inside it there; typing right
     /// after the closing markers stays outside.
@@ -168,6 +178,48 @@ final class EndToEndTests: XCTestCase {
         XCTAssertTrue(e.caretInView)
     }
 
+    @MainActor
+    func testTypingInShowMarkdownKeepsTheCaretInView() throws {
+        let e = try Editor("start\n")
+        defer { e.close() }
+        e.key("cmd-/")
+        e.click("start", offset: 5)
+        for i in 0..<60 { e.type("\nline \(i)") }
+        XCTAssertTrue(e.caretInView)
+    }
+
+    /// The end of a line wrapped inside a word is where the next line
+    /// starts in the file, but the caret stays at the end of the line.
+    @MainActor
+    func testTheEndOfAWrappedLineKeepsTheCaretOnIt() throws {
+        let e = try Editor("```\n" + String(repeating: "x", count: 200) + "\n```\n", width: 520)
+        defer { e.close() }
+        e.click("xxxx")
+        let first = try XCTUnwrap(e.lines.first { $0.hasPrefix("x") })
+        e.key("cmd-right")
+        XCTAssertEqual(e.caret, first + "|")
+        e.key("cmd-right")
+        XCTAssertEqual(e.caret, first + "|")
+        e.key("cmd-left")
+        XCTAssertEqual(e.caret, "|" + first)
+    }
+
+    @MainActor
+    func testShowMarkdownStepsThroughBlockSyntax() throws {
+        let e = try Editor("# Title\n- item\n> quote\n")
+        defer { e.close() }
+        e.key("cmd-/")
+        e.click("#")
+        e.key("right")
+        XCTAssertEqual(e.caret, "#| Title")
+        e.type("X")
+        XCTAssertEqual(e.file, "#X Title\n- item\n> quote\n")
+        e.key("down")
+        e.key("ctrl-a")
+        e.key("right")
+        XCTAssertEqual(e.caret, "-| item")
+    }
+
     // MARK: - Selecting
 
     @MainActor
@@ -197,6 +249,63 @@ final class EndToEndTests: XCTestCase {
         XCTAssertEqual(e.fills("we see our users across more"), #""we see ":a "our users across":b " more":a"#)
     }
 
+    /// Option-Shift-Down and Up select on, a paragraph a press.
+    @MainActor
+    func testSelectingByParagraphGoesOnAPressAtATime() throws {
+        let down = try Editor("one\n\ntwo\n\nthree\n")
+        down.click("one")
+        down.key("opt-shift-down", "opt-shift-down")
+        down.type("X")
+        XCTAssertEqual(down.file, "X\n\nthree\n")
+        down.close()
+
+        let up = try Editor("one\n\ntwo\n\nthree\n")
+        defer { up.close() }
+        up.click("three", offset: 5)
+        up.key("opt-shift-up", "opt-shift-up")
+        up.type("X")
+        XCTAssertEqual(up.file, "one\n\nX\n")
+    }
+
+    @MainActor
+    func testOptionDownGoesAParagraphAPress() throws {
+        let e = try Editor("one\n\ntwo\n\nthree\n")
+        defer { e.close() }
+        e.click("one")
+        e.key("opt-down", "opt-down")
+        XCTAssertEqual(e.caret, "two|")
+        e.key("opt-up")
+        XCTAssertEqual(e.caret, "|two")
+    }
+
+    // MARK: - Editing commands
+
+    /// Transpose swaps the characters shown on either side of the caret,
+    /// not hidden syntax, and each keeps the formatting of where it goes.
+    @MainActor
+    func testTransposeSwapsTheCharactersShown() throws {
+        let e = try Editor("one **bold** now\n")
+        defer { e.close() }
+        e.click("bold", offset: 4)
+        e.key("ctrl-t")
+        XCTAssertEqual(e.lines, ["one bol dnow"])
+        XCTAssertEqual(e.file, "one **bol** dnow\n")
+    }
+
+    /// Control-K deletes to the end of the paragraph, not of the line it
+    /// wraps onto; at the end, the line break.
+    @MainActor
+    func testControlKDeletesToTheParagraphsEnd() throws {
+        let file = (1...12).map { "part \($0) some words" }.joined(separator: " ") + "\nnext paragraph\n"
+        let e = try Editor(file, width: 520)
+        defer { e.close() }
+        e.click("part 1")
+        e.key("ctrl-k")
+        XCTAssertEqual(e.file, "\nnext paragraph\n")
+        e.key("ctrl-k")
+        XCTAssertEqual(e.file, "next paragraph\n")
+    }
+
     // MARK: - Comments
 
     @MainActor
@@ -216,7 +325,9 @@ final class EndToEndTests: XCTestCase {
         defer { e.close() }
         let all = (1...10).map { _ in "some more words" }.joined(separator: " ")
         e.comment(on: all, "Why?")
-        XCTAssertEqual(e.fills(all), "\(all.debugDescription):a")
+        // The comment's fill, not the selection's.
+        e.click("use")
+        XCTAssertEqual(e.fills("use: " + all), #""use: ":a "# + "\(all.debugDescription):b")
     }
 
     @MainActor
@@ -285,6 +396,19 @@ final class EndToEndTests: XCTestCase {
         XCTAssertEqual(e.file, item.replacingOccurrences(of: "Cause", with: "Ca日use"))
     }
 
+    @MainActor
+    func testUndoingACompositionOverASelectionRestoresIt() throws {
+        let e = try Editor("one word now\n")
+        defer { e.close() }
+        e.drag(from: "word", to: "word")
+        e.compose("かん")
+        e.h.wait(0.1)
+        e.commit("漢")
+        XCTAssertEqual(e.file, "one 漢 now\n")
+        e.key("cmd-z")
+        XCTAssertEqual(e.file, "one word now\n")
+    }
+
     // MARK: - Spelling
 
     /// A misspelled word offers corrections where it is, and a correction
@@ -342,6 +466,19 @@ final class EndToEndTests: XCTestCase {
         XCTAssertNotEqual(e.file, item)
         for _ in 0..<8 { e.key("cmd-z") }
         XCTAssertEqual(e.file, item)
+    }
+
+    @MainActor
+    func testTypingAfterAnUndoIsUndoneAlone() throws {
+        let e = try Editor("hello\n")
+        defer { e.close() }
+        e.click("hello", offset: 5)
+        e.type("XY")
+        e.key("cmd-z")
+        XCTAssertEqual(e.file, "hello\n")
+        e.type("Z")
+        e.key("cmd-z")
+        XCTAssertEqual(e.file, "hello\n")
     }
 
     // MARK: - Links and find

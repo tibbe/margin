@@ -1066,6 +1066,28 @@ pub fn replace_range(src: &str, doc: &Doc, range: Range<usize>, text: &str) -> P
     Plan::at(crate::diff::diff_changes(src, &result), typed.cursor)
 }
 
+/// Moves `range`'s text to `to`, outside it, as if deleted and typed there,
+/// so it takes the formatting of where it goes (Transpose). The cursor ends
+/// at `cursor`, a position in the current source, where the edit takes it.
+pub fn move_text(src: &str, doc: &Doc, range: Range<usize>, to: usize, cursor: usize) -> Plan {
+    let moved = src[range.clone()].to_string();
+    let deleted = delete_range(src, doc, range);
+    let after = deleted.apply(src);
+    let typed = insert(
+        &after,
+        &super::parse(&after),
+        map_pos(&deleted.changes, to, false),
+        &moved,
+    );
+    let result = typed.apply(&after);
+    let cursor = map_pos(
+        &typed.changes,
+        map_pos(&deleted.changes, cursor, false),
+        true,
+    );
+    Plan::at(crate::diff::diff_changes(src, &result), cursor)
+}
+
 /// If `b` sits before hidden syntax that ends its line, include the syntax
 /// so that deleting to the end of a line removes e.g. a heading's closing
 /// `##` and lets empty elements lose their markers.
@@ -2347,6 +2369,26 @@ mod tests {
         assert_eq!(copy_source(src, &doc, 5..12), "**old** t");
         assert_eq!(copy_source(src, &doc, 0..6), "a **bo**");
         assert_eq!(copy_source(src, &doc, 2..10), "**bold**");
+    }
+
+    #[test]
+    fn moved_text_takes_the_formatting_of_where_it_goes() {
+        // Transpose at `bold|`: the `d` moves past the space, out of the bold.
+        assert_eq!(
+            run("one **bold|** now", |s, d, _| move_text(
+                s,
+                d,
+                9..10,
+                13,
+                13
+            )),
+            "one **bol** d|now"
+        );
+        // The last letter of bold moving out takes its markers with it.
+        assert_eq!(
+            run("a **b|** c", |s, d, _| move_text(s, d, 4..5, 8, 8)),
+            "a  b|c"
+        );
     }
 
     #[test]
