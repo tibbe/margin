@@ -213,7 +213,10 @@ final class Harness {
     }
 
     /// Delivers an event as AppKit does for the key window. Taken off the
-    /// event queue first, so `NSApp.currentEvent` is it.
+    /// event queue first, so `NSApp.currentEvent` is it. Sent to the window
+    /// itself, which AppKit's docs say only it should do: a window that isn't
+    /// shown is never key, even after `makeKey()`, so `NSApp.sendEvent` and
+    /// the menus' own key equivalents and validation would drop the event.
     private func deliver(_ e: NSEvent, to target: NSWindow) {
         NSApp.postEvent(e, atStart: true)
         let ev = NSApp.nextEvent(matching: .any, until: .distantPast, inMode: .default, dequeue: true) ?? e

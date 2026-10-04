@@ -30,5 +30,15 @@ and in `crates/core` and `crates/ffi`, which the app is built on. While
 working:
 
 - Format: `swift format -i -p -r macos/Sources macos/App macos/MarginTests macos/MarginUITests macos/tools`
-- One test: `xcodebuild -quiet -project macos/Margin.xcodeproj -scheme Margin -derivedDataPath macos/build/DerivedData test -only-testing:MarginTests/CLASS/TEST`
-  (builds the app too; the unit tests don't launch it)
+- Test: `macos/tools/test.sh MarginTests/CLASS[/TEST]…` builds the app and
+  runs the unit tests named, printing only failures, with file and line.
+  Name the tests your change bears on: with none, it runs every test, as
+  `tools/check.sh` does at commit.
+- See what the window draws: `h.snapshot("NAME")` in a test writes
+  `macos/build/snapshots/NAME.png`.
+
+The UI tests are in their own test plan, which `tools/check.sh` doesn't run:
+`xcodebuild -project macos/Margin.xcodeproj -scheme Margin -derivedDataPath macos/build/DerivedData test -testPlan UI`.
+They wait for a person to approve UI automation with a password, so ask
+the user to run them; started by an agent, they fail with "Authentication
+cancelled".

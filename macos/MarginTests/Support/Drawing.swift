@@ -5,6 +5,29 @@ import XCTest
 
 /// What the window draws, read back from its views.
 extension Harness {
+    /// Draws the window's content (no title bar) as
+    /// `macos/build/snapshots/NAME.png`, to look at while working.
+    @discardableResult
+    func snapshot(_ name: String) -> URL {
+        let v = win.contentView!
+        layOut()
+        view.layoutManager?.ensureLayout(for: view.textContainer!)
+        let rep = v.bitmapImageRepForCachingDisplay(in: v.bounds)!
+        // Images are decoded when first drawn: draw again once they are.
+        v.cacheDisplay(in: v.bounds, to: rep)
+        if ImageLibrary.shared.isDecoding {
+            wait(until: { !ImageLibrary.shared.isDecoding }, timeout: 3, "decoding")
+            v.cacheDisplay(in: v.bounds, to: rep)
+        }
+        // From this file, in macos/MarginTests/Support/.
+        let macos = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let url = macos.appendingPathComponent("build/snapshots/\(name).png")
+        try! FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try! rep.representation(using: .png, properties: [:])!.write(to: url)
+        return url
+    }
+
     /// The fill drawn behind each shown character of `s`, sampled just above
     /// its x-height (so pick letters without ascenders), as runs of
     /// characters filled alike: `"oov":a " now":b`.
