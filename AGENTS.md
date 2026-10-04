@@ -27,11 +27,15 @@ Keep the specs in step with user-visible behavior changes. Keep `margin --help` 
 
 ## Layout
 
-- `crates/core`: everything platform-independent.
-- `crates/cli`: the `margin` binary.
-- `crates/gtk`: the Linux editor.
-- `crates/ffi`: the core for Swift, through UniFFI.
-- `macos/`: the macOS editor.
+Before changing code, read the `AGENTS.md` named beside its directory: how
+to build, run and test it.
+
+- `crates/` (`crates/AGENTS.md`): the Rust crates.
+  - `core`: everything platform-independent.
+  - `cli`: the `margin` binary.
+  - `gtk` (`crates/gtk/AGENTS.md`): the Linux editor.
+  - `ffi`: the core for Swift, through UniFFI.
+- `macos/` (`macos/AGENTS.md`): the macOS editor.
 
 ## Launching
 
