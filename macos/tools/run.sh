@@ -6,11 +6,10 @@
 #   macos/tools/run.sh [FILE…]
 set -eu
 root=$(CDPATH='' cd -- "$(dirname -- "$0")/../.." && pwd)
-app=$root/macos/build/DerivedData/Build/Products/Debug/Margin.app
 # xcodebuild picks this destination itself, but warns that several match.
 xcodebuild -quiet -project "$root/macos/Margin.xcodeproj" -scheme Margin \
-    -destination "platform=macOS,arch=$(uname -m)" \
-    -derivedDataPath "$root/macos/build/DerivedData" build
+    -destination "platform=macOS,arch=$(uname -m)" build
+app=$("$root/macos/tools/app.sh")
 
 # Several checkouts share the bundle ID, so AppKit finds the running app by
 # its bundle path. It quits as with Command-Q, saving its documents.

@@ -2,15 +2,17 @@
 
 See `docs/macos/architecture.md`. Run these from the repository root.
 
-Several worktrees may run their builds at once, under one bundle ID, so
-address the app by its path, as below.
+Xcode builds each checkout in a folder of its own. Several worktrees may
+run their builds at once, under one bundle ID, so address the app by its
+path, `$APP` below, which `macos/tools/app.sh` prints:
+`APP=$(macos/tools/app.sh)`.
 
-- Build: `xcodebuild -project macos/Margin.xcodeproj -scheme Margin -derivedDataPath macos/build/DerivedData build`
-- Run in the background: `open -g -n -a "$PWD/macos/build/DerivedData/Build/Products/Debug/Margin.app" [FILE…]`
-  starts another copy without taking focus, e.g. for automated checks. It
-  returns before the window is shown.
-- Quit: `pkill -f "$PWD/macos/build/DerivedData/Build/Products/Debug/Margin.app/Contents/MacOS/Margin"`
-- CLI: `Contents/Helpers/margin` in the app.
+- Build: `xcodebuild -project macos/Margin.xcodeproj -scheme Margin build`
+- Run in the background: `open -g -n -a "$APP" [FILE…]` starts another copy
+  without taking focus, e.g. for automated checks. It returns before the
+  window is shown.
+- Quit: `pkill -f "$APP/Contents/MacOS/Margin"`
+- CLI: `$APP/Contents/Helpers/margin`.
 
 ## Tests
 
@@ -48,7 +50,7 @@ working:
   `macos/build/snapshots/NAME.png`.
 
 The UI tests are in their own test plan, which `tools/check.sh` doesn't run:
-`xcodebuild -project macos/Margin.xcodeproj -scheme Margin -derivedDataPath macos/build/DerivedData test -testPlan UI`.
+`xcodebuild -project macos/Margin.xcodeproj -scheme Margin test -testPlan UI`.
 They wait for a person to approve UI automation with a password, so ask
 the user to run them; started by an agent, they fail with "Authentication
 cancelled".

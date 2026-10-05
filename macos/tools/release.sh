@@ -17,9 +17,15 @@ if [ "$app_version" != "$version" ] || [ "$cli_version" != "$version" ]; then
     exit 1
 fi
 
-xcodebuild -project macos/Margin.xcodeproj -scheme Margin -configuration Release \
-    -derivedDataPath macos/build/DerivedData build
-app=macos/build/DerivedData/Build/Products/Release/Margin.app
+out=macos/build/release
+rm -rf "$out"
+mkdir -p "$out"
+# Archived, then exported as macos/ExportOptions.plist says, as Apple has a
+# Mac app distributed.
+xcodebuild -project macos/Margin.xcodeproj -scheme Margin archive -archivePath "$out/Margin.xcarchive"
+xcodebuild -exportArchive -archivePath "$out/Margin.xcarchive" -exportPath "$out" \
+    -exportOptionsPlist macos/ExportOptions.plist
+app=$out/Margin.app
 codesign --verify --deep --strict "$app"
 for binary in "$app/Contents/MacOS/Margin" "$app/Contents/Helpers/margin"; do
     archs=$(lipo -archs "$binary")
@@ -29,8 +35,5 @@ for binary in "$app/Contents/MacOS/Margin" "$app/Contents/Helpers/margin"; do
     esac
 done
 
-out=macos/build/release
-rm -rf "$out"
-mkdir -p "$out"
 ditto -c -k --sequesterRsrc --keepParent "$app" "$out/Margin.zip"
 shasum -a 256 "$out/Margin.zip"

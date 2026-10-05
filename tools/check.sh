@@ -89,10 +89,9 @@ if touches "$macos"; then
         dirs="macos/Sources macos/App macos/MarginTests macos/MarginUITests macos/tools"
         # shellcheck disable=SC2086 # dirs is a list
         run "swift format" swift format lint --strict -p -r $dirs
-        # Its own build folder, so a check never rebuilds the app being
-        # reviewed. The unit tests don't launch the app.
+        # The unit tests don't launch the app.
         run "macOS unit tests" xcodebuild -quiet -project macos/Margin.xcodeproj -scheme Margin \
-            -destination "platform=macOS,arch=$(uname -m)" -derivedDataPath macos/build/CheckData \
+            -destination "platform=macOS,arch=$(uname -m)" \
             test -only-testing:MarginTests SWIFT_TREAT_WARNINGS_AS_ERRORS=YES
     else
         echo "skip  macOS checks: no xcodebuild"

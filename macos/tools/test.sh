@@ -21,12 +21,10 @@ mkdir -p "$build"
 # xcodebuild won't write over an earlier run's results.
 rm -rf "$result"
 status=0
-# The build folder run.sh uses, so each builds on the other's work.
 # xcodebuild picks this destination itself, but warns that several match.
 # shellcheck disable=SC2086 # one -only-testing per word
 xcodebuild -quiet -project "$root/macos/Margin.xcodeproj" -scheme Margin \
-    -destination "platform=macOS,arch=$(uname -m)" \
-    -derivedDataPath "$build/DerivedData" -resultBundlePath "$result" \
+    -destination "platform=macOS,arch=$(uname -m)" -resultBundlePath "$result" \
     test $only >"$log" 2>&1 || status=$?
 
 # An interrupted run leaves no readable results.

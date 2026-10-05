@@ -43,9 +43,10 @@ This installs Margin into `/Applications` and the `margin` CLI onto your PATH.
 Or build it, with Xcode 26 and Rust:
 
 ```sh
-xcodebuild -project macos/Margin.xcodeproj -scheme Margin -configuration Release \
-  -derivedDataPath macos/build/DerivedData build
-ditto macos/build/DerivedData/Build/Products/Release/Margin.app /Applications/Margin.app
+xcodebuild -project macos/Margin.xcodeproj -scheme Margin archive -archivePath /tmp/Margin.xcarchive
+xcodebuild -exportArchive -archivePath /tmp/Margin.xcarchive -exportPath /tmp/Margin \
+  -exportOptionsPlist macos/ExportOptions.plist
+ditto /tmp/Margin/Margin.app /Applications/Margin.app
 ln -sf /Applications/Margin.app/Contents/Helpers/margin ~/.local/bin/margin
 ```
 
