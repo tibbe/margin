@@ -3,21 +3,69 @@ import XCTest
 
 @testable import MarginKit
 
+/// What a view drew, in sRGB, to read back.
+struct Drawn {
+    /// Its pixels: premultiplied RGBA, the top row first.
+    let context: CGContext
+    /// What of the view it is, in the view's coordinates.
+    let rect: NSRect
+    let flipped: Bool
+    let scale: CGFloat
+
+    /// The color drawn at `p`, in the view's coordinates, from the
+    /// pixel's own bytes.
+    func color(at p: NSPoint) -> NSColor? {
+        let x = Int((p.x - rect.minX) * scale)
+        let y = Int((flipped ? p.y - rect.minY : rect.maxY - p.y) * scale)
+        guard x >= 0, y >= 0, x < context.width, y < context.height, let data = context.data else { return nil }
+        let px = data.assumingMemoryBound(to: UInt8.self) + y * context.bytesPerRow + x * 4
+        let a = CGFloat(px[3]) / 255
+        let c = { (i: Int) in a > 0 ? CGFloat(px[i]) / 255 / a : 0 }
+        return NSColor(srgbRed: c(0), green: c(1), blue: c(2), alpha: a)
+    }
+
+    var image: NSBitmapImageRep { NSBitmapImageRep(cgImage: context.makeImage()!) }
+}
+
 /// What the window draws, read back from its views.
 extension Harness {
+    /// What `v` (the text view by default) draws in `rect` (all of it by
+    /// default), at twice its size, into a context in sRGB. What AppKit's
+    /// bitmaps draw and read back is in the screen's colors or in Generic
+    /// RGB, which would make what tests read depend on the screen. Images
+    /// are decoded when first drawn, so it draws again once they are.
+    func drawing(of v: NSView? = nil, in rect: NSRect? = nil) -> Drawn {
+        let v = v ?? view
+        let r = rect ?? v.bounds
+        let scale: CGFloat = 2
+        func draw() -> CGContext {
+            let cg = CGContext(
+                data: nil, width: Int((r.width * scale).rounded(.up)), height: Int((r.height * scale).rounded(.up)),
+                bitsPerComponent: 8, bytesPerRow: 0, space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+            cg.scaleBy(x: scale, y: scale)
+            if v.isFlipped {
+                cg.translateBy(x: 0, y: r.height)
+                cg.scaleBy(x: 1, y: -1)
+            }
+            cg.translateBy(x: -r.minX, y: -r.minY)
+            v.displayIgnoringOpacity(r, in: NSGraphicsContext(cgContext: cg, flipped: v.isFlipped))
+            return cg
+        }
+        var cg = draw()
+        if ImageLibrary.shared.isDecoding {
+            wait(until: { !ImageLibrary.shared.isDecoding }, timeout: 5, "decoding")
+            cg = draw()
+        }
+        return Drawn(context: cg, rect: r, flipped: v.isFlipped, scale: scale)
+    }
+
     /// Draws the window's content (no title bar) as
     /// `macos/build/snapshots/NAME.png`, to look at while working.
     @discardableResult
     func snapshot(_ name: String) -> URL {
-        let v = win.contentView!
         layOut()
-        let rep = v.bitmapImageRepForCachingDisplay(in: v.bounds)!
-        // Images are decoded when first drawn: draw again once they are.
-        v.cacheDisplay(in: v.bounds, to: rep)
-        if ImageLibrary.shared.isDecoding {
-            wait(until: { !ImageLibrary.shared.isDecoding }, timeout: 3, "decoding")
-            v.cacheDisplay(in: v.bounds, to: rep)
-        }
+        let rep = drawing(of: win.contentView!).image
         // From this file, in macos/MarginTests/Support/.
         let macos = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
             .deletingLastPathComponent()
@@ -33,10 +81,7 @@ extension Harness {
     func fills(_ s: String) -> String {
         let r = (view.string as NSString).range(of: s)
         guard r.location != NSNotFound else { return "\(s) not found" }
-        let b = view.visibleRect
-        guard let rep = view.bitmapImageRepForCachingDisplay(in: b) else { return "no bitmap" }
-        view.cacheDisplay(in: b, to: rep)
-        let scale = CGFloat(rep.pixelsWide) / b.width
+        let drawn = drawing(in: view.visibleRect)
         let text = view.string as NSString
         var seen: [[Int]] = []
         var runs: [(text: String, fill: Int)] = []
@@ -54,10 +99,7 @@ extension Harness {
                 p.text.attribute(.font, at: min(at.offset, max(0, p.text.length - 1)), effectiveRange: nil)
                 as? NSFont ?? Theme.font(size: Theme.bodySize)
             let pt = NSPoint(x: (x0 + x1) / 2, y: l.baseline - font.xHeight - 2)
-            guard
-                let c = rep.colorAt(x: Int((pt.x - b.minX) * scale), y: Int((pt.y - b.minY) * scale))?
-                    .usingColorSpace(.sRGB)
-            else { continue }
+            guard let c = drawn.color(at: pt) else { continue }
             let rgb = [c.redComponent, c.greenComponent, c.blueComponent].map { Int(($0 * 255).rounded()) }
             // Within a step or two is the same fill.
             let fill =

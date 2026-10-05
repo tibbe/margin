@@ -129,15 +129,9 @@ extension Harness {
     /// The change mark drawn at `p`: `added`, `changed`, `deleted` or `none`.
     func change(at p: NSPoint) -> String {
         view.ensureFresh()
-        let b = view.bounds
-        guard let rep = view.bitmapImageRepForCachingDisplay(in: b) else { return "no bitmap" }
-        view.cacheDisplay(in: b, to: rep)
-        let scale = CGFloat(rep.pixelsWide) / b.width
-        guard let c = rep.colorAt(x: Int(p.x * scale), y: Int(p.y * scale))?.usingColorSpace(.sRGB) else {
-            return "no color"
-        }
-        // The bitmap's color space shifts the system colors, so go by hue:
-        // green, blue or red, or gray (the page).
+        guard let c = drawing().color(at: p) else { return "no color" }
+        // By hue, as the system colors are: green, blue or red, or gray
+        // (the page).
         let rgb = [c.redComponent, c.greenComponent, c.blueComponent]
         guard let hi = rgb.max(), let lo = rgb.min(), hi - lo > 0.2 else { return "none" }
         return ["deleted", "added", "changed"][rgb.firstIndex(of: hi)!]

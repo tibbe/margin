@@ -65,18 +65,12 @@ final class Editor {
     /// `"oov":a " now":b`. Pick letters without ascenders.
     func fills(_ s: String) -> String {
         guard let glyphs = locate(s) else { return "\(s.debugDescription) not shown" }
-        let v = h.view
-        let b = v.bounds
-        guard let rep = v.bitmapImageRepForCachingDisplay(in: b) else { return "no bitmap" }
-        v.cacheDisplay(in: b, to: rep)
-        let scale = CGFloat(rep.pixelsWide) / b.width
+        let drawn = h.drawing()
         var seen: [[Int]] = []
         var runs: [(text: String, fill: Int)] = []
         for g in glyphs {
             let p = NSPoint(x: g.rect.midX, y: g.baseline - g.xHeight - 2)
-            guard let c = rep.colorAt(x: Int(p.x * scale), y: Int(p.y * scale))?.usingColorSpace(.sRGB) else {
-                continue
-            }
+            guard let c = drawn.color(at: p) else { continue }
             let rgb = [c.redComponent, c.greenComponent, c.blueComponent].map { Int(($0 * 255).rounded()) }
             let fill =
                 seen.firstIndex { zip($0, rgb).allSatisfy { abs($0 - $1) <= 2 } }

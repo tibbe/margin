@@ -399,10 +399,7 @@ final class ImageTests: XCTestCase {
         while y < h.view.frame.height {
             clip.scroll(to: NSPoint(x: 0, y: y))
             h.doc.scrollView.reflectScrolledClipView(clip)
-            let r = h.view.visibleRect
-            let rep = try XCTUnwrap(h.view.bitmapImageRepForCachingDisplay(in: r))
-            h.view.cacheDisplay(in: r, to: rep)
-            h.wait(until: { !library.isDecoding }, timeout: 5, "decoding")
+            _ = h.drawing(in: h.view.visibleRect)
             XCTAssertLessThanOrEqual(library.decodedBytes, library.budget)
             y += clip.bounds.height
         }
@@ -412,15 +409,7 @@ final class ImageTests: XCTestCase {
         h.doc.scrollView.reflectScrolledClipView(clip)
         let r = h.view.visibleRect
         XCTAssertTrue(r.contains(NSPoint(x: last.midX, y: last.midY)), "\(last) in \(r)")
-        let rep = try XCTUnwrap(h.view.bitmapImageRepForCachingDisplay(in: r))
-        h.view.cacheDisplay(in: r, to: rep)
-        h.wait(until: { !library.isDecoding }, timeout: 5, "decoding")
-        h.view.cacheDisplay(in: r, to: rep)
-        let scale = CGFloat(rep.pixelsWide) / r.width
-        let c = try XCTUnwrap(
-            rep.colorAt(x: Int((last.midX - r.minX) * scale), y: Int((last.midY - r.minY) * scale))?
-                .usingColorSpace(.sRGB))
-        XCTAssertTrue(c.redComponent > 0.8 && c.greenComponent < 0.3, "\(c)")
+        XCTAssertEqual(h.color(at: NSPoint(x: last.midX, y: last.midY), drawing: r), "red")
         XCTAssertLessThanOrEqual(library.decodedBytes, library.budget)
     }
 }

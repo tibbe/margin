@@ -17,17 +17,15 @@ extension Harness {
         return data
     }
 
+    /// An image of one color, in sRGB: drawn in the screen's colors
+    /// instead, its pixels would depend on the screen.
     static func png(_ width: Int, _ height: Int, _ color: NSColor = .red) -> Data {
-        let rep = NSBitmapImageRep(
-            bitmapDataPlanes: nil, pixelsWide: width, pixelsHigh: height, bitsPerSample: 8, samplesPerPixel: 4,
-            hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0)!
-        rep.size = NSSize(width: width, height: height)
-        NSGraphicsContext.saveGraphicsState()
-        NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
-        color.setFill()
-        NSRect(x: 0, y: 0, width: width, height: height).fill()
-        NSGraphicsContext.restoreGraphicsState()
-        return rep.representation(using: .png, properties: [:])!
+        let ctx = CGContext(
+            data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0,
+            space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+        ctx.setFillColor(color.usingColorSpace(.sRGB)!.cgColor)
+        ctx.fill(CGRect(x: 0, y: 0, width: width, height: height))
+        return NSBitmapImageRep(cgImage: ctx.makeImage()!).representation(using: .png, properties: [:])!
     }
 
     /// Waits until no image is loading any more.
@@ -64,25 +62,18 @@ extension Harness {
         return view.objectRect(o, look: view.look(of: o)) ?? .zero
     }
 
-    /// The color drawn at `p` in `v` (the text view by default), as
-    /// `red`, `white` and the like, `reddish` for red under a tint, or
-    /// its components.
-    func color(at p: NSPoint, in v: NSView? = nil) -> String {
-        let v = v ?? view
-        let b = v.bounds
-        guard let rep = v.bitmapImageRepForCachingDisplay(in: b) else { return "no bitmap" }
-        // Images are decoded when first drawn: draw again once they are.
-        v.cacheDisplay(in: b, to: rep)
-        if ImageLibrary.shared.isDecoding {
-            wait(until: { !ImageLibrary.shared.isDecoding }, timeout: 3, "decoding")
-            v.cacheDisplay(in: b, to: rep)
-        }
-        let scale = CGFloat(rep.pixelsWide) / b.width
-        guard let c = rep.colorAt(x: Int(p.x * scale), y: Int(p.y * scale))?.usingColorSpace(.sRGB) else {
-            return "no color"
-        }
+    /// The color drawn at `p` in `v` (the text view by default), drawing
+    /// `rect` of it (all of it by default): `red` for the test images'
+    /// own color, `white`, `reddish` for it under a tint, or its
+    /// components.
+    func color(at p: NSPoint, in v: NSView? = nil, drawing rect: NSRect? = nil) -> String {
+        guard let c = drawing(of: v, in: rect).color(at: p) else { return "no color" }
         let (r, g, bl) = (c.redComponent, c.greenComponent, c.blueComponent)
-        if r > 0.8 && g < 0.3 && bl < 0.3 { return "red" }
+        if let red = NSColor.red.usingColorSpace(.sRGB),
+            max(abs(r - red.redComponent), abs(g - red.greenComponent), abs(bl - red.blueComponent)) < 0.05
+        {
+            return "red"
+        }
         if r > 0.95 && g > 0.95 && bl > 0.95 { return "white" }
         if r > max(g, bl) + 0.15 { return "reddish" }
         return String(format: "%.2f %.2f %.2f", r, g, bl)
