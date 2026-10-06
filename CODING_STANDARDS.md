@@ -1,10 +1,17 @@
-# Coding Standards
+# Coding standards
 
-## Design
+## Correct by construction
 
-- Write code to be correct by construction, relying on principles such as
-  [Make Illegal States Unrepresentable](https://blog.janestreet.com/effective-ml-revisited/)
-  and [Parse, don't validate](https://lexi-lambda.github.io/blog/2019/11/05/parse-don-t-validate/).
+- **Make illegal states unrepresentable**: shape your types so that only valid
+  combinations of data can be constructed.
+- **Parse, don't validate**: a check that returns nothing forces every later
+  caller to re-handle a case that's already been ruled out, so have it return a
+  narrower type carrying what it learned, and do it once at the system boundary.
+
+## Functional core, imperative shell
+
+Decisions live in pure functions; I/O, time, randomness and UI live in a thin
+layer that calls them.
 
 ## Documentation
 
