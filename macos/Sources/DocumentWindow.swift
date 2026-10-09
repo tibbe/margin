@@ -263,10 +263,24 @@ final class DocumentWindow: NSWindowController, NSWindowDelegate, NSToolbarDeleg
     /// The other documents a send from here covers, as of the last poll.
     private var roundOthers: [RoundDocument] = []
 
-    /// Open threads on every document a send from here covers.
-    private var openInRound: Int { layer.openCount + roundOthers.reduce(0) { $0 + Int($1.open) } }
+    /// What a send from here would give on every document of the round,
+    /// and how many of them it would give something on.
+    private var pendingInRound: (pending: Pending, docs: Int) {
+        let here =
+            agents?.pending(threads: layer.items.map(\.thread))
+            ?? Pending(open: UInt32(layer.openCount), resolved: 0)
+        let docs = ([here] + roundOthers.map(\.pending)).filter { $0.open + $0.resolved > 0 }
+        return (
+            docs.reduce(Pending(open: 0, resolved: 0)) {
+                Pending(open: $0.open + $1.open, resolved: $0.resolved + $1.resolved)
+            }, docs.count
+        )
+    }
 
-    private var canSend: Bool { agentState == .waiting && openInRound > 0 }
+    private var canSend: Bool {
+        let p = pendingInRound.pending
+        return agentState == .waiting && p.open + p.resolved > 0
+    }
 
     /// Looks at the document's agents again, and shows what they are doing.
     func updateAgent() {
@@ -292,12 +306,13 @@ final class DocumentWindow: NSWindowController, NSWindowDelegate, NSToolbarDeleg
         switch agentState {
         case .waiting:
             let others = roundOthers.count
+            let p = pendingInRound.pending
             item.toolTip =
-                openInRound == 0
-                ? "An agent is waiting, but there are no open comments to send."
+                p.open + p.resolved == 0
+                ? "An agent is waiting, but nothing changed since the last send."
                 : others == 0
-                    ? "Send Open Comments to the Agent (⇧⌘↩)"
-                    : "Send Open Comments on This and \(others) Other Document\(others == 1 ? "" : "s") to the Agent (⇧⌘↩)"
+                    ? "Send to Agent (⇧⌘↩)"
+                    : "Send This and \(others) Other Document\(others == 1 ? "" : "s") to the Agent (⇧⌘↩)"
         case .working:
             item.toolTip = "The agent is working on the comments you sent."
         case .none:
@@ -868,16 +883,15 @@ final class DocumentWindow: NSWindowController, NSWindowDelegate, NSToolbarDeleg
     @objc func marginSendToAgent(_ sender: Any?) {
         updateAgent()
         guard canSend, let agents else {
-            banner.show(openInRound == 0 ? "No open comments" : "No agent is waiting", undo: nil)
+            let p = pendingInRound.pending
+            banner.show(p.open + p.resolved == 0 ? "Nothing to send" : "No agent is waiting", undo: nil)
             return
         }
         save()
+        let (pending, docs) = pendingInRound
         do {
             let n = try agents.send(nowMs: DocumentWindow.nowMs())
-            let open = openInRound
-            let docs = roundOthers.filter { $0.open > 0 }.count + (layer.openCount > 0 ? 1 : 0)
-            let what =
-                (open == 1 ? "1 open comment" : "\(open) open comments") + (docs > 1 ? " on \(docs) documents" : "")
+            let what = sentSummary(sent: pending, docs: UInt32(docs))
             banner.show(
                 n == 0 ? "No agent is waiting" : "Sent \(what) to \(n == 1 ? "the agent" : "\(n) agents")", undo: nil)
         } catch {

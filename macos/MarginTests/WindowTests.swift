@@ -164,6 +164,53 @@ final class WindowTests: XCTestCase {
         XCTAssertEqual(agent(), "none | send disabled | count 1 open comment")
     }
 
+    /// With nothing left open, a send still goes when the writer resolved
+    /// threads since the last: it gives the agent those, and not the ones
+    /// the agent resolved itself.
+    @MainActor
+    func testSendToAgentGivesWhatTheWriterResolved() throws {
+        let h = try Harness("Retry three times.\n")
+        defer { h.close() }
+        func send() -> String {
+            _ = h.win.toolbar?.items
+            h.doc.updateAgent()
+            return "send \(h.doc.sendItem?.isEnabled == true ? "enabled" : "disabled") | "
+                + (h.doc.sendItem?.toolTip ?? "-")
+        }
+        XCTAssertEqual(h.margin("add", "doc.md", "--quote", "Retry", "Why retry?"), "Added #1 at doc.md:1:1.\n")
+        XCTAssertEqual(h.margin("add", "doc.md", "--quote", "three", "Why three?"), "Added #2 at doc.md:1:7.\n")
+        h.sh("\(Harness.cli) wait doc.md > wait.out 2>&1 &")
+        h.wait(0.7)
+        XCTAssertEqual(send(), "send enabled | Send to Agent (⇧⌘↩)")
+
+        XCTAssertEqual(h.margin("resolve", "doc.md", "2"), "Resolved #2.\n")
+        h.wait(forBanner: "resolved")
+        h.action(#selector(DocumentWindow.marginResolveAll(_:)))
+        XCTAssertEqual(send(), "send enabled | Send to Agent (⇧⌘↩)")
+        h.key("cmd-shift-enter")
+        h.wait(forBanner: "Sent")
+        XCTAssertEqual(h.banner, "Sent 1 resolved comment to the agent")
+        h.wait(0.7)
+        XCTAssertEqual(
+            h.sh("sed -E 's|`/[^`]*/|`|g' wait.out"),
+            """
+            I resolved comments on `doc.md`.
+
+            #1 `doc.md:1:1-1:5` "Retry"
+              - Agent: Why retry?
+              - User resolved the thread.
+
+            Nothing needs an answer. Run `margin wait doc.md` again for the next round.
+
+            """)
+
+        // The next send starts from this one.
+        h.sh("\(Harness.cli) wait doc.md > wait2.out 2>&1 &")
+        h.wait(0.7)
+        XCTAssertEqual(
+            send(), "send disabled | An agent is waiting, but nothing changed since the last send.")
+    }
+
     /// A send covers every document the agent waits on: Send to Agent in
     /// one window sends the open comments on the others too, and those
     /// documents' windows show the agent working.
@@ -189,7 +236,7 @@ final class WindowTests: XCTestCase {
         // The open thread is on spec.md, but doc.md's window can send it.
         XCTAssertEqual(
             agent(h.doc),
-            "waiting | send enabled | Send Open Comments on This and 1 Other Document to the Agent (⇧⌘↩)")
+            "waiting | send enabled | Send This and 1 Other Document to the Agent (⇧⌘↩)")
         h.key("cmd-shift-enter")
         h.wait(forBanner: "Sent")
         XCTAssertEqual(h.banner, "Sent 1 open comment to the agent")
@@ -256,5 +303,43 @@ final class WindowTests: XCTestCase {
             h.sh("\(Harness.cli) wait doc.md | sed -E 's|`/[^`]*/|`|g'"),
             "`doc.md` is not open in Margin, so no comments will come. "
                 + "If the writer wants to review it, run `margin open doc.md`, then `margin wait doc.md`.\n")
+    }
+
+    /// Closing the document sends no comments, but `margin wait` still gives
+    /// the threads the writer resolved before closing it.
+    @MainActor
+    func testClosingTheDocumentGivesWhatTheWriterResolved() throws {
+        let h = try Harness("Retry three times.\n")
+        defer { h.close() }
+        func exited() -> Bool { h.sh("kill -0 $(cat wait.pid) 2>/dev/null || echo exited") == "exited\n" }
+        XCTAssertEqual(h.margin("add", "doc.md", "--quote", "Retry", "Why retry?"), "Added #1 at doc.md:1:1.\n")
+        XCTAssertEqual(h.margin("add", "doc.md", "--quote", "three", "Why three?"), "Added #2 at doc.md:1:7.\n")
+        h.sh("\(Harness.cli) wait doc.md > wait.out 2>&1 & echo $! > wait.pid")
+        h.wait(0.7)
+        h.action(#selector(DocumentWindow.marginResolveAll(_:)))
+        // A comment left unsent stays with the writer.
+        h.select("times")
+        h.key("cmd-opt-m")
+        h.compose("Plural?")
+        h.key("cmd-enter")
+        h.wait(0.1)
+        h.win.close()
+        h.wait(until: exited, "margin wait to exit")
+        XCTAssertEqual(
+            h.sh("sed -E 's|`/[^`]*/|`|g' wait.out"),
+            """
+            I resolved comments on `doc.md`.
+
+            #1 `doc.md:1:1-1:5` "Retry"
+              - Agent: Why retry?
+              - User resolved the thread.
+            #2 `doc.md:1:7-1:11` "three"
+              - Agent: Why three?
+              - User resolved the thread.
+
+            `doc.md` is no longer open in Margin, so no comments will come. \
+            Stop waiting: the writer will ask if they want another review.
+
+            """)
     }
 }

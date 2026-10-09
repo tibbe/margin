@@ -11,7 +11,7 @@ use anyhow::Result;
 use gtk::{gio, glib};
 use margin_core::changes;
 use margin_core::comments::activity::{self, Change, Kind};
-use margin_core::comments::handoff::{AgentState, DocAgents};
+use margin_core::comments::handoff::{AgentState, DocAgents, Pending, sent_summary};
 use margin_core::comments::{Store, canonical_doc_path, data_dir, read_doc};
 use margin_core::file_sync::{FileSync, Loaded, Reconcile, Save};
 use margin_core::md::InlineKind;
@@ -393,22 +393,30 @@ impl DocWindow {
         self.agent_state.get()
     }
 
-    /// Open threads on the round's other documents, and how many of those
-    /// documents have some.
-    fn open_elsewhere(&self) -> (usize, usize) {
+    /// What a send from here would give on every document of the round,
+    /// and how many of them it would give something on.
+    fn pending_in_round(&self) -> (Pending, usize) {
         let agents = self.agents.borrow();
+        let here = match agents.as_ref() {
+            Some(a) => a.pending(&self.layer.threads()),
+            None => Pending {
+                open: self.layer.open_count(),
+                resolved: 0,
+            },
+        };
         let others = agents.as_ref().map(DocAgents::others).unwrap_or_default();
-        let open = others.iter().map(|(_, n)| n).sum();
-        (open, others.iter().filter(|(_, n)| *n > 0).count())
-    }
-
-    /// Open threads on every document a send from here covers.
-    fn open_in_round(&self) -> usize {
-        self.layer.open_count() + self.open_elsewhere().0
+        let docs: Vec<Pending> = std::iter::once(here)
+            .chain(others.iter().map(|(_, p)| *p))
+            .filter(|p| !p.is_empty())
+            .collect();
+        (
+            docs.iter().fold(Pending::default(), |sum, p| sum + *p),
+            docs.len(),
+        )
     }
 
     fn can_send(&self) -> bool {
-        self.agent_state.get() == AgentState::Waiting && self.open_in_round() > 0
+        self.agent_state.get() == AgentState::Waiting && !self.pending_in_round().0.is_empty()
     }
 
     fn show_agent(&self) {
@@ -426,16 +434,15 @@ impl DocWindow {
             .borrow()
             .as_ref()
             .map_or(0, |a| a.others().len());
+        let (pending, _) = self.pending_in_round();
         let tip = match state {
-            AgentState::Waiting if self.open_in_round() > 0 && others > 0 => format!(
-                "Send open comments on this and {others} other document{} to the agent (Ctrl+Shift+Enter)",
+            AgentState::Waiting if !pending.is_empty() && others > 0 => format!(
+                "Send this and {others} other document{} to the agent (Ctrl+Shift+Enter)",
                 if others == 1 { "" } else { "s" }
             ),
-            AgentState::Waiting if self.open_in_round() > 0 => {
-                "Send open comments to the agent (Ctrl+Shift+Enter)".into()
-            }
+            AgentState::Waiting if !pending.is_empty() => "Send to Agent (Ctrl+Shift+Enter)".into(),
             AgentState::Waiting => {
-                "An agent is waiting, but there are no open comments to send".into()
+                "An agent is waiting, but nothing changed since the last send".into()
             }
             AgentState::Working => "The agent is working on the comments you sent".into(),
             AgentState::None => {
@@ -446,33 +453,25 @@ impl DocWindow {
         self.send.set_tooltip_text(Some(&tip));
     }
 
-    /// Sends the open comments to the agents waiting on the document.
+    /// Sends the open comments, and those resolved since the last send, to
+    /// the agents waiting on the document.
     fn send_to_agent(&self) {
         self.update_agent();
         if !self.can_send() {
-            self.toast(if self.open_in_round() == 0 {
-                "No open comments"
+            self.toast(if self.pending_in_round().0.is_empty() {
+                "Nothing to send"
             } else {
                 "No agent is waiting"
             });
             return;
         }
         self.save();
+        let (pending, docs) = self.pending_in_round();
         let sent = self.agents.borrow_mut().as_mut().map(|a| a.send(now_ms()));
         match sent {
             Some(Ok(0)) | None => self.toast("No agent is waiting"),
             Some(Ok(n)) => {
-                let (elsewhere, docs) = self.open_elsewhere();
-                let open = self.layer.open_count() + elsewhere;
-                let docs = docs + usize::from(self.layer.open_count() > 0);
-                let mut what = if open == 1 {
-                    "1 open comment".to_string()
-                } else {
-                    format!("{open} open comments")
-                };
-                if docs > 1 {
-                    what.push_str(&format!(" on {docs} documents"));
-                }
+                let what = sent_summary(pending, docs);
                 let to = if n == 1 {
                     "the agent".to_string()
                 } else {
@@ -1612,7 +1611,7 @@ fn shortcuts_dialog() -> adw::ShortcutsDialog {
             ("Comment on selection", "<Control><Alt>m"),
             ("Copy open comments for an agent", "<Control><Shift>c"),
             (
-                "Send open comments to the waiting agent",
+                "Send comments to the waiting agent",
                 "<Control><Shift>Return",
             ),
             ("Next comment", "<Control><Alt>Down"),

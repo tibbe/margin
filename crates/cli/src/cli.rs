@@ -6,7 +6,7 @@ use chrono::{DateTime, Local, Utc};
 use clap::{Parser, Subcommand};
 use margin_core::comments::anchor::line_col;
 use margin_core::comments::export::{for_agent_docs, shell_word};
-use margin_core::comments::handoff::Waiter;
+use margin_core::comments::handoff::{Waiter, to_send};
 use margin_core::comments::{Author, Comments, Store, Thread, all_stores, read_doc};
 use serde::Serialize;
 use std::io::Write;
@@ -110,10 +110,12 @@ pub enum Command {
 
     /// Wait until the writer sends the comments (Send to Agent in the
     /// editor, from any of the documents' windows), then print the open
-    /// comments on all the documents and exit. Name every document of the
+    /// comments on all the documents, and those the writer resolved since
+    /// the last send, and exit. Name every document of the
     /// review: one send covers them all. Also exits when the editor doesn't
-    /// show any of the documents, since then no comments can come. Either
-    /// way, it prints what to do next. Run it in the background if you can,
+    /// show any of the documents, since then no comments can come, after
+    /// printing those the writer resolved before closing them. Either way,
+    /// it prints what to do next. Run it in the background if you can,
     /// to keep working while you wait.
     Wait {
         #[arg(required = true)]
@@ -187,6 +189,9 @@ struct JsonThread<'a> {
     messages: Vec<JsonMessage<'a>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     resolved_at: Option<DateTime<Utc>>,
+    /// `user` or `agent`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    resolved_by: Option<Author>,
 }
 
 fn json_thread<'a>(doc: &'a Path, text: &str, t: &'a Thread) -> JsonThread<'a> {
@@ -220,6 +225,7 @@ fn json_thread<'a>(doc: &'a Path, text: &str, t: &'a Thread) -> JsonThread<'a> {
             })
             .collect(),
         resolved_at: t.resolved_at(),
+        resolved_by: t.resolved_by(),
     }
 }
 
@@ -450,7 +456,7 @@ pub fn run(cmd: Command) -> Result<i32> {
                 c.sync(&text);
                 c.reply(id, &message, Author::Agent)?;
                 if resolve {
-                    c.set_resolved(id, true)?;
+                    c.set_resolved(id, true, Author::Agent)?;
                 }
                 Ok(())
             })?;
@@ -466,7 +472,7 @@ pub fn run(cmd: Command) -> Result<i32> {
                 if let Some(m) = &message {
                     c.reply(id, m, Author::Agent)?;
                 }
-                c.set_resolved(id, true)
+                c.set_resolved(id, true, Author::Agent)
             })?;
             print(&format!("Resolved #{id}."));
         }
@@ -474,7 +480,7 @@ pub fn run(cmd: Command) -> Result<i32> {
             let (store, _, text) = load(&file)?;
             store.update(|c| {
                 c.sync(&text);
-                c.set_resolved(id, false)
+                c.set_resolved(id, false, Author::Agent)
             })?;
             print(&format!("Reopened #{id}."));
         }
@@ -512,17 +518,20 @@ pub fn run(cmd: Command) -> Result<i32> {
                 .map(|f| shell_word(&f.display().to_string()))
                 .collect();
             let args = args.join(" ");
+            let docs: Vec<&Path> = waiters.iter().map(Waiter::doc).collect();
             let mut shown_before = false;
-            loop {
+            let sent = loop {
                 let shown = waiters.iter().any(Waiter::shown);
                 // Looked at after `shown`: a window sends before it closes,
                 // so a closed window's last send shows up here.
                 if waiters.iter().any(Waiter::sent) {
-                    break;
+                    break true;
                 }
                 if !shown {
-                    let docs: Vec<&Path> = waiters.iter().map(Waiter::doc).collect();
-                    let why = nothing_to_wait_for(&docs, &args, shown_before);
+                    if shown_before {
+                        break false;
+                    }
+                    let why = nothing_to_wait_for(&docs, &args, false);
                     if json {
                         print("[]");
                         eprintln!("{why}");
@@ -533,33 +542,60 @@ pub fn run(cmd: Command) -> Result<i32> {
                 }
                 shown_before = true;
                 std::thread::sleep(std::time::Duration::from_millis(250));
-            }
-            // A send covers the round: every document waited on.
-            let docs = load_many(&round)?;
+            };
+            // A send covers the round: every document waited on. Closing
+            // the documents sends no comments, but gives what the writer
+            // resolved before closing them.
+            let loaded = load_many(&round)?;
+            let changes: Vec<(&Path, &str, Vec<Thread>)> = loaded
+                .iter()
+                .zip(&waiters)
+                .map(|((doc, c, text), w)| {
+                    let mut threads = to_send(&c.threads, Some(w.since()));
+                    threads.retain(|t| sent || !t.is_open());
+                    (doc.as_path(), text.as_str(), threads)
+                })
+                .filter(|(_, _, threads)| !threads.is_empty())
+                .collect();
+            let closed = nothing_to_wait_for(&docs, &args, true);
             if json {
-                print(&threads_json(&docs, false)?);
-            } else {
-                let open: Vec<(&PathBuf, &String, Vec<Thread>)> = docs
+                let all: Vec<JsonThread<'_>> = changes
                     .iter()
-                    .filter_map(|(doc, c, text)| {
-                        let open: Vec<Thread> =
-                            c.threads.iter().filter(|t| t.is_open()).cloned().collect();
-                        (!open.is_empty()).then_some((doc, text, open))
+                    .flat_map(|(doc, text, threads)| {
+                        threads.iter().map(move |t| json_thread(doc, text, t))
                     })
                     .collect();
-                let open: Vec<(&Path, &str, &[Thread])> = open
+                print(&serde_json::to_string_pretty(&all)?);
+                if !sent {
+                    eprintln!("{closed}");
+                }
+            } else {
+                let changes: Vec<(&Path, &str, &[Thread])> = changes
                     .iter()
-                    .map(|(doc, text, threads)| (doc.as_path(), text.as_str(), threads.as_slice()))
+                    .map(|(doc, text, threads)| (*doc, *text, threads.as_slice()))
                     .collect();
-                let mut out = if open.is_empty() {
-                    "The writer sent the review, but no comments are open.\n".to_string()
+                let open = changes
+                    .iter()
+                    .any(|(_, _, threads)| threads.iter().any(Thread::is_open));
+                let mut out = if !changes.is_empty() {
+                    for_agent_docs(&changes) + "\n"
+                } else if sent {
+                    "The writer sent the review, but no comments are open or newly resolved.\n\n"
+                        .to_string()
                 } else {
-                    for_agent_docs(&open)
+                    String::new()
                 };
-                out.push('\n');
-                out.push_str(&format!(
-                    "Once you have answered them, run `margin wait {args}` again for the next round."
-                ));
+                out.push_str(&if !sent {
+                    closed
+                } else if open {
+                    format!(
+                        "Once you have answered them, run `margin wait {args}` again for the next round."
+                    )
+                } else {
+                    format!(
+                        "Nothing needs an answer. Run `margin wait {args}` again for the next round."
+                    )
+                });
                 print(&out);
             }
         }

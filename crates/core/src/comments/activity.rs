@@ -195,8 +195,8 @@ mod tests {
         let (old, _) = doc();
         let mut new = old.clone();
         new.reply(1, "Done.", Author::Agent).unwrap();
-        new.set_resolved(1, true).unwrap();
-        new.set_resolved(2, true).unwrap();
+        new.set_resolved(1, true, Author::Agent).unwrap();
+        new.set_resolved(2, true, Author::Agent).unwrap();
         let cs = changes(&old.threads, &new.threads);
         assert_eq!(cs.len(), 2);
         assert_eq!(cs[0].line(), "Resolved \u{201c}One\u{201d}: Done.");
@@ -207,9 +207,9 @@ mod tests {
     #[test]
     fn added_reopened_and_deleted() {
         let (mut old, text) = doc();
-        old.set_resolved(1, true).unwrap();
+        old.set_resolved(1, true, Author::Agent).unwrap();
         let mut new = old.clone();
-        new.set_resolved(1, false).unwrap();
+        new.set_resolved(1, false, Author::Agent).unwrap();
         new.delete(2).unwrap();
         new.add(text, 8..13, "Plural?", Author::User).unwrap();
         let cs = changes(&old.threads, &new.threads);
