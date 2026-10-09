@@ -13,12 +13,18 @@
 //! record lists the documents its agent waits on, and [`send`] bumps the
 //! send count of every document in the round.
 //!
+//! A send gives the agent what changed since the last one: every open
+//! thread, and the threads the writer resolved since (see [`to_send`]).
+//! Each document keeps when its last send was, or, before any, when an
+//! agent first waited on it.
+//!
 //! An editor showing the document holds a [`DocAgents`], which keeps a
 //! viewer record there the same way. A waiter whose documents no editor
 //! shows has nothing to wait for.
 
-use super::store::{Store, data_dir};
+use super::store::{Author, Store, Thread, data_dir};
 use anyhow::{Context, Result};
+use chrono::{DateTime, Utc};
 use std::collections::BTreeSet;
 use std::fs::{self, File};
 use std::io::{ErrorKind, Write};
@@ -26,6 +32,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
 const SENT: &str = "sent";
+const SINCE: &str = "since";
 const WAITER: &str = "waiter";
 const VIEWER: &str = "viewer";
 
@@ -45,6 +52,94 @@ fn sent_count(dir: &Path) -> u64 {
         .ok()
         .and_then(|s| s.trim().parse().ok())
         .unwrap_or(0)
+}
+
+/// When the document's last send was, or, before any, when an agent first
+/// waited on it.
+fn since_in(dir: &Path) -> Option<DateTime<Utc>> {
+    fs::read_to_string(dir.join(SINCE))
+        .ok()?
+        .trim()
+        .parse()
+        .ok()
+}
+
+fn mark_since(dir: &Path, at: DateTime<Utc>) -> Result<()> {
+    replace(&dir.join(SINCE), &at.to_rfc3339(), |_| Ok(()))?;
+    Ok(())
+}
+
+/// Whether the writer resolved the thread after `since`.
+fn resolved_since(t: &Thread, since: Option<DateTime<Utc>>) -> bool {
+    t.resolved_by() == Some(Author::User)
+        && since.is_some_and(|s| t.resolved_at().is_some_and(|at| at > s))
+}
+
+/// The threads a send gives the agent on one document: the open ones, and
+/// the ones the writer resolved after `since`, the document's last send.
+/// Threads the agent resolved it knows about already.
+pub fn to_send(threads: &[Thread], since: Option<DateTime<Utc>>) -> Vec<Thread> {
+    threads
+        .iter()
+        .filter(|t| t.is_open() || resolved_since(t, since))
+        .cloned()
+        .collect()
+}
+
+/// How many threads a send would give the agent on a document.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Pending {
+    pub open: usize,
+    /// Resolved by the writer since the last send.
+    pub resolved: usize,
+}
+
+impl Pending {
+    /// What a send would give on a document with `threads`, last sent at
+    /// `since`.
+    pub fn of(threads: &[Thread], since: Option<DateTime<Utc>>) -> Pending {
+        Pending {
+            open: threads.iter().filter(|t| t.is_open()).count(),
+            resolved: threads.iter().filter(|t| resolved_since(t, since)).count(),
+        }
+    }
+
+    /// What a send would give on the document now.
+    fn now(doc: &Path) -> Pending {
+        let since = dir(doc).ok().and_then(|d| since_in(&d));
+        Store::for_doc(doc)
+            .and_then(|s| s.load())
+            .map_or_else(|_| Pending::default(), |c| Pending::of(&c.threads, since))
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.open == 0 && self.resolved == 0
+    }
+}
+
+impl std::ops::Add for Pending {
+    type Output = Pending;
+    fn add(self, o: Pending) -> Pending {
+        Pending {
+            open: self.open + o.open,
+            resolved: self.resolved + o.resolved,
+        }
+    }
+}
+
+/// What a send gave, for its announcement: "2 open comments", "2 open and
+/// 1 resolved comment on 2 documents", "1 resolved comment".
+pub fn sent_summary(sent: Pending, docs: usize) -> String {
+    let n = |k: usize| if k == 1 { "comment" } else { "comments" };
+    let mut s = match (sent.open, sent.resolved) {
+        (o, 0) => format!("{o} open {}", n(o)),
+        (0, r) => format!("{r} resolved {}", n(r)),
+        (o, r) => format!("{o} open and {r} resolved {}", n(r)),
+    };
+    if docs > 1 {
+        s.push_str(&format!(" on {docs} documents"));
+    }
+    s
 }
 
 /// Writes `contents` to `path` through a temporary file, so readers never
@@ -167,6 +262,7 @@ pub struct Waiter {
     dir: PathBuf,
     record: PathBuf,
     seen: u64,
+    since: DateTime<Utc>,
     _lock: File,
 }
 
@@ -175,6 +271,17 @@ impl Waiter {
     /// paths of all the documents the agent waits on.
     pub fn start(doc: &Path, round: &[PathBuf]) -> Result<Waiter> {
         let dir = dir(doc)?;
+        fs::create_dir_all(&dir).with_context(|| format!("creating {}", dir.display()))?;
+        // Before the send count: should a send come in between, the next
+        // one gives too much rather than too little.
+        let since = match since_in(&dir) {
+            Some(t) => t,
+            None => {
+                let now = Utc::now();
+                mark_since(&dir, now)?;
+                now
+            }
+        };
         let seen = sent_count(&dir);
         let (record, lock) = lock_record(
             &dir,
@@ -187,8 +294,16 @@ impl Waiter {
             dir,
             record,
             seen,
+            since,
             _lock: lock,
         })
+    }
+
+    /// The document's last send before this waiter started, or, before
+    /// any, when an agent first waited on it: what the writer resolved
+    /// after it goes with the next send.
+    pub fn since(&self) -> DateTime<Utc> {
+        self.since
     }
 
     /// The document's canonical path.
@@ -282,9 +397,10 @@ pub fn send(doc: &Path) -> Result<usize> {
     Ok(agents.len())
 }
 
-/// Counts one more send of `dir`'s document.
+/// Counts one more send of `dir`'s document, made now.
 fn bump(dir: &Path) -> Result<()> {
     fs::create_dir_all(dir).with_context(|| format!("creating {}", dir.display()))?;
+    mark_since(dir, Utc::now())?;
     replace(&dir.join(SENT), &(sent_count(dir) + 1).to_string(), |_| {
         Ok(())
     })?;
@@ -354,9 +470,11 @@ pub struct DocAgents {
     /// The document's send count when last looked at, to tell when a send
     /// from another document's window covered it.
     sends: u64,
-    /// The other documents a send from here covers, and how many open
-    /// threads each has, as of the last poll.
-    others: Vec<(PathBuf, usize)>,
+    /// The document's last send, or first wait, as of the last poll.
+    since: Option<DateTime<Utc>>,
+    /// The other documents a send from here covers, and what it would give
+    /// on each, as of the last poll.
+    others: Vec<(PathBuf, Pending)>,
     /// None when the record couldn't be written; waiters then give up on
     /// the document while the window still shows it.
     _viewer: Option<Viewer>,
@@ -368,6 +486,7 @@ impl DocAgents {
             doc: doc.to_path_buf(),
             tracker: AgentTracker::default(),
             sends: sends(doc),
+            since: None,
             others: Vec::new(),
             _viewer: Viewer::start(doc).ok(),
         }
@@ -378,24 +497,30 @@ impl DocAgents {
     pub fn poll(&mut self, now: i64) -> AgentState {
         self.saw_sends(now);
         let (docs, agents) = round(&self.doc).unwrap_or_default();
+        self.since = dir(&self.doc).ok().and_then(|d| since_in(&d));
         self.others = docs
             .into_iter()
             .skip(1)
             .map(|d| {
-                let open = Store::for_doc(&d)
-                    .and_then(|s| s.load())
-                    .map_or(0, |c| c.open_count());
-                (d, open)
+                let p = Pending::now(&d);
+                (d, p)
             })
             .collect();
         // The round has agents only when one waits here.
         self.tracker.state(agents.len(), now)
     }
 
+    /// What a send from here would give on the document, with `threads`
+    /// as the window has them now and its last send as of the last
+    /// [`poll`](Self::poll).
+    pub fn pending(&self, threads: &[Thread]) -> Pending {
+        Pending::of(threads, self.since)
+    }
+
     /// The other documents a send from here covers, as of the last
-    /// [`poll`](Self::poll), in the order agents named them, each with how
-    /// many open threads it has.
-    pub fn others(&self) -> &[(PathBuf, usize)] {
+    /// [`poll`](Self::poll), in the order agents named them, each with what
+    /// a send would give on it.
+    pub fn others(&self) -> &[(PathBuf, Pending)] {
         &self.others
     }
 
@@ -493,7 +618,10 @@ mod tests {
         assert_eq!(notes_window.poll(0), AgentState::Waiting);
         assert_eq!(
             notes_window.others(),
-            [(spec.clone(), 0), (plan.clone(), 0)]
+            [
+                (spec.clone(), Pending::default()),
+                (plan.clone(), Pending::default())
+            ]
         );
 
         assert_eq!(send(&plan).unwrap(), 2);
@@ -505,6 +633,76 @@ mod tests {
         assert_eq!(notes_window.poll(10), AgentState::Working);
         assert_eq!(other_window.poll(10), AgentState::Waiting);
         fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn a_send_gives_what_the_writer_resolved_since_the_last() {
+        let root = std::env::temp_dir().join(format!("margin-handoff-news-{}", std::process::id()));
+        fs::create_dir_all(&root).unwrap();
+        let _env = crate::comments::use_data_dir(&root.join("data"));
+        let plan = root.join("plan.md");
+        let text = "one two three\n";
+        fs::write(&plan, text).unwrap();
+        let store = Store::for_doc(&plan).unwrap();
+        let [one, two, three] = [0..3, 4..7, 8..13].map(|r| {
+            store
+                .update(|c| c.add(text, r, "Why?", Author::User))
+                .unwrap()
+        });
+        let resolve = |id, by| store.update(|c| c.set_resolved(id, true, by)).unwrap();
+        // Resolved before any agent waited: not news to it.
+        resolve(one, Author::User);
+        let ids = |w: &Waiter| -> Vec<u64> {
+            to_send(&store.load().unwrap().threads, Some(w.since()))
+                .iter()
+                .map(|t| t.id)
+                .collect()
+        };
+
+        let w = Waiter::start(&plan, &[]).unwrap();
+        let mut window = DocAgents::new(&plan);
+        window.poll(0);
+        let pending = |w: &DocAgents| w.pending(&store.load().unwrap().threads);
+        assert_eq!(
+            pending(&window),
+            Pending {
+                open: 2,
+                resolved: 0
+            }
+        );
+        resolve(two, Author::User);
+        resolve(three, Author::Agent);
+        assert_eq!(
+            pending(&window),
+            Pending {
+                open: 0,
+                resolved: 1
+            }
+        );
+        assert_eq!(send(&plan).unwrap(), 1);
+        assert_eq!(ids(&w), [two], "the agent knows what it resolved");
+        drop(w);
+
+        // The next send starts from this one.
+        window.poll(0);
+        assert!(pending(&window).is_empty());
+        let w = Waiter::start(&plan, &[]).unwrap();
+        assert!(ids(&w).is_empty());
+        store
+            .update(|c| c.set_resolved(two, false, Author::User))
+            .unwrap();
+        resolve(two, Author::User);
+        assert_eq!(ids(&w), [two]);
+        fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn announcements_say_what_went() {
+        let p = |open, resolved| Pending { open, resolved };
+        assert_eq!(sent_summary(p(1, 0), 1), "1 open comment");
+        assert_eq!(sent_summary(p(2, 0), 2), "2 open comments on 2 documents");
+        assert_eq!(sent_summary(p(2, 1), 1), "2 open and 1 resolved comment");
+        assert_eq!(sent_summary(p(0, 3), 1), "3 resolved comments");
     }
 
     #[test]

@@ -222,6 +222,7 @@ Every editor produces the same source for the same keys. The choices:
 15. As a writer, I want one send to cover every document the agent is waiting on, so that I can review several specs and send them as one round.
 16. As a writer, I want the documents of a round in their own windows, so that I can read them side by side.
 17. As a writer, I want a send to reach only the agents waiting on those very files, so that reviews of other copies of a project (another clone or worktree) never mix.
+18. As a writer, I want a send to tell the agent which threads I resolved, even when I leave nothing open, so that it knows I took its answers there.
 
 ### Decisions
 
@@ -304,17 +305,26 @@ Every editor produces the same source for the same keys. The choices:
   `/home/me/proj/spec.md`. ``), and each document's items follow in turn,
   after a blank line. The absolute paths say which copy of a project the
   comments are on, since the items' paths read the same in every copy.
-- Send to Agent gives the open comments, in the Copy Open Comments format,
-  to every agent waiting on the document with `margin wait`. Margin doesn't
-  start agents or look for them: it reaches only one that waits, which any
-  agent that can run a command can do. Nothing is queued, so the command is
-  unavailable, saying why, while no agent is waiting or no thread is open
-  in the round.
+- Send to Agent sends the document's changes to every agent waiting on it
+  with `margin wait`: its open threads, and the threads the writer
+  resolved since its last send, or, before any, since an agent first
+  waited on it. Threads an agent resolved are left out. When the
+  writer closes the round's documents, the waiting agents get the resolved
+  threads alone.
+- A send is in the Copy Open Comments format. A resolved thread's item
+  ends with `- User resolved the thread.`, and the first line says what
+  the send holds: `` I left comments on `…/plan.md` and resolved others.
+  Please address the open ones. ``, or, with none open, `` I resolved
+  comments on `…/plan.md`. ``
+- Margin doesn't start agents or look for them: it reaches only one that
+  waits, which any agent that can run a command can do. Nothing is queued,
+  so the command is unavailable, saying why, while no agent is waiting or
+  the round has no changes.
 - A send covers a **round**: the documents its agents wait on, which an
   agent names with `margin wait FILE…`, and, when agents wait on
   overlapping documents, theirs too. Send to Agent in any of the round's
-  windows sends the open comments on all of them, documents without open
-  threads left out. The agent defines the round, so there is nothing to
+  windows sends what changed on all of them, documents where nothing did
+  left out. The agent defines the round, so there is nothing to
   name, save or close, and a round lasts as long as the wait.
 - Each of a round's documents has its own window, so they sit side by
   side, or in the platform's window tabs when the writer prefers tabs.
@@ -325,12 +335,12 @@ Every editor produces the same source for the same keys. The choices:
   working (from a send that covered the document, from any window, until an
   agent waits on it again) or neither. Working gives up after 30 minutes without
   agent activity on the document.
-- Send to Agent's tooltip says what it would send, or what is missing: an
-  agent waiting, or an open comment. When the round has other documents,
-  it says how many ("Send open comments on this and 2 other documents to
-  the agent"). A send's announcement says what went: "Sent 2 open comments
-  to the agent", or "Sent 5 open comments on 3 documents to the agent" for a
-  round.
+- Send to Agent's tooltip is the command's name, or, when the round has
+  other documents, says how many ("Send this and 2 other documents to the
+  agent"). While the command is unavailable, it says what is missing: an
+  agent waiting, or a change since the last send. A send's announcement says what went: "Sent 2 open comments to
+  the agent", "Sent 2 open and 1 resolved comment to the agent", or "Sent 5
+  open comments on 3 documents to the agent" for a round.
 
 How an anchor follows each kind of edit, shown on a thread on `quick fox`
 in `the quick fox jumps`. Brackets mark the anchor after the edit.
@@ -537,7 +547,8 @@ The status is `open`, `open, detached: the commented text was deleted`, or
 ```
 
 A message's author is `user` or `agent`: the CLI speaks to agents, so it
-calls the writer the user. A resolved thread also has `resolved_at`.
+calls the writer the user. A resolved thread also has `resolved_at`, and
+`resolved_by`, `user` or `agent`.
 
 The commands:
 
@@ -551,16 +562,19 @@ The commands:
 - `margin thread FILE ID` shows one thread, open or resolved, in full. The
   JSON is the one thread's object.
 - `margin wait FILE…` waits until the writer sends a round that covers
-  its documents, prints the open comments on all of them as a round sends
-  them, followed by the command to wait for the next round, and exits.
-  `--json` prints the documents' open threads as `comments --json` does. An agent that runs
+  its documents, prints what the send gives on all of them, the open
+  threads and those the writer resolved since the last send, followed by
+  the command to wait for the next round, and exits. `--json` prints the
+  same threads as `comments --json` does. An agent that runs
   commands in the background works on while it waits, and hears when the
   command exits.
 - `margin wait` also exits when no editor window shows any of its
   documents, whether none did when it started or the writer closed them
   or quit, since no comments can come then. It says so and what to do
-  next: open the documents first, or stop waiting. With `--json` it prints
-  `[]`, and the explanation goes to stderr.
+  next: open the documents first, or stop waiting. When the writer closed
+  them, it first prints the threads the writer resolved since the last
+  send. With `--json` it prints those threads, or `[]`, and the
+  explanation goes to stderr.
 - `margin reply FILE ID MESSAGE [--resolve]`, `margin resolve FILE ID
   [MESSAGE]`, `margin reopen FILE ID`, `margin delete FILE ID`.
 - `margin add FILE --quote TEXT MESSAGE` starts a thread on TEXT, which must

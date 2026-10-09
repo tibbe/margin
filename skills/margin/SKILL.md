@@ -56,20 +56,22 @@ opened.
 ## Wait for the review
 
 `margin wait FILE…` returns when the user clicks Send to Agent in the
-editor, and prints that round's open comments, with their locations, on
-every document you named. When a review spans several documents, name them
-all in one `margin wait`: one send from any of their windows covers them
-all. It also returns when none of the documents is open in the editor,
-since then no comments can come. Run it in the background when your shell
-tool can, so you are woken when it exits and stay free meanwhile; otherwise
-run it in the foreground. Each time it exits, do what it prints: address
-the comments it printed, as above, and run the `margin wait` command it
-prints again for the next round; or stop waiting when it says the documents
-aren't open.
+editor, and prints the round on every document you named: the open threads,
+with their locations, and the threads the user resolved since the last
+round. A resolved thread means the user took your answer: it is done. When
+a review spans several documents, name them all in one `margin wait`: one
+send from any of their windows covers them all. It also returns when none
+of the documents is open in the editor, since then no comments can come,
+after printing the threads the user resolved before closing them. Run it in
+the background when your shell tool can, so you are woken when it exits and
+stay free meanwhile; otherwise run it in the foreground. Each time it
+exits, do what it prints: address the comments it printed, as above, and
+run the `margin wait` command it prints again for the next round; or stop
+waiting when it says the documents aren't open.
 
 The review is over when the user says so, or when `margin wait` says the
-documents aren't open. Until then, a round is done when every thread it
-printed ends with your reply and `margin wait` is running again: that is
+documents aren't open. Until then, a round is done when every open thread
+it printed ends with your reply and `margin wait` is running again: that is
 what tells the editor you are ready.
 
 ## Reference

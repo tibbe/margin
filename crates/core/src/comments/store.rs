@@ -19,14 +19,20 @@ use std::path::{Path, PathBuf};
 #[serde(rename_all = "lowercase")]
 pub enum Status {
     Open,
-    Resolved { at: DateTime<Utc> },
+    Resolved {
+        at: DateTime<Utc>,
+        /// Resolutions from before authors were kept count as the user's.
+        #[serde(default)]
+        by: Author,
+    },
 }
 
-/// Who wrote a message: the one person who comments, from the editor, or
-/// an agent, through the CLI. Agents aren't told apart.
-#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
+/// Who wrote a message or resolved a thread: the one person who comments,
+/// from the editor, or an agent, through the CLI. Agents aren't told apart.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, Default, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum Author {
+    #[default]
     User,
     Agent,
 }
@@ -57,7 +63,15 @@ impl Thread {
     pub fn resolved_at(&self) -> Option<DateTime<Utc>> {
         match self.status {
             Status::Open => None,
-            Status::Resolved { at } => Some(at),
+            Status::Resolved { at, .. } => Some(at),
+        }
+    }
+
+    /// Who resolved it, if it is resolved.
+    pub fn resolved_by(&self) -> Option<Author> {
+        match self.status {
+            Status::Open => None,
+            Status::Resolved { by, .. } => Some(by),
         }
     }
 }
@@ -161,10 +175,11 @@ impl Comments {
         Ok(())
     }
 
-    pub fn set_resolved(&mut self, id: u64, resolved: bool) -> Result<()> {
+    /// Resolves or reopens a thread; `by` is who resolves it.
+    pub fn set_resolved(&mut self, id: u64, resolved: bool, by: Author) -> Result<()> {
         let t = self.thread_mut(id)?;
         t.status = if resolved {
-            Status::Resolved { at: Utc::now() }
+            Status::Resolved { at: Utc::now(), by }
         } else {
             Status::Open
         };
@@ -482,6 +497,19 @@ mod tests {
     }
 
     #[test]
+    fn resolutions_stored_without_an_author_are_the_users() {
+        let status: Status =
+            serde_json::from_str(r#"{"resolved":{"at":"2026-01-02T03:04:05Z"}}"#).unwrap();
+        assert!(matches!(
+            status,
+            Status::Resolved {
+                by: Author::User,
+                ..
+            }
+        ));
+    }
+
+    #[test]
     fn store_roundtrip_with_lock() {
         let dir = std::env::temp_dir().join(format!("margin-test-{}", std::process::id()));
         fs::create_dir_all(&dir).unwrap();
@@ -495,10 +523,13 @@ mod tests {
         store
             .update(|c| c.reply(id, "done", Author::Agent))
             .unwrap();
-        store.update(|c| c.set_resolved(id, true)).unwrap();
+        store
+            .update(|c| c.set_resolved(id, true, Author::Agent))
+            .unwrap();
         let c = store.load().unwrap();
         assert_eq!(c.threads[0].messages.len(), 2);
         assert!(!c.threads[0].is_open() && c.threads[0].resolved_at().is_some());
+        assert_eq!(c.threads[0].resolved_by(), Some(Author::Agent));
         assert_eq!(all_stores().unwrap().len(), 1);
         fs::remove_dir_all(&dir).unwrap();
     }

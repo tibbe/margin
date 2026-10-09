@@ -186,6 +186,15 @@ impl CommentLayer {
         }
     }
 
+    /// The threads as the window has them now.
+    pub fn threads(&self) -> Vec<Thread> {
+        self.threads
+            .borrow()
+            .iter()
+            .map(|t| t.thread.clone())
+            .collect()
+    }
+
     pub fn open_count(&self) -> usize {
         self.threads
             .borrow()
@@ -630,7 +639,7 @@ impl CommentLayer {
 
     pub fn set_resolved(&self, id: u64, resolved: bool) {
         if self
-            .update_store(move |c| c.set_resolved(id, resolved))
+            .update_store(move |c| c.set_resolved(id, resolved, Author::User))
             .is_none()
         {
             return;
@@ -667,7 +676,7 @@ impl CommentLayer {
         let all = ids.clone();
         let done = self.update_store(move |c| {
             for id in &all {
-                c.set_resolved(*id, true)?;
+                c.set_resolved(*id, true, Author::User)?;
             }
             Ok(())
         });
@@ -688,7 +697,7 @@ impl CommentLayer {
                 let ids = ids.clone();
                 l.update_store(move |c| {
                     for id in &ids {
-                        c.set_resolved(*id, false)?;
+                        c.set_resolved(*id, false, Author::User)?;
                     }
                     Ok(())
                 });

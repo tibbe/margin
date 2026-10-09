@@ -1,5 +1,6 @@
-//! Open comments as a list to paste into a coding agent, the way
-//! tuicr's `y` copies a review.
+//! Threads as a list to paste into a coding agent, the way tuicr's `y`
+//! copies a review: the open ones, and in a send also the ones the writer
+//! resolved since the last.
 
 use super::anchor::line_col;
 use super::store::{Author, Message, Thread};
@@ -64,20 +65,24 @@ pub fn shell_word(s: &str) -> String {
     }
 }
 
-/// A message as a list item under its thread, after its author.
-fn item(m: &Message) -> String {
-    let who = match m.author {
+fn who(a: Author) -> &'static str {
+    match a {
         Author::User => "User",
         Author::Agent => "Agent",
-    };
-    format!("  - {who}: {}\n", continued(&m.body, "    "))
+    }
+}
+
+/// A message as a list item under its thread, after its author.
+fn item(m: &Message) -> String {
+    format!("  - {}: {}\n", who(m.author), continued(&m.body, "    "))
 }
 
 /// The threads (anchored against `text`, the document now) as a list in
 /// document order, each under its thread number, with where it is. A
 /// thread's comment and latest message are given in full, each after its
 /// author; the replies between, which the agent has seen on earlier
-/// copies, become a `margin thread` command that prints them.
+/// copies, become a `margin thread` command that prints them. A resolved
+/// thread ends with who resolved it.
 pub fn for_agent(doc: &Path, text: &str, threads: &[Thread]) -> String {
     for_agent_docs(&[(doc, text, threads)])
 }
@@ -94,7 +99,16 @@ pub fn for_agent_docs(docs: &[(&Path, &str, &[Thread])]) -> String {
         Some((last, rest)) if !rest.is_empty() => format!("{} and {last}", rest.join(", ")),
         _ => names.concat(),
     };
-    let mut out = format!("I left comments on {names}. Please address them.\n");
+    let all = || docs.iter().flat_map(|(_, _, threads)| threads.iter());
+    let open = all().any(Thread::is_open);
+    let resolved = all().any(|t| !t.is_open());
+    let mut out = match (open, resolved) {
+        (_, false) => format!("I left comments on {names}. Please address them.\n"),
+        (true, true) => format!(
+            "I left comments on {names} and resolved others. Please address the open ones.\n"
+        ),
+        (false, true) => format!("I resolved comments on {names}.\n"),
+    };
     for (doc, text, threads) in docs {
         out.push('\n');
         out.push_str(&items(doc, text, threads));
@@ -142,6 +156,9 @@ fn items(doc: &Path, text: &str, threads: &[Thread]) -> String {
         };
         for m in shown {
             out.push_str(&item(m));
+        }
+        if let Some(by) = t.resolved_by() {
+            out.push_str(&format!("  - {} resolved the thread.\n", who(by)));
         }
     }
     out
@@ -244,6 +261,31 @@ mod tests {
              #1 `/x/a.md:1:1-1:3` \"one\"\n  - User: Why?\n\n\
              #1 `/x/b.md:1:5-1:7` \"two\"\n  - User: Typo?\n\n\
              #1 `/x/c.md:1:1-1:3` \"one\"\n  - User: More?\n"
+        );
+    }
+
+    #[test]
+    fn resolved_threads_end_with_who_resolved_them() {
+        let text = "one two\n";
+        let mut c = Comments::new("/x/a.md".into());
+        let id = c.add(text, 0..3, "Why?", Author::User).unwrap();
+        c.reply(id, "Because.", Author::Agent).unwrap();
+        c.set_resolved(id, true, Author::User).unwrap();
+        let resolved = c.threads.clone();
+        assert_eq!(
+            for_agent(Path::new("/x/a.md"), text, &resolved),
+            "I resolved comments on `/x/a.md`.\n\n\
+             #1 `/x/a.md:1:1-1:3` \"one\"\n  \
+             - User: Why?\n  \
+             - Agent: Because.\n  \
+             - User resolved the thread.\n"
+        );
+        c.add(text, 4..7, "Typo?", Author::User).unwrap();
+        assert!(
+            for_agent(Path::new("/x/a.md"), text, &c.threads).starts_with(
+                "I left comments on `/x/a.md` and resolved others. \
+                 Please address the open ones.\n"
+            )
         );
     }
 

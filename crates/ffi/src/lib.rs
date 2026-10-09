@@ -1386,6 +1386,8 @@ pub struct CommentThread {
     /// When it was resolved, in milliseconds since the Unix epoch; `None`
     /// while it is open.
     pub resolved_at_ms: Option<i64>,
+    /// Who resolved it; `None` while it is open.
+    pub resolved_by: Option<MessageAuthor>,
 }
 
 /// Where the editor has a thread's text now.
@@ -1453,25 +1455,31 @@ fn from_ms(ms: i64) -> chrono::DateTime<chrono::Utc> {
     chrono::DateTime::from_timestamp_millis(ms).unwrap_or_default()
 }
 
-fn message_to_ffi(m: &Message) -> ThreadMessage {
-    let author = match m.author {
+fn author_to_ffi(a: Author) -> MessageAuthor {
+    match a {
         Author::User => MessageAuthor::User,
         Author::Agent => MessageAuthor::Agent,
-    };
+    }
+}
+
+fn author_from_ffi(a: MessageAuthor) -> Author {
+    match a {
+        MessageAuthor::User => Author::User,
+        MessageAuthor::Agent => Author::Agent,
+    }
+}
+
+fn message_to_ffi(m: &Message) -> ThreadMessage {
     ThreadMessage {
-        author,
+        author: author_to_ffi(m.author),
         at_ms: ms(&m.at),
         body: m.body.clone(),
     }
 }
 
 fn message_from_ffi(m: &ThreadMessage) -> Message {
-    let author = match m.author {
-        MessageAuthor::User => Author::User,
-        MessageAuthor::Agent => Author::Agent,
-    };
     Message {
-        author,
+        author: author_from_ffi(m.author),
         at: from_ms(m.at_ms),
         body: m.body.clone(),
     }
@@ -1515,8 +1523,22 @@ fn place_from_ffi(p: AnchorPlace, text: &str, index: &Utf16Index) -> Place {
     }
 }
 
-fn status_from_ms(resolved_at_ms: Option<i64>) -> Status {
-    resolved_at_ms.map_or(Status::Open, |t| Status::Resolved { at: from_ms(t) })
+fn status_from_ffi(t: &CommentThread) -> Status {
+    t.resolved_at_ms
+        .map_or(Status::Open, |at| Status::Resolved {
+            at: from_ms(at),
+            by: t.resolved_by.map_or(Author::User, author_from_ffi),
+        })
+}
+
+/// The thread without where its text is, for what doesn't need it.
+fn unplaced(t: &CommentThread) -> Thread {
+    Thread {
+        id: t.id,
+        status: status_from_ffi(t),
+        anchor: Anchor::detached(0, t.quote.clone()),
+        messages: t.messages.iter().map(message_from_ffi).collect(),
+    }
 }
 
 fn to_ffi(t: &Thread, text: &str, index: &Utf16Index) -> CommentThread {
@@ -1526,6 +1548,7 @@ fn to_ffi(t: &Thread, text: &str, index: &Utf16Index) -> CommentThread {
         quote: t.anchor.quote().to_string(),
         messages: t.messages.iter().map(message_to_ffi).collect(),
         resolved_at_ms: t.resolved_at().as_ref().map(ms),
+        resolved_by: t.resolved_by().map(author_to_ffi),
     }
 }
 
@@ -1533,7 +1556,7 @@ fn to_ffi(t: &Thread, text: &str, index: &Utf16Index) -> CommentThread {
 fn from_ffi(t: &CommentThread, text: &str, index: &Utf16Index) -> Thread {
     Thread {
         id: t.id,
-        status: status_from_ms(t.resolved_at_ms),
+        status: status_from_ffi(t),
         anchor: Anchor::at(text, place_from_ffi(t.place, text, index), t.quote.clone()),
         messages: t.messages.iter().map(message_from_ffi).collect(),
     }
@@ -1606,7 +1629,7 @@ impl CommentStore {
                 CommentChange::Reply { id, body } => c.reply(*id, body, Author::User)?,
                 CommentChange::SetResolved { ids, resolved } => {
                     for id in ids {
-                        c.set_resolved(*id, *resolved)?;
+                        c.set_resolved(*id, *resolved, Author::User)?;
                     }
                 }
                 CommentChange::Delete { id } => c.delete(*id)?,
@@ -1724,16 +1747,7 @@ fn activity_to_core(a: &ThreadActivity) -> activity::Change {
 #[uniffi::export]
 pub fn thread_activity(old: Vec<CommentThread>, new: Vec<CommentThread>) -> Vec<ThreadActivity> {
     // Only ids, status, quotes and messages matter here, not offsets.
-    let core = |ts: &[CommentThread]| -> Vec<Thread> {
-        ts.iter()
-            .map(|t| Thread {
-                id: t.id,
-                status: status_from_ms(t.resolved_at_ms),
-                anchor: Anchor::detached(0, t.quote.clone()),
-                messages: t.messages.iter().map(message_from_ffi).collect(),
-            })
-            .collect()
-    };
+    let core = |ts: &[CommentThread]| -> Vec<Thread> { ts.iter().map(unplaced).collect() };
     activity::changes(&core(&old), &core(&new))
         .into_iter()
         .map(|c| ThreadActivity {
@@ -1776,11 +1790,39 @@ pub enum AgentState {
     Working,
 }
 
-/// Another document a send covers, and how many open threads it has.
+/// How many threads a send would give the agent on a document.
+#[derive(Debug, Clone, Copy, uniffi::Record)]
+pub struct Pending {
+    pub open: u32,
+    /// Resolved by the writer since the last send.
+    pub resolved: u32,
+}
+
+fn pending_to_ffi(p: handoff::Pending) -> Pending {
+    Pending {
+        open: p.open as u32,
+        resolved: p.resolved as u32,
+    }
+}
+
+/// Another document a send covers, and what a send would give on it.
 #[derive(uniffi::Record)]
 pub struct RoundDocument {
     pub path: String,
-    pub open: u32,
+    pub pending: Pending,
+}
+
+/// What a send gave, for its announcement: "2 open and 1 resolved comment
+/// on 2 documents".
+#[uniffi::export]
+pub fn sent_summary(sent: Pending, docs: u32) -> String {
+    handoff::sent_summary(
+        handoff::Pending {
+            open: sent.open as usize,
+            resolved: sent.resolved as usize,
+        },
+        docs as usize,
+    )
 }
 
 /// The agents waiting on, or working on, one open document.
@@ -1814,11 +1856,18 @@ impl DocAgents {
             .unwrap()
             .others()
             .iter()
-            .map(|(path, open)| RoundDocument {
+            .map(|(path, pending)| RoundDocument {
                 path: path.display().to_string(),
-                open: *open as u32,
+                pending: pending_to_ffi(*pending),
             })
             .collect()
+    }
+
+    /// What a send from here would give on the document, with `threads` as
+    /// the window has them now.
+    pub fn pending(&self, threads: Vec<CommentThread>) -> Pending {
+        let threads: Vec<Thread> = threads.iter().map(unplaced).collect();
+        pending_to_ffi(self.inner.lock().unwrap().pending(&threads))
     }
 
     /// Sends the open comments on the round to the waiting agents; returns
