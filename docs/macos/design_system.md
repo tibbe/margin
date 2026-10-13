@@ -81,6 +81,9 @@ so there is no version history (Revert To ▸ Browse All Versions) and no
   edits.
 - Windows reopen where they were after a relaunch, and documents can share a
   window as tabs; "+" in the tab bar opens an untitled document.
+- A new window opens cascaded from the frontmost one, at the size the writer
+  last dragged a window to. Windows already open, tiled ones too, stay as
+  they are.
 - The conflict ("Keep My Version", "Load Disk Version") and Unsaved Changes
   prompts are sheets. Unsaved Changes uses the Mac wording: "Do you want to
   save the changes made to “name”?" with Save…, Cancel and Don’t Save.

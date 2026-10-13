@@ -114,10 +114,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             let text = try readDocument(path: canonical)
             let w = DocumentWindow(path: canonical, text: text)
             w.onClose = { [weak self] closed in self?.windows.removeAll { $0 === closed } }
-            if let last = windows.last?.window {
-                w.window?.setFrameTopLeftPoint(
-                    last.cascadeTopLeft(from: NSPoint(x: last.frame.minX, y: last.frame.maxY)))
-            }
+            // From the frontmost document window (`mainWindow` is nil while
+            // Margin isn't active, as when the CLI opens a document).
+            let front = NSApp.orderedWindows.first { $0.isVisible && $0.windowController is DocumentWindow }
+            w.place(from: front ?? windows.last?.window)
             windows.append(w)
             if show {
                 w.showWindow(nil)

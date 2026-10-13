@@ -20,6 +20,13 @@ enum Prefs {
         set { defaults.set(newValue, forKey: "reflowParagraphs") }
     }
 
+    /// The size the writer last gave a document window by dragging its
+    /// edges, which new ones open at.
+    static var windowSize: NSSize? {
+        get { defaults.string(forKey: "windowSize").map(NSSizeFromString) }
+        set { defaults.set(newValue.map(NSStringFromSize), forKey: "windowSize") }
+    }
+
     static let zoomSteps: [Double] = [0.5, 0.67, 0.8, 0.9, 1.0, 1.1, 1.25, 1.5, 1.75, 2.0, 2.5, 3.0]
 }
 

@@ -26,6 +26,44 @@ final class WindowTests: XCTestCase {
         XCTAssertEqual(h.menu("Reply"), "disabled")
     }
 
+    /// Another document's window opens cascaded from the last one, which
+    /// stays where and as big as the writer left it.
+    @MainActor
+    func testOpeningAnotherDocumentLeavesTheLastWindowAlone() throws {
+        let h = try Harness()
+        defer { h.close() }
+        let screen = try XCTUnwrap(NSScreen.main).visibleFrame
+        let half = NSRect(x: screen.minX, y: screen.minY, width: screen.width / 2, height: screen.height)
+        // New windows fit below the top of the screen, so they can cascade.
+        h.dragResize(600, 400)
+        h.win.setFrame(half, display: false)
+        let other = try h.open("other.md")
+        XCTAssertEqual(h.win.frame, half)
+        XCTAssertGreaterThan(other.frame.minX, half.minX)
+        XCTAssertLessThan(other.frame.maxY, half.maxY)
+    }
+
+    /// A new window opens at the size the writer last gave one by dragging
+    /// its edges, as far as the screen allows. Sizes the system gives a
+    /// window, as when restoring it, don't count.
+    @MainActor
+    func testNewWindowsTakeTheSizeTheWriterLastChose() throws {
+        let h = try Harness()
+        defer { h.close() }
+        let standard = h.win.frame.size
+        h.win.setFrame(NSRect(origin: h.win.frame.origin, size: NSSize(width: 900, height: 700)), display: false)
+        XCTAssertEqual(try h.open("other.md").frame.size, standard)
+
+        h.dragResize(800, 600)
+        XCTAssertEqual(try h.open("chosen.md").frame.size, NSSize(width: 800, height: 600))
+
+        let screen = try XCTUnwrap(NSScreen.main).visibleFrame
+        h.dragResize(screen.width + 500, screen.height + 500)
+        let big = try h.open("big.md").frame
+        XCTAssertLessThanOrEqual(big.width, screen.width)
+        XCTAssertLessThanOrEqual(big.height, screen.height)
+    }
+
     /// Command-click opens Markdown files in Margin, relative to the
     /// document, including names with spaces and fragments.
     @MainActor

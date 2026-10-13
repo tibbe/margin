@@ -511,6 +511,20 @@ final class Harness {
         wait(0.1)
     }
 
+    /// Resizes the window as the writer does, by dragging an edge.
+    func dragResize(_ width: CGFloat, _ height: CGFloat) {
+        NotificationCenter.default.post(name: NSWindow.willStartLiveResizeNotification, object: win)
+        win.setFrame(NSRect(origin: win.frame.origin, size: NSSize(width: width, height: height)), display: false)
+        NotificationCenter.default.post(name: NSWindow.didEndLiveResizeNotification, object: win)
+    }
+
+    /// Opens a document beside this one, in a window of its own.
+    func open(_ name: String, _ text: String = "") throws -> NSWindow {
+        let p = dir.appendingPathComponent(name).path
+        try text.write(toFile: p, atomically: true, encoding: .utf8)
+        return try XCTUnwrap(TestApp.delegate.open(path: p, show: false)?.window)
+    }
+
     /// The page's layout: the text column and the cards' width.
     var page: String {
         doc.page.layoutSubtreeIfNeeded()

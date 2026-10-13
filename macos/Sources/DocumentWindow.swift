@@ -98,6 +98,26 @@ final class DocumentWindow: NSWindowController, NSWindowDelegate, NSToolbarDeleg
 
     required init?(coder: NSCoder) { fatalError() }
 
+    /// Gives the new window the size the writer last gave one, and cascades
+    /// it from `reference` (with none, it stays centered). `reference`
+    /// stays put: `cascadeTopLeft(from:)` moves the window it's called on,
+    /// which untiles a tiled one, so it's only called on this one, from
+    /// the reference's untiled frame.
+    func place(from reference: NSWindow?) {
+        guard let window else { return }
+        if let size = Prefs.windowSize,
+            let screen = (reference?.screen ?? window.screen ?? NSScreen.main)?.visibleFrame.size
+        {
+            let fitted = NSSize(width: min(size.width, screen.width), height: min(size.height, screen.height))
+            window.setFrame(NSRect(origin: window.frame.origin, size: fitted), display: false)
+            if reference == nil { window.center() }
+        }
+        guard let reference else { return }
+        let r = reference.cascadingReferenceFrame
+        // The second call steps it down and right, and keeps it on screen.
+        _ = window.cascadeTopLeft(from: window.cascadeTopLeft(from: NSPoint(x: r.minX, y: r.maxY)))
+    }
+
     private func buildContent() {
         guard let window else { return }
         layer = CommentLayer(page: page)
@@ -820,6 +840,12 @@ final class DocumentWindow: NSWindowController, NSWindowDelegate, NSToolbarDeleg
 
     func window(_ window: NSWindow, willEncodeRestorableState state: NSCoder) {
         state.encode(path as NSString, forKey: DocumentWindow.restorationPathKey)
+    }
+
+    /// Only the writer's own resizing counts: restoring a window isn't
+    /// live, and tiling one, which is, leaves its untiled size.
+    func windowDidEndLiveResize(_ notification: Notification) {
+        if let window { Prefs.windowSize = window.cascadingReferenceFrame.size }
     }
 
     func windowDidBecomeKey(_ notification: Notification) {
