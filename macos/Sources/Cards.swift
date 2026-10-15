@@ -681,8 +681,11 @@ final class ThreadCard: GutterCard {
 
     /// The rows' buttons, whose targets reach past the contents into the
     /// padding, where AppKit's hit testing, which stops at each superview's
-    /// bounds, would miss them.
+    /// bounds, would miss them. A hidden card (a resolved thread's) takes no
+    /// clicks: it keeps the frame it was last shown in, where another card
+    /// may be now.
     override func hitTest(_ point: NSPoint) -> NSView? {
+        if isHidden { return nil }
         let p = convert(point, from: superview)
         for b in rowButtons {
             if let sv = b.superview, b.frame.contains(sv.convert(p, from: self)) { return b }
