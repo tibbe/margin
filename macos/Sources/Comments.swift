@@ -621,7 +621,9 @@ final class CommentLayer {
 
     // MARK: - Presentation
 
-    /// Shows, hides and marks cards, and redraws highlights.
+    /// Shows, hides and marks cards, and redraws highlights. A card not
+    /// shown is hidden, not removed, so a reply or an edit being written on
+    /// it is still there when it shows again.
     func sync() {
         for it in items {
             it.card.isHidden = !visible(it.thread)

@@ -130,6 +130,30 @@ final class CardTests: XCTestCase {
         XCTAssertEqual(try h.messageStates(onCard: 1), ["collapsed", "short"])
     }
 
+    /// A resolved thread's card is hidden, and the card below moves up into
+    /// its place; Resolve there resolves the card shown, not the hidden one.
+    @MainActor
+    func testResolvingWhereAResolvedCardWas() throws {
+        let h = try Harness("First line.\n")
+        defer { h.close() }
+        // Thread 2's card sits above thread 1's but comes after it among the
+        // gutter's subviews, so clicks are tried on it first.
+        comment(h, on: "line", "One")
+        comment(h, on: "First", "Two")
+        h.key("escape")
+        h.wait(0.1)
+        h.layOut()
+        let place = try h.card(2).frame.origin
+        try h.clickResolve(card: 2)
+        h.wait(0.1)
+        h.layOut()
+        XCTAssertEqual(try h.card(1).frame.origin, place)
+        try h.clickResolve(card: 1)
+        h.wait(0.1)
+        XCTAssertEqual(
+            h.comments, #"#1 resolved [6,10) ["One"]"# + "\n" + #"#2 resolved [0,5) ["Two"]"# + "\nactive none")
+    }
+
     /// The text's right-click menu leads with Comment on Selection, which
     /// starts a draft on the selection, even on a line that has a thread.
     @MainActor
