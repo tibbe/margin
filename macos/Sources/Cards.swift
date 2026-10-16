@@ -73,6 +73,37 @@ final class ComposerTextView: NSTextView {
     /// Whether it has the keyboard, as it last became or resigned first
     /// responder (the window's `firstResponder` changes only afterwards).
     private(set) var isFocused = false
+    /// Its typing has an undo history of its own, as a text field's does.
+    /// On the window's, it would outlive the box once a card drops it, and
+    /// undoing it would message the freed box.
+    private let ownUndoManager = UndoManager()
+
+    override var undoManager: UndoManager? { ownUndoManager }
+
+    /// What Undo and Redo work on: the box's typing while there is some,
+    /// then the window's steps, as from a text field. The window would
+    /// take them straight to its own.
+    private func undoTarget(redo: Bool) -> UndoManager? {
+        (redo ? ownUndoManager.canRedo : ownUndoManager.canUndo) ? ownUndoManager : window?.undoManager
+    }
+
+    @objc func undo(_ sender: Any?) { undoTarget(redo: false)?.undo() }
+    @objc func redo(_ sender: Any?) { undoTarget(redo: true)?.redo() }
+
+    override func validateMenuItem(_ item: NSMenuItem) -> Bool {
+        switch item.action {
+        case #selector(undo(_:)):
+            let um = undoTarget(redo: false)
+            item.title = um?.undoMenuItemTitle ?? "Undo"
+            return um?.canUndo ?? false
+        case #selector(redo(_:)):
+            let um = undoTarget(redo: true)
+            item.title = um?.redoMenuItemTitle ?? "Redo"
+            return um?.canRedo ?? false
+        default:
+            return super.validateMenuItem(item)
+        }
+    }
 
     /// As tall as its text; the width comes from the layout.
     override var intrinsicContentSize: NSSize {
@@ -226,6 +257,8 @@ final class Composer: NSView {
         get { textView.string.trimmingCharacters(in: .whitespacesAndNewlines) }
         set {
             textView.string = newValue
+            // The typing it replaces can't be undone into the new text.
+            textView.undoManager?.removeAllActions()
             textView.invalidateIntrinsicContentSize()
             syncButtons()
             onResize?()

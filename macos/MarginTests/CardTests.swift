@@ -14,6 +14,31 @@ final class CardTests: XCTestCase {
         h.wait(0.2)
     }
 
+    /// Typing in a comment box is undone in the box; once the box is
+    /// gone, undo goes on with the document's steps.
+    @MainActor
+    func testUndoAfterPostingAComment() throws {
+        let h = try Harness("Some text to comment on.\n")
+        defer { h.close() }
+        h.find("on.")
+        h.type("!")
+        // Events sent from the test autorelease into its pool: drained,
+        // the posted comment's box is freed, as it is in the app.
+        autoreleasepool {
+            h.select("comment")
+            h.key("cmd-opt-m")
+            h.compose("Why?")
+            h.key("cmd-z")
+            let draft = h.doc.page.gutter.subviews.compactMap { $0 as? DraftCard }.first
+            XCTAssertEqual(draft?.composer.text, "")
+            h.compose("Why?")
+            h.key("cmd-enter")
+            h.wait(0.1)
+        }
+        h.key("cmd-z")
+        XCTAssertEqual(h.view.string, "Some text to comment on.\n")
+    }
+
     /// A new comment's card is beside its text as soon as it is posted,
     /// never first at the top of the gutter.
     @MainActor
