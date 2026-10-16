@@ -78,7 +78,8 @@ so there is no version history (Revert To ▸ Browse All Versions) and no
 - A change an agent makes to the file, or a merge, is one undo step ("Undo
   Outside Change"), so earlier steps stay undoable.
 - Comment changes are on the Edit menu's Undo too, in order with text
-  edits.
+  edits. While a comment box has the keyboard, Undo takes back its typing
+  first, then goes on with those, as from a text field.
 - Windows reopen where they were after a relaunch, and documents can share a
   window as tabs; "+" in the tab bar opens an untitled document.
 - A new window opens cascaded from the frontmost one, at the size the writer

@@ -121,4 +121,61 @@ final class MessageTests: XCTestCase {
         h.wait(0.1)
         XCTAssertEqual(h.comments, all + "\nactive 1")
     }
+
+    /// Typing in the reply box is undone in the box first, then Undo goes
+    /// on with the window's steps; replies it sent don't come back.
+    @MainActor
+    func testUndoInTheReplyBox() throws {
+        let h = try Harness("First line.\nSecond line.\n")
+        defer { h.close() }
+        thread(h)
+        let box = try h.card(1).composer
+        h.action(#selector(DocumentWindow.marginReply(_:)))
+        h.wait(0.1)
+        XCTAssertEqual(h.focus, "ComposerTextView")
+        h.key("cmd-z")
+        XCTAssertEqual(box.text, "")
+
+        h.compose("Hm")
+        h.external("First line.\nSecond line!\n")
+        h.wait(forText: "Second line!")
+        XCTAssertEqual(h.focus, "ComposerTextView")
+        let undo = NSMenuItem(title: "Undo", action: #selector(ComposerTextView.undo(_:)), keyEquivalent: "")
+        XCTAssertTrue(h.validate(undo))
+        XCTAssertEqual(undo.title, "Undo Typing")
+        h.key("cmd-z")
+        XCTAssertEqual(box.text, "")
+        XCTAssertTrue(h.validate(undo))
+        XCTAssertEqual(undo.title, "Undo Outside Change")
+        h.key("cmd-z")
+        XCTAssertEqual(h.view.string, "First line.\nSecond line.\n")
+    }
+
+    /// The edit box starts with nothing to undo, and its typing goes with
+    /// it: undoing past the edit doesn't reach the closed box.
+    @MainActor
+    func testUndoAfterEditingAMessage() throws {
+        let h = try Harness("First line.\nSecond line.\n")
+        defer { h.close() }
+        thread(h)
+        // Events sent from the test autorelease into its pool: drained,
+        // the closed edit box is freed, as it is in the app.
+        try autoreleasepool {
+            try h.menu(ofMessage: 0, onCard: 1, choose: "Edit")
+            h.wait(0.1)
+            h.key("cmd-z")
+            XCTAssertEqual((h.win.firstResponder as? ComposerTextView)?.string, "Why?")
+            h.key("cmd-a")
+            h.compose("Why not?")
+            h.key("cmd-enter")
+            h.wait(0.1)
+        }
+        XCTAssertEqual(h.comments, edited + "\nactive none")
+        h.key("cmd-z")
+        h.wait(0.1)
+        XCTAssertEqual(h.comments, all + "\nactive 1")
+        h.key("cmd-z")
+        h.wait(0.1)
+        XCTAssertEqual(h.comments, all + "\nactive 1")
+    }
 }
