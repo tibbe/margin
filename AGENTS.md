@@ -8,8 +8,12 @@ it does.
 
 This project uses specification-driven development.
 
-- `docs/specs/product.md`: the product spec: problem, user stories, product
-  decisions, and the UX the platforms share.
+- `docs/specs/product.md`: the product on one page: problem, principles, and
+  the list of areas.
+- `docs/specs/<area>.md` (`files`, `rendering`, `editing`, `comments`,
+  `changes`, `cli`): an area's user stories and product decisions.
+- `docs/specs/design_system.md`: the UX that holds across areas and
+  platforms.
 - `docs/specs/<platform>/design_system.md` (`linux`, `macos`, `web`): a
   platform's UX.
 - `docs/specs/architecture.md`: the architecturally significant decisions every
