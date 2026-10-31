@@ -2,7 +2,7 @@
 
 The web app's architecturally significant decisions: the ones costly to
 change later, e.g. its language and frameworks. Those every platform shares
-are in `docs/architecture.md`. The web app isn't built yet.
+are in `docs/specs/architecture.md`. The web app isn't built yet.
 
 - The editor is CodeMirror 6. Its document is plain text, so the text the
   writer edits is the file's, as in the native editors.

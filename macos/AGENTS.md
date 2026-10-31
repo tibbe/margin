@@ -1,6 +1,6 @@
 # macOS editor
 
-See `docs/macos/architecture.md`. Run these from the repository root.
+See `docs/specs/macos/architecture.md`. Run these from the repository root.
 
 Xcode builds each checkout in a folder of its own. Several worktrees may
 run their builds at once, under one bundle ID, so address the app by its

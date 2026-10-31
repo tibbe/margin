@@ -2,7 +2,7 @@
 
 The Linux editor's architecturally significant decisions: the ones costly to
 change later, e.g. its language and frameworks. Those every platform shares
-are in `docs/architecture.md`.
+are in `docs/specs/architecture.md`.
 
 - The editor is written in Rust, with GTK 4 (4.20+) and libadwaita (1.8+)
   through their Rust bindings, and is part of the `margin` binary.

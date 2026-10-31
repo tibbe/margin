@@ -8,18 +8,18 @@ it does.
 
 This project uses specification-driven development.
 
-- `docs/spec.md`: the product spec: problem, user stories, product
+- `docs/specs/product.md`: the product spec: problem, user stories, product
   decisions, and the UX the platforms share.
-- `docs/<platform>/design_system.md` (`linux`, `macos`, `web`): a platform's
-  UX.
-- `docs/architecture.md`: the architecturally significant decisions every
+- `docs/specs/<platform>/design_system.md` (`linux`, `macos`, `web`): a
+  platform's UX.
+- `docs/specs/architecture.md`: the architecturally significant decisions every
   platform shares, the ones costly to change later, e.g. languages and
   frameworks.
-- `docs/<platform>/architecture.md` (`linux`, `macos`, `web`): a
+- `docs/specs/<platform>/architecture.md` (`linux`, `macos`, `web`): a
   platform's own architecturally significant decisions.
 
 UX that holds on every platform belongs in the spec, and architecture that
-holds on every platform in `docs/architecture.md`; a platform's documents
+holds on every platform in `docs/specs/architecture.md`; a platform's documents
 hold only what is specific to it. How the code does what the specs say
 belongs in the code and its comments.
 Keep the specs in step with user-visible behavior changes. Keep `margin --help` and

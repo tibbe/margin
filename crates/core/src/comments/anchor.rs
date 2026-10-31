@@ -314,7 +314,7 @@ mod tests {
         assert_eq!(m("AdwSpinner"), Ok("AdwSpinner".into()));
     }
 
-    /// The examples in `docs/spec.md`'s table of how anchors follow edits.
+    /// The examples in `docs/specs/product.md`'s table of how anchors follow edits.
     #[test]
     fn spec_examples() {
         let m = |new| mapped("the quick fox jumps", new, "quick fox");

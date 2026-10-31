@@ -1,6 +1,6 @@
 //! Mermaid diagrams, drawn in the core so every editor shows the same
 //! picture: merman lays them out as SVG, and resvg turns that into pixels.
-//! See `docs/architecture.md`.
+//! See `docs/specs/architecture.md`.
 
 use merman::resources::{InputResourcePolicy, ResourceProfile};
 use merman::svg::{

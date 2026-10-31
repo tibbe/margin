@@ -2,7 +2,7 @@
 
 The macOS editor's architecturally significant decisions: the ones costly to
 change later, e.g. its language and frameworks. Those every platform shares
-are in `docs/architecture.md`.
+are in `docs/specs/architecture.md`.
 
 - The app is an Xcode project.
 - The UI is built with AppKit.

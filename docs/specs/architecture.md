@@ -2,7 +2,7 @@
 
 Margin's architecturally significant decisions that hold on every platform:
 the ones costly to change later. Each platform's own are in
-`docs/<platform>/architecture.md`.
+`docs/specs/<platform>/architecture.md`.
 
 - **One core, in Rust.** Everything platform-independent is in the core:
   - Markdown analysis and the editing rules;
