@@ -33,7 +33,7 @@ the ones costly to change later. Each platform's own are in
   text into shown paragraphs, as CodeMirror's decorations and Zed's
   display map do. It decides, for each range of the text:
   - whether it shows as text, is hidden, shows as other text (a soft line
-    break while reflowing, a table cell's gap), shows as an object (an
+    break while reflowing, a `<br>` in a table cell), shows as an object (an
     image, a diagram), or shows on a line laid out as nothing (a blank
     line, a fence);
   - when the cursor reveals its source;
@@ -45,7 +45,10 @@ the ones costly to change later. Each platform's own are in
   - the text as shown, for find.
 
   Paragraphs are those shown: a reflowed paragraph is one, though the file
-  breaks it into lines. The map translates positions both ways, so each
+  breaks it into lines, and a table cell is one, though its row holds
+  several. The map tells which cell of which table each one is, and the
+  rule for a table's column widths is in the core, from each column's
+  text as an editor measures it. The map translates positions both ways, so each
   editor lays out and draws the shown paragraphs, and finds where the
   cursor, the selection, highlights, cards and change bars go, through it.
   A new kind of block is one rule in the core and one renderer per editor.

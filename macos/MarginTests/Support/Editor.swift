@@ -66,6 +66,25 @@ final class Editor {
         return drawnLines.flatMap(\.glyphs).filter { $0.rect.maxX > right + 0.5 }.map(\.text).joined()
     }
 
+    /// Whether the fill behind the start of shown text `s` reaches past the
+    /// end of the drawn line it starts on, to `by` points after it: as a
+    /// selection going on to the next line does.
+    func fillReachesPastTheLineEnd(of s: String, by: CGFloat = 6) -> Bool {
+        guard let g = locate(s)?.first,
+            let line = drawnLines.first(where: { $0.glyphs.contains { $0.rect == g.rect } }),
+            let end = line.glyphs.last
+        else { return false }
+        let drawn = h.drawing()
+        let y = g.baseline - g.xHeight - 2
+        guard let a = drawn.color(at: NSPoint(x: g.rect.midX, y: y)),
+            let b = drawn.color(at: NSPoint(x: end.rect.maxX + by, y: y))
+        else { return false }
+        return [
+            a.redComponent - b.redComponent, a.greenComponent - b.greenComponent, a.blueComponent - b.blueComponent,
+        ]
+        .allSatisfy { abs($0) < 0.02 }
+    }
+
     /// The file, once the editor has saved.
     var file: String {
         h.save()

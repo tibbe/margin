@@ -610,7 +610,9 @@ extension DocView {
             for i in shownCells {
                 let p = shown[i]
                 let key = typesetKey(p, appearance: appearance, width: 0)
+                measuringCells = true
                 let m = key.flatMap { cellMeasures[$0] } ?? measure(i, p)
+                measuringCells = false
                 if let key { measures[key] = m }
                 let col = p.cell!.column
                 columns[col].longestWord = max(columns[col].longestWord, Double(m.word))
@@ -637,6 +639,16 @@ extension DocView {
         cellMeasures = measures
     }
 
+    /// The width of the text of the table cell holding source position `p`,
+    /// once the columns are sized.
+    func cellWidth(at p: Int) -> CGFloat? {
+        let pi = Int(projection.toShown(pos: UInt32(p)).paragraph)
+        guard pi < shown.count, let c = shown[pi].cell, let t = tables.first(where: { $0.index == c.table }),
+            c.column < t.columnWidths.count
+        else { return nil }
+        return t.columnWidths[c.column]
+    }
+
     /// What a table cell's text needs: the width of its longest word, and
     /// of all of it on one line.
     private func measure(_ i: Int, _ p: ShownParagraph) -> (word: CGFloat, line: CGFloat) {
@@ -649,8 +661,10 @@ extension DocView {
         var word: CGFloat = 0
         var start: Int?
         for k in 0...s.length {
+            // An image is no word: it counts only on the one line.
             let space =
-                k == s.length || CharacterSet.whitespacesAndNewlines.contains(UnicodeScalar(s.character(at: k)) ?? " ")
+                k == s.length || s.character(at: k) == 0xFFFC
+                || CharacterSet.whitespacesAndNewlines.contains(UnicodeScalar(s.character(at: k)) ?? " ")
             if space, let a = start {
                 word = max(word, width(NSRange(location: a, length: k - a)))
                 start = nil
@@ -692,17 +706,21 @@ extension DocView {
     }
 
     /// One rectangle per line for a range of paragraph `pi`'s laid-out text.
-    func rects(paragraph pi: Int, from a: Int, to b: Int, toEdge: Bool = false) -> [NSRect] {
+    /// With `toEdge`, as a selection is drawn: a line the range goes on
+    /// past reaches the edge its text may reach, the last one when the
+    /// range `continues` past the paragraph.
+    func rects(paragraph pi: Int, from a: Int, to b: Int, toEdge: Bool = false, continues: Bool = false) -> [NSRect] {
         var out: [NSRect] = []
         let ls = laidOut[pi].lines
         for (i, l) in ls.enumerated() {
             let lo = max(a, l.range.location)
             let hi = min(b, NSMaxRange(l.range))
             let last = i == ls.count - 1
-            if lo > hi || (lo == hi && !(toEdge && last && b >= NSMaxRange(l.range))) { continue }
+            let goesOn = toEdge && (last ? continues && b >= NSMaxRange(l.range) : b > NSMaxRange(l.range))
+            if lo > hi || (lo == hi && !(goesOn && last)) { continue }
             let x0 = x(lo, on: l)
             var x1 = x(hi, on: l)
-            if toEdge && last && b >= NSMaxRange(l.range) { x1 = max(x1, rightEdge(pi)) }
+            if goesOn { x1 = max(x1, rightEdge(pi)) }
             out.append(
                 NSRect(
                     x: min(x0, x1), y: l.textTop, width: abs(x1 - x0), height: l.bottom - l.spacing - l.textTop))
@@ -726,7 +744,7 @@ extension DocView {
         for pi in a.paragraph...max(a.paragraph, b.paragraph) {
             let from = pi == a.paragraph ? a.offset : 0
             let to = pi == b.paragraph ? b.offset : laidOut[pi].text.length
-            out += rects(paragraph: pi, from: from, to: to, toEdge: toEdge && pi < b.paragraph)
+            out += rects(paragraph: pi, from: from, to: to, toEdge: toEdge, continues: pi < b.paragraph)
         }
         return out
     }

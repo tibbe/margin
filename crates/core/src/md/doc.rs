@@ -256,6 +256,9 @@ pub struct ImageBlock {
     /// The alt text as shown, as source ranges: the text between `![` and
     /// `]`, without the syntax inside it (emphasis markers, escapes).
     pub alt: Vec<Range<usize>>,
+    /// Whether it is alone in a table cell rather than in a paragraph:
+    /// shown as an image only where tables show as grids.
+    pub in_cell: bool,
 }
 
 /// A `mermaid` fenced code block, which an editor shows as its diagram:
@@ -283,7 +286,8 @@ pub struct Doc {
     pub quotes: Vec<Quote>,
     pub code_blocks: Vec<CodeBlock>,
     pub tables: Vec<Table>,
-    /// In source order, at most one per line.
+    /// In source order: at most one per line, but in table rows, one per
+    /// cell.
     pub images: Vec<ImageBlock>,
     /// In source order.
     pub diagrams: Vec<DiagramBlock>,
@@ -296,6 +300,36 @@ pub struct Doc {
     /// Newlines inside paragraphs (CommonMark soft line breaks), which
     /// render as spaces.
     pub soft_breaks: Vec<usize>,
+    /// Whether the editor shows tables as grids, where the editing rules
+    /// for tables (the spec's Tables, in editing) hold. Not part of the
+    /// analysis: the editor sets it.
+    pub grid_tables: bool,
+}
+
+/// The length of the `<br>` tag at `p` in `src`, in any of its spellings
+/// (`<br>`, `<br/>`, `<br />`, any case), if one is there.
+pub fn br_len(src: &str, p: usize) -> Option<usize> {
+    let rest = src.get(p..)?.as_bytes();
+    if rest.len() < 4 || rest[0] != b'<' || !rest[1..3].eq_ignore_ascii_case(b"br") {
+        return None;
+    }
+    let mut i = 3;
+    while i < rest.len() && rest[i] == b' ' {
+        i += 1;
+    }
+    if i < rest.len() && rest[i] == b'/' {
+        i += 1;
+    }
+    (i < rest.len() && rest[i] == b'>').then_some(i + 1)
+}
+
+/// A table cell: its table in [`Doc::tables`], its row there (the header is
+/// row 0) and its index in the row.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct CellAt {
+    pub table: usize,
+    pub row: usize,
+    pub cell: usize,
 }
 
 // Vertical spacing at a 12pt (16px) body size, in pixels, within the range
@@ -765,7 +799,34 @@ impl Builder<'_> {
                     return;
                 };
                 let from = row.cells.last().map_or(self.row_start, |c| c.content.end);
-                row.trail = from..self.lines[row.line].end.max(from);
+                let end = self.lines[row.line].end.max(from);
+                // Cells past the header's, which the parser drops: after
+                // the `|` closing the last cell, each between two `|`s, and
+                // text after the last.
+                let bytes = self.src.as_bytes();
+                let pipes: Vec<usize> = (from..end)
+                    .filter(|&p| bytes[p] == b'|' && (p == 0 || bytes[p - 1] != b'\\'))
+                    .collect();
+                for (k, &pipe) in pipes.iter().enumerate() {
+                    let seg = pipe + 1..pipes.get(k + 1).copied().unwrap_or(end);
+                    let raw = &self.src[seg.clone()];
+                    if k + 1 == pipes.len() && raw.trim().is_empty() {
+                        break;
+                    }
+                    let start = seg.start + (raw.len() - raw.trim_start().len());
+                    let stop = seg.end - (raw.len() - raw.trim_end().len());
+                    let content = if start < stop {
+                        start..stop
+                    } else {
+                        let p = (seg.start + 1).min(seg.end);
+                        p..p
+                    };
+                    let lead =
+                        row.cells.last().map_or(self.row_start, |c| c.content.end)..content.start;
+                    row.cells.push(TableCell { lead, content });
+                }
+                let from = row.cells.last().map_or(self.row_start, |c| c.content.end);
+                row.trail = from..end.max(from);
             }
             TagEnd::BlockQuote(_) => {
                 self.flush_implicit();
@@ -879,6 +940,7 @@ impl Builder<'_> {
             hidden,
             spans: self.spans,
             soft_breaks: self.soft_breaks,
+            grid_tables: false,
         }
     }
 
@@ -1472,19 +1534,25 @@ fn merge(ranges: Vec<Range<usize>>) -> Vec<Range<usize>> {
 }
 
 impl Builder<'_> {
-    /// Images alone in their paragraphs ([`ImageBlock`]). A paragraph is a
-    /// tight list item's text too. `hidden` is the hidden inline syntax,
-    /// merged, which the alt text as shown leaves out.
+    /// Images alone in their paragraphs or table cells ([`ImageBlock`]).
+    /// A paragraph is a tight list item's text too. `hidden` is the hidden
+    /// inline syntax, merged, which the alt text as shown leaves out.
     fn image_blocks(&self, hidden: &[Range<usize>]) -> Vec<ImageBlock> {
         let mut out = Vec::new();
-        for b in self
+        let paragraphs = self
             .blocks
             .iter()
             .filter(|b| b.kind == BlockKind::Paragraph)
-        {
-            let text = &self.src[b.range.clone()];
-            let start = b.range.start + (text.len() - text.trim_start().len());
-            let end = b.range.end - (text.len() - text.trim_end().len());
+            .map(|b| (b.range.clone(), false));
+        let cells = self
+            .tables
+            .iter()
+            .flat_map(|t| t.rows.iter().flat_map(|r| r.cells.iter()))
+            .map(|c| (c.content.clone(), true));
+        for (range, in_cell) in paragraphs.chain(cells) {
+            let text = &self.src[range.clone()];
+            let start = range.start + (text.len() - text.trim_start().len());
+            let end = range.end - (text.len() - text.trim_end().len());
             let Some(image) = self
                 .inlines
                 .iter()
@@ -1516,6 +1584,7 @@ impl Builder<'_> {
                 line,
                 url: image.url.clone().unwrap_or_default(),
                 alt,
+                in_cell,
             });
         }
         out.sort_by_key(|i| i.range.start);
@@ -1607,6 +1676,37 @@ impl Doc {
         line_index(&self.lines, pos)
     }
 
+    /// The table cell holding `pos`, when tables show as grids: of a table
+    /// row's line, the last cell whose text starts at or before it (the
+    /// first, before any). A cell's text's end is its own, not the next
+    /// cell's.
+    pub fn cell_at(&self, pos: usize) -> Option<CellAt> {
+        if !self.grid_tables || self.lines.is_empty() {
+            return None;
+        }
+        let li = self.line_index(pos.min(self.len));
+        for (ti, t) in self.tables.iter().enumerate() {
+            if let Some(ri) = t.rows.iter().position(|r| r.line == li) {
+                let cells = &t.rows[ri].cells;
+                if cells.is_empty() {
+                    return None;
+                }
+                let ci = cells
+                    .iter()
+                    .rposition(|c| {
+                        c.content.start <= pos && (c.lead.start < pos || c.lead.is_empty())
+                    })
+                    .unwrap_or(0);
+                return Some(CellAt {
+                    table: ti,
+                    row: ri,
+                    cell: ci,
+                });
+            }
+        }
+        None
+    }
+
     pub fn line_at(&self, pos: usize) -> &Line {
         &self.lines[self.line_index(pos)]
     }
@@ -1676,10 +1776,12 @@ impl Doc {
         self.lines.iter().position(|l| l.kind != LineKind::Blank)
     }
 
-    /// The image block on `line`, if any.
+    /// The image block alone in its paragraph on `line`, if any.
     pub fn image_block_on_line(&self, line: usize) -> Option<&ImageBlock> {
         let i = self.images.partition_point(|im| im.line < line);
-        self.images.get(i).filter(|im| im.line == line)
+        self.images
+            .get(i)
+            .filter(|im| im.line == line && !im.in_cell)
     }
 
     /// The diagram block that `line` is one of, if any.
@@ -1696,11 +1798,13 @@ impl Doc {
             .or_else(|| self.diagram_on_line(line).map(|d| d.range.clone()))
     }
 
-    /// The sources of the objects, images and diagrams, in source order.
+    /// The sources of the objects, images and diagrams, in source order:
+    /// images in table cells only where tables show as grids.
     pub fn objects(&self) -> Vec<Range<usize>> {
         let mut out: Vec<Range<usize>> = self
             .images
             .iter()
+            .filter(|im| !im.in_cell || self.grid_tables)
             .map(|im| im.range.clone())
             .chain(self.diagrams.iter().map(|d| d.range.clone()))
             .collect();
@@ -1937,6 +2041,23 @@ mod tests {
         assert_eq!(t.rows[1].cells[1].content, 35..35);
     }
 
+    /// GitHub drops a row's cells past the header's; Margin keeps them, as
+    /// more columns.
+    #[test]
+    fn a_rows_extra_cells_are_cells() {
+        let src = "| A |\n|---|\n| x | y |  |\n";
+        let doc = parse(src);
+        let row = &doc.tables[0].rows[1];
+        let text = |r: &Range<usize>| &src[r.clone()];
+        let cells: Vec<_> = row
+            .cells
+            .iter()
+            .map(|c| (text(&c.lead), text(&c.content)))
+            .collect();
+        assert_eq!(cells, [("| ", "x"), (" | ", "y"), (" | ", "")]);
+        assert_eq!(text(&row.trail), " |");
+    }
+
     #[test]
     fn table_in_quote_rows_start_after_the_marker() {
         let src = "> | q | r |\n> |---|---|\n> | 1 | 2 |\n";
@@ -2126,10 +2247,17 @@ mod tests {
             "![a](a.png) ![b](b.png)\n",
             "![a](a.png)\nmore\n",
             "# ![a](a.png)\n",
-            "| ![a](a.png) |\n|---|\n",
         ] {
             assert!(parse(src).images.is_empty(), "{src:?}");
         }
+        // Alone in a table cell, it is one there.
+        let doc = parse("| ![a](a.png) | b ![c](c.png) |\n|---|---|\n");
+        let cells: Vec<_> = doc
+            .images
+            .iter()
+            .map(|im| (im.url.as_str(), im.in_cell))
+            .collect();
+        assert_eq!(cells, [("a.png", true)]);
         let doc = parse("a\n\n![a](a.png)\n");
         assert_eq!(doc.image_block_on_line(2).map(|im| im.line), Some(2));
         assert!(doc.image_block_on_line(0).is_none());

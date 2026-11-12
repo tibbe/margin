@@ -126,6 +126,73 @@ final class EndToEndTests: XCTestCase {
         XCTAssertTrue(e.file.contains("word12Q word13"), e.file)
     }
 
+    @MainActor
+    func testAWordTooLongForItsColumnBreaksInside() throws {
+        let url = "https://example.com/" + String(repeating: "abcdefghij", count: 12)
+        let e = try Editor("| Link | Also |\n|---|---|\n| \(url) | \(url) |\n", width: 700)
+        defer { e.close() }
+        XCTAssertEqual(e.pastTheColumn, "", "nothing is drawn past the text column")
+        XCTAssertEqual(e.lines.joined(), "LinkAlso" + url + url, "every character, once, in order")
+    }
+
+    @MainActor
+    func testABrInACellBreaksTheLine() throws {
+        let e = try Editor("| A |\n|---|\n| one<br>two |\n")
+        defer { e.close() }
+        XCTAssertEqual(e.lines.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }, ["A", "one", "two"])
+        e.click("two")
+        e.key("backspace")
+        XCTAssertEqual(e.file, "| A |\n|---|\n| onetwo |\n", "Backspace takes it whole")
+    }
+
+    @MainActor
+    func testARowsExtraCellsShowAsColumns() throws {
+        let e = try Editor("| A |\n|---|\n| x | y |\n")
+        defer { e.close() }
+        XCTAssertEqual(e.lines, ["A", "x", "y"])
+        e.click("y")
+        e.key("up")
+        e.type("Q")
+        XCTAssertEqual(e.file, "| AQ |\n|---|\n| x | y |\n", "above it, the header has no cell: its last")
+    }
+
+    @MainActor
+    func testASelectedLineGoingOnInACellIsFilledToTheCellsEdge() throws {
+        let e = try Editor(table, width: 700)
+        defer { e.close() }
+        e.drag(from: "word5", to: "word20")
+        XCTAssertTrue(e.fillReachesPastTheLineEnd(of: "word5"), "on to the next line: to the cell's edge")
+        XCTAssertFalse(e.fillReachesPastTheLineEnd(of: "word13", by: 40), "the last line: not past the selection")
+    }
+
+    @MainActor
+    func testEnterAndTabMoveBetweenCells() throws {
+        let e = try Editor("| A | B |\n|---|---|\n| x | y |\n")
+        defer { e.close() }
+        e.click("A", offset: 1)
+        e.key("enter")
+        e.type("Q")
+        XCTAssertEqual(e.file, "| A | B |\n|---|---|\n| xQ | y |\n", "Enter: to the cell below")
+        e.key("tab")
+        e.type("Z")
+        XCTAssertEqual(e.file, "| A | B |\n|---|---|\n| xQ | Z |\n", "Tab: the next cell's text")
+        e.key("tab")
+        e.type("N")
+        XCTAssertEqual(e.file, "| A | B |\n|---|---|\n| xQ | Z |\n| N |  |\n", "from the last cell, a new row")
+    }
+
+    @MainActor
+    func testBlockCommandsAreOffInATable() throws {
+        let e = try Editor("Text\n\n| A |\n|---|\n| q |\n")
+        defer { e.close() }
+        e.click("q")
+        XCTAssertEqual(e.h.menu("Format > Quote"), "disabled")
+        XCTAssertEqual(e.h.menu("Format > Heading 1"), "disabled")
+        XCTAssertEqual(e.h.menu("Format > Bold"), "enabled")
+        e.click("Text")
+        XCTAssertEqual(e.h.menu("Format > Quote"), "enabled")
+    }
+
     // MARK: - The caret
 
     @MainActor
