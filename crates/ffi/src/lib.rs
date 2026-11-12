@@ -256,6 +256,8 @@ pub struct ImageBlockInfo {
     pub url: String,
     /// The alt text as shown, as ranges of the source.
     pub alt: Vec<TextRange>,
+    /// Whether it is alone in a table cell, not in a paragraph.
+    pub in_cell: bool,
 }
 
 /// A `mermaid` code block (see `margin_core::md::DiagramBlock`), which the
@@ -398,9 +400,19 @@ impl Analysis {
     /// than a Swift string conversion. Invalid bytes are replaced.
     #[uniffi::constructor]
     pub fn from_utf8(bytes: Vec<u8>) -> Arc<Self> {
+        Analysis::from_utf8_shown(bytes, false)
+    }
+
+    /// As `from_utf8`, for an editor that shows tables as grids when
+    /// `grid_tables`, where the editing rules for tables hold.
+    #[uniffi::constructor]
+    pub fn from_utf8_shown(bytes: Vec<u8>, grid_tables: bool) -> Arc<Self> {
         let text = String::from_utf8(bytes)
             .unwrap_or_else(|e| String::from_utf8_lossy(e.as_bytes()).into_owned());
-        Analysis::new(text)
+        let mut doc = md::parse(&text);
+        doc.grid_tables = grid_tables;
+        let index = Utf16Index::new(&text);
+        Arc::new(Analysis { text, doc, index })
     }
 
     pub fn length(&self) -> u32 {
@@ -718,11 +730,13 @@ impl Analysis {
         self.doc
             .images
             .iter()
+            .filter(|im| !im.in_cell || self.doc.grid_tables)
             .map(|im| ImageBlockInfo {
                 range: self.range(im.range.clone()),
                 line: im.line as u32,
                 url: im.url.clone(),
                 alt: im.alt.iter().map(|r| self.range(r.clone())).collect(),
+                in_cell: im.in_cell,
             })
             .collect()
     }
@@ -872,6 +886,17 @@ impl Analysis {
         ))
     }
 
+    /// Tab, or Shift+Tab (`back`): in a table shown as a grid, to the next
+    /// or previous cell; elsewhere, as `indent`.
+    pub fn tab(&self, start: u32, end: u32, back: bool) -> EditPlan {
+        self.plan(edit::tab(
+            &self.text,
+            &self.doc,
+            self.bytes(start, end),
+            back,
+        ))
+    }
+
     pub fn indent(&self, start: u32, end: u32, outdent: bool) -> EditPlan {
         self.plan(edit::indent(
             &self.text,
@@ -926,8 +951,13 @@ impl Analysis {
         let first = matches.first()?.start;
         // Last to first, so earlier matches keep their offsets.
         let mut text = self.text.clone();
+        let parse = |text: &str| {
+            let mut doc = md::parse(text);
+            doc.grid_tables = self.doc.grid_tables;
+            doc
+        };
         for r in matches.iter().rev() {
-            let doc = md::parse(&text);
+            let doc = parse(&text);
             let plan = match edit::replace_plain(&text, &doc, r.clone(), &with) {
                 Some(p) => p,
                 None => {
@@ -937,7 +967,7 @@ impl Analysis {
                         text = after;
                         continue;
                     }
-                    let doc = md::parse(&after);
+                    let doc = parse(&after);
                     let inserted = edit::insert(&after, &doc, deleted.cursor, &with);
                     text = inserted.apply(&after);
                     continue;

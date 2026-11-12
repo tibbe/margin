@@ -1,12 +1,14 @@
 //! Finding text as the reader sees it: hidden syntax is skipped, so
 //! searching for "bold text" finds `**bold** text`.
 
-use super::doc::{Doc, LineKind};
+use super::doc::{Doc, LineKind, TableRow, br_len};
+use std::collections::HashMap;
 use std::ops::Range;
 
 /// The rendered text, one entry per visible character: the character and
 /// its byte offset in the source. Line breaks inside paragraphs read as
-/// spaces. Image blocks show their alt text, as in an editor that draws
+/// spaces. Of a table shown as a grid, only its cells' text shows, a `<br>`
+/// as a space, and no match spans two cells. Image blocks show their alt text, as in an editor that draws
 /// none of them.
 pub fn visible_chars(src: &str, doc: &Doc) -> Vec<(char, usize)> {
     shown_chars(src, doc, &|_| true, &|_| true)
@@ -38,17 +40,49 @@ fn shown_chars(
     };
     let mut out = Vec::with_capacity(src.len());
     let mut soft = doc.soft_breaks.iter().peekable();
-    for l in &doc.lines {
+    // Tables shown as grids: their rows by line, and their delimiter rows.
+    let mut rows: HashMap<usize, &TableRow> = HashMap::new();
+    let mut delimiters: Vec<usize> = Vec::new();
+    if doc.grid_tables {
+        for t in &doc.tables {
+            delimiters.push(t.delimiter_line);
+            rows.extend(t.rows.iter().map(|r| (r.line, r)));
+        }
+    }
+    for (li, l) in doc.lines.iter().enumerate() {
         if matches!(
             l.kind,
             LineKind::Blank | LineKind::SetextUnderline | LineKind::Fence | LineKind::Rule
-        ) {
+        ) || delimiters.contains(&li)
+        {
             continue;
         }
-        for (off, c) in src[l.content_start..l.end].char_indices() {
-            let p = l.content_start + off;
-            if !doc.is_hidden_byte(p) && !in_picture(p) {
-                out.push((c, p));
+        if let Some(row) = rows.get(&li) {
+            for (j, cell) in row.cells.iter().enumerate() {
+                if j > 0 {
+                    // Between cells: what no needle holds.
+                    out.push((CELL_BREAK, cell.lead.start));
+                }
+                let mut p = cell.content.start;
+                while p < cell.content.end {
+                    if let Some(n) = br_len(src, p) {
+                        out.push((' ', p));
+                        p += n;
+                        continue;
+                    }
+                    let c = src[p..].chars().next().expect("a character");
+                    if !doc.is_hidden_byte(p) && !in_picture(p) {
+                        out.push((c, p));
+                    }
+                    p += c.len_utf8();
+                }
+            }
+        } else {
+            for (off, c) in src[l.content_start..l.end].char_indices() {
+                let p = l.content_start + off;
+                if !doc.is_hidden_byte(p) && !in_picture(p) {
+                    out.push((c, p));
+                }
             }
         }
         if l.end < src.len() {
@@ -59,6 +93,10 @@ fn shown_chars(
     }
     out
 }
+
+/// What stands between two table cells in the text searched: a character
+/// no needle holds.
+const CELL_BREAK: char = '\u{0}';
 
 fn fold(c: char) -> char {
     c.to_lowercase().next().unwrap_or(c)
@@ -168,6 +206,39 @@ mod tests {
         let n = |shows: bool| find_shown(src, &doc, "start", false, |_| true, |_| shows).len();
         assert_eq!(n(false), 1);
         assert_eq!(n(true), 2);
+    }
+
+    fn found_in_grid<'a>(src: &'a str, needle: &str) -> Vec<&'a str> {
+        let mut doc = parse(src);
+        doc.grid_tables = true;
+        find_all(src, &doc, needle, false)
+            .into_iter()
+            .map(|r| &src[r])
+            .collect()
+    }
+
+    #[test]
+    fn in_a_grid_no_match_spans_two_cells() {
+        let src = "| a | b |\n|---|---|\n| c | d |\n";
+        assert!(found_in_grid(src, "a b").is_empty());
+        assert!(found_in_grid(src, "b c").is_empty());
+        assert!(found_in_grid(src, "|").is_empty(), "the pipes don't show");
+        assert!(
+            found_in_grid(src, "---").is_empty(),
+            "nor does the delimiter row"
+        );
+        assert_eq!(found_in_grid(src, "d"), ["d"]);
+        assert_eq!(
+            found(src, "a | b"),
+            ["a | b"],
+            "shown as source, the pipes match"
+        );
+    }
+
+    #[test]
+    fn in_a_grid_a_br_matches_as_a_space() {
+        assert_eq!(found_in_grid("| x<br>y |\n|---|\n", "x y"), ["x<br>y"]);
+        assert_eq!(found_in_grid("| x<BR />y |\n|---|\n", "x y"), ["x<BR />y"]);
     }
 
     #[test]

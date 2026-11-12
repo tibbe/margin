@@ -4,14 +4,15 @@
 //! The source is the document; this is a projection of it, as CodeMirror's
 //! decorations or Zed's display map are. Markdown syntax is hidden, a soft
 //! line break shows as a space while reflowing (joining the paragraph's
-//! lines into one shown paragraph), a table cell's padding as the gap to its
-//! column, and an image or diagram as one object. Editors lay out the shown
-//! paragraphs, and map every position, both ways, through here.
+//! lines into one shown paragraph), each table cell shows as a paragraph of
+//! its own, a `<br>` in one as a line break, and an image or diagram as one
+//! object. Editors lay out the shown paragraphs, a table row's cells side
+//! by side, and map every position, both ways, through here.
 //!
 //! Positions are source byte offsets; offsets in a shown paragraph are byte
 //! offsets in its shown text.
 
-use super::doc::{Doc, LineKind, Style};
+use super::doc::{Doc, LineKind, Style, br_len};
 use std::ops::Range;
 use unicode_segmentation::UnicodeSegmentation;
 
@@ -35,8 +36,8 @@ pub enum Piece {
     Shown(Range<usize>),
     /// Not at all.
     Hidden(Range<usize>),
-    /// As other text: a soft line break as a space, a table cell's gap as
-    /// a tab, which the editor sets at the cell's column.
+    /// As other text: a soft line break as a space, a `<br>` in a table
+    /// cell as a line separator (U+2028).
     Replaced(Range<usize>, &'static str),
     /// As an image or a diagram: one object, one shown character
     /// ([`OBJECT`]), that the cursor never rests inside.
@@ -382,7 +383,14 @@ fn decorations(src: &str, doc: &Doc, opts: &Options) -> Vec<(Range<usize>, Deco)
     let mut objects: Vec<Range<usize>> = doc
         .images
         .iter()
-        .map(|i| i.range.start..line_end(i.line))
+        .filter(|i| !i.in_cell || doc.grid_tables)
+        .map(|i| {
+            if i.in_cell {
+                i.range.clone()
+            } else {
+                i.range.start..line_end(i.line)
+            }
+        })
         .chain(
             doc.diagrams
                 .iter()
@@ -412,14 +420,29 @@ fn decorations(src: &str, doc: &Doc, opts: &Options) -> Vec<(Range<usize>, Deco)
                 if cell.lead.end > cell.lead.start || j > 0 {
                     cells.push((cell.lead.clone(), kind));
                 }
+                // A `<br>` in a cell is a line break.
+                let mut p = cell.content.start;
+                while p < cell.content.end {
+                    match br_len(src, p) {
+                        Some(n) => {
+                            replaced.push((p..p + n, "\u{2028}"));
+                            p += n;
+                        }
+                        None => p += 1,
+                    }
+                }
             }
             hidden.push(row.trail.clone());
         }
     }
     let cell_ranges: Vec<Range<usize>> = cells.iter().map(|(r, _)| r.clone()).collect();
+    let breaks: Vec<Range<usize>> = replaced.iter().map(|(r, _)| r.clone()).collect();
     let hidden = subtract(
-        &subtract(&merge(hidden), &merge(opts.reveal.clone())),
-        &merge(cell_ranges.clone()),
+        &subtract(
+            &subtract(&merge(hidden), &merge(opts.reveal.clone())),
+            &merge(cell_ranges.clone()),
+        ),
+        &merge(breaks),
     );
     if opts.reflow {
         replaced.extend(doc.soft_breaks.iter().map(|&b| (b..b + 1, " ")));
@@ -780,7 +803,7 @@ impl Display {
     /// and the cursor ends after them. The first moves past the second; if
     /// the first shows as other text (a soft line break), the second moves
     /// before it instead. None without two characters to swap, or when
-    /// neither is its own source (an object, a table's gap).
+    /// neither is its own source (an object, a `<br>`).
     pub fn transposed(&self, src: &str, pos: usize) -> Option<Transpose> {
         let at = self.to_shown(pos);
         let i = at.paragraph;
@@ -962,6 +985,22 @@ mod tests {
         // Each row is one line of the file.
         assert_eq!(d.paragraphs[0].lines, 0..1);
         assert_eq!(d.paragraphs[3].lines, 2..3);
+    }
+
+    #[test]
+    fn a_br_in_a_cell_shows_as_a_line_break() {
+        let src = "| x<br>y | a<BR/>b |\n|---|---|\n";
+        assert_eq!(
+            shown(src, &Options::default()),
+            ["x\u{2028}y", "a\u{2028}b", ""]
+        );
+        let d = map(src, &Options::default());
+        let y = src.find('y').unwrap();
+        assert_eq!(
+            d.step(src, y, false),
+            src.find('<').unwrap(),
+            "one step over it"
+        );
     }
 
     #[test]

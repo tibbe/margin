@@ -23,6 +23,7 @@ struct DocObject {
     let start: Int
     let sourceEnd: Int
     /// Its last line's end: spaces after an image's source are part of it.
+    /// In a table cell, its source's end.
     let end: Int
 
     /// What selecting it selects.
@@ -30,6 +31,11 @@ struct DocObject {
 
     var isDiagram: Bool {
         if case .diagram = kind { true } else { false }
+    }
+
+    /// Whether it is an image alone in a table cell.
+    var inCell: Bool {
+        if case .image(let b) = kind { b.inCell } else { false }
     }
 
     /// Whether `p` is on it, its edges included.

@@ -35,6 +35,23 @@ final class ImageTests: XCTestCase {
     }
 
     @MainActor
+    func testAnImageAloneInATableCellFitsItsColumn() throws {
+        let h = try Harness()
+        defer { h.close() }
+        try h.png("big.png", 3000, 600)
+        try h.png("small.png", 40, 20)
+        h.reset("| Pic | Note |\n|---|---|\n| ![big](big.png) | some words here |\n| ![small](small.png) | x |\n")
+        h.waitForImages()
+        XCTAssertEqual(h.images.count, 2, "\(h.images)")
+        XCTAssertEqual(h.images.last, "image 40×20", "never enlarged")
+        let big = h.imageRect(0)
+        XCTAssertLessThanOrEqual(big.maxX, h.view.geometry.left + h.view.geometry.docWidth, "never past the column")
+        XCTAssertGreaterThan(big.width, 300, "its width counts in its column's, not as a word")
+        h.key("cmd-/")
+        XCTAssertEqual(h.images, [], "in Show Markdown, the source")
+    }
+
+    @MainActor
     func testImagesFitTheColumnAndFollowTheZoom() throws {
         let h = try Harness()
         defer { h.close() }

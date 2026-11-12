@@ -29,7 +29,13 @@ final class DocView: NSView, NSTextInputClient, NSViewToolTipOwner, NSMenuItemVa
     /// The image blocks shown as images, and the diagrams (none in Show
     /// Markdown), in order.
     private(set) var objects: [DocObject] = []
+    /// The object on each line, but images in table cells.
     private(set) var objectOnLine: [Int: Int] = [:]
+    /// The images in table cells on each line.
+    private var cellObjectsOnLine: [Int: [Int]] = [:]
+    /// Whether the table cells are being measured, when an image in one is
+    /// as wide as it can be, whatever its column.
+    var measuringCells = false
     private var objectAtChar: [Int: Int] = [:]
     /// The source, styled as the analysis says (fonts, colors, the
     /// paragraph style giving each line's indent and spacing). Never laid
@@ -255,7 +261,7 @@ final class DocView: NSView, NSTextInputClient, NSViewToolTipOwner, NSMenuItemVa
     /// Re-analyzes the text and shows it again.
     func refresh() {
         let bytes = text.data(using: String.Encoding.utf8.rawValue) ?? Data()
-        analysis = Analysis.fromUtf8(bytes: bytes)
+        analysis = Analysis.fromUtf8Shown(bytes: bytes, gridTables: !sourceMode)
         lines = LineInfo.decode(analysis.linesPacked())
         items = analysis.items()
         quotes = analysis.quotes()
@@ -378,7 +384,8 @@ final class DocView: NSView, NSTextInputClient, NSViewToolTipOwner, NSMenuItemVa
                 guard li < lines.count else { return nil }
                 return DocObject(
                     kind: .image(b), index: i, source: ImageSource.resolve(b.url, from: imageFolder), line: li,
-                    lastLine: li, start: Int(b.range.start), sourceEnd: Int(b.range.end), end: Int(lines[li].end))
+                    lastLine: li, start: Int(b.range.start), sourceEnd: Int(b.range.end),
+                    end: b.inCell ? Int(b.range.end) : Int(lines[li].end))
             }
             let colors = diagramColors()
             all += diagramBlocks.enumerated().compactMap { i, d in
@@ -393,9 +400,14 @@ final class DocView: NSView, NSTextInputClient, NSViewToolTipOwner, NSMenuItemVa
         }
         objects = all
         objectOnLine = [:]
+        cellObjectsOnLine = [:]
         objectAtChar = [:]
         for (i, o) in objects.enumerated() {
-            for li in o.line...o.lastLine { objectOnLine[li] = i }
+            if o.inCell {
+                cellObjectsOnLine[o.line, default: []].append(i)
+            } else {
+                for li in o.line...o.lastLine { objectOnLine[li] = i }
+            }
             objectAtChar[o.start] = i
         }
     }
@@ -426,6 +438,7 @@ final class DocView: NSView, NSTextInputClient, NSViewToolTipOwner, NSMenuItemVa
     func object(at p: Int) -> DocObject? {
         guard !objects.isEmpty, !lines.isEmpty else { return nil }
         let li = Int(analysis.lineIndex(pos: UInt32(max(0, p))))
+        if let i = cellObjectsOnLine[li]?.first(where: { objects[$0].contains(p) }) { return objects[i] }
         guard let i = objectOnLine[li], objects[i].contains(p) else { return nil }
         return objects[i]
     }
@@ -482,7 +495,9 @@ final class DocView: NSView, NSTextInputClient, NSViewToolTipOwner, NSMenuItemVa
     /// How image `o` looks now, its size from the text column and the zoom.
     func look(of o: DocObject) -> ObjectLook {
         let l = lines[o.line]
-        let room = max(1, geometry.docWidth - indent(quotes: l.quotes, items: l.items))
+        var room = max(1, geometry.docWidth - indent(quotes: l.quotes, items: l.items))
+        // In a table cell, its column's width.
+        if o.inCell, !measuringCells, let width = cellWidth(at: o.start) { room = max(1, width) }
         switch ImageLibrary.shared.state(of: o.source) {
         case .loaded(let image):
             return .image(image, ObjectLook.size(of: image, zoom: Theme.bodySize / Theme.baseBodySize, room: room))
@@ -866,12 +881,21 @@ final class DocView: NSView, NSTextInputClient, NSViewToolTipOwner, NSMenuItemVa
 
     @objc override func insertTab(_ sender: Any?) {
         if sourceMode { return insertRaw("\t") }
-        indentLines(outdent: false)
+        tab(back: false)
     }
 
     @objc override func insertBacktab(_ sender: Any?) {
         if sourceMode { return }
-        indentLines(outdent: true)
+        tab(back: true)
+    }
+
+    /// Tab or Shift+Tab: in a table, to the next or previous cell; else it
+    /// indents or outdents.
+    private func tab(back: Bool) {
+        run { a, c, sel in
+            let r = sel.length > 0 ? sel : NSRange(location: c, length: 0)
+            return a.tab(start: UInt32(r.location), end: UInt32(NSMaxRange(r)), back: back)
+        }
     }
 
     @objc override func deleteBackward(_ sender: Any?) {
@@ -1323,13 +1347,25 @@ final class DocView: NSView, NSTextInputClient, NSViewToolTipOwner, NSMenuItemVa
         validate(item.action)
     }
 
+    /// Whether the selection, or the cursor, is all in one table, where
+    /// block commands do nothing.
+    var selectionInTable: Bool {
+        let sel = sourceSelection
+        guard let a = laid(sel.location), let b = laid(NSMaxRange(sel)),
+            let ca = laidOut[a.paragraph].cell?.place, let cb = laidOut[b.paragraph].cell?.place
+        else { return false }
+        return ca.table == cb.table
+    }
+
     private func validate(_ action: Selector?) -> Bool {
         switch action {
+        case #selector(marginNormalText(_:)), #selector(marginHeading(_:)), #selector(marginBulletedList(_:)),
+            #selector(marginNumberedList(_:)), #selector(marginChecklist(_:)), #selector(marginQuote(_:)),
+            #selector(marginCodeBlock(_:)), #selector(marginIndent(_:)), #selector(marginOutdent(_:)),
+            #selector(marginToggleTask(_:)):
+            return formattingAllowed && !selectionInTable
         case #selector(marginBold(_:)), #selector(marginItalic(_:)), #selector(marginStrikethrough(_:)),
-            #selector(marginInlineCode(_:)), #selector(marginNormalText(_:)), #selector(marginHeading(_:)),
-            #selector(marginBulletedList(_:)), #selector(marginNumberedList(_:)), #selector(marginChecklist(_:)),
-            #selector(marginQuote(_:)), #selector(marginCodeBlock(_:)), #selector(marginIndent(_:)),
-            #selector(marginOutdent(_:)), #selector(marginToggleTask(_:)), #selector(marginLink(_:)):
+            #selector(marginInlineCode(_:)), #selector(marginLink(_:)):
             return formattingAllowed
         case #selector(copy(_:)), #selector(cut(_:)):
             return selection != nil
