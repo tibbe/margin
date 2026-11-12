@@ -64,7 +64,17 @@ impl Piece {
     }
 }
 
-/// One shown paragraph: one source line, or several joined by soft breaks.
+/// Where a table cell is: its table in [`Doc::tables`], its row there
+/// (the header is row 0) and its column.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Cell {
+    pub table: usize,
+    pub row: usize,
+    pub column: usize,
+}
+
+/// One shown paragraph: one source line, several joined by soft breaks, or
+/// a table cell.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Paragraph {
     /// The source lines it shows, as indices into [`Doc::lines`]; empty for
@@ -75,6 +85,8 @@ pub struct Paragraph {
     pub source: Range<usize>,
     /// Covering `source`, in order.
     pub pieces: Vec<Piece>,
+    /// The table cell it is, if it is one.
+    pub cell: Option<Cell>,
 }
 
 impl Paragraph {
@@ -148,6 +160,12 @@ pub struct Transpose {
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Deco {
     Hide,
+    /// Hidden, and it starts a table cell: a row's first cell's lead.
+    CellStart,
+    /// Hidden, and it ends the cell before it and starts the next: a later
+    /// cell's lead, whose first byte (the end of the cell before) is in
+    /// neither, as a line break is in neither of its lines.
+    CellBreak,
     Replace(&'static str),
     Object,
 }
@@ -183,6 +201,7 @@ pub fn project(src: &str, doc: &Doc, opts: &Options) -> Display {
             lines,
             source: start..end,
             pieces,
+            cell: None,
         });
     };
     while pos < len {
@@ -226,6 +245,18 @@ pub fn project(src: &str, doc: &Doc, opts: &Options) -> Display {
                 pieces.push(Piece::Object(r));
                 showing = true;
             }
+            Some(Deco::CellStart) => {
+                pieces.push(Piece::Hidden(r));
+                showing = true;
+            }
+            Some(Deco::CellBreak) => {
+                finish(&mut paragraphs, std::mem::take(&mut pieces), start, pos);
+                start = pos + 1;
+                if end > start {
+                    pieces.push(Piece::Hidden(start..end));
+                }
+                showing = true;
+            }
             Some(Deco::Hide) => {
                 // A hidden line break ends a paragraph that shows something;
                 // one on a collapsed line runs into the next paragraph.
@@ -262,7 +293,24 @@ pub fn project(src: &str, doc: &Doc, opts: &Options) -> Display {
             lines: doc.lines.len()..doc.lines.len(),
             source: len..len,
             pieces: Vec::new(),
+            cell: None,
         });
+    }
+    if !opts.source_mode {
+        for (ti, t) in doc.tables.iter().enumerate() {
+            for (ri, row) in t.rows.iter().enumerate() {
+                for (ci, c) in row.cells.iter().enumerate() {
+                    let i = paragraphs
+                        .partition_point(|p| p.source.start <= c.content.start)
+                        .saturating_sub(1);
+                    paragraphs[i].cell = Some(Cell {
+                        table: ti,
+                        row: ri,
+                        column: ci,
+                    });
+                }
+            }
+        }
     }
 
     let hidden_at = |p: usize| {
@@ -350,27 +398,36 @@ fn decorations(src: &str, doc: &Doc, opts: &Options) -> Vec<(Range<usize>, Deco)
         .map(|s| s.range.clone())
         .collect();
     let mut replaced: Vec<(Range<usize>, &'static str)> = Vec::new();
+    let mut cells: Vec<(Range<usize>, Deco)> = Vec::new();
     for t in &doc.tables {
         let d = &doc.lines[t.delimiter_line];
         hidden.push(d.start..(d.end + 1).min(len));
         for row in &t.rows {
-            for cell in &row.cells {
-                if cell.lead.end > cell.lead.start {
-                    let gap = cell.lead.end - 1;
-                    hidden.push(cell.lead.start..gap);
-                    replaced.push((gap..gap + 1, "\t"));
+            for (j, cell) in row.cells.iter().enumerate() {
+                let kind = if j == 0 {
+                    Deco::CellStart
+                } else {
+                    Deco::CellBreak
+                };
+                if cell.lead.end > cell.lead.start || j > 0 {
+                    cells.push((cell.lead.clone(), kind));
                 }
             }
             hidden.push(row.trail.clone());
         }
     }
-    let hidden = subtract(&merge(hidden), &merge(opts.reveal.clone()));
+    let cell_ranges: Vec<Range<usize>> = cells.iter().map(|(r, _)| r.clone()).collect();
+    let hidden = subtract(
+        &subtract(&merge(hidden), &merge(opts.reveal.clone())),
+        &merge(cell_ranges.clone()),
+    );
     if opts.reflow {
         replaced.extend(doc.soft_breaks.iter().map(|&b| (b..b + 1, " ")));
     }
 
     let mut out: Vec<(Range<usize>, Deco)> =
         objects.iter().map(|r| (r.clone(), Deco::Object)).collect();
+    out.extend(cells);
     for r in subtract(&hidden, &objects) {
         out.push((r, Deco::Hide));
     }
@@ -886,9 +943,62 @@ mod tests {
     }
 
     #[test]
-    fn tables_show_cells_at_tab_stops() {
+    fn a_table_shows_each_cell_as_a_paragraph() {
         let src = "| a | b |\n|---|---|\n| c | d |\n";
-        assert_eq!(shown(src, &Options::default()), ["\ta\tb", "\tc\td", ""]);
+        assert_eq!(shown(src, &Options::default()), ["a", "b", "c", "d", ""]);
+        let d = map(src, &Options::default());
+        let cells: Vec<Option<Cell>> = d.paragraphs.iter().map(|p| p.cell).collect();
+        let cell = |row, column| {
+            Some(Cell {
+                table: 0,
+                row,
+                column,
+            })
+        };
+        assert_eq!(
+            cells,
+            [cell(0, 0), cell(0, 1), cell(1, 0), cell(1, 1), None]
+        );
+        // Each row is one line of the file.
+        assert_eq!(d.paragraphs[0].lines, 0..1);
+        assert_eq!(d.paragraphs[3].lines, 2..3);
+    }
+
+    #[test]
+    fn empty_cells_are_empty_paragraphs() {
+        let src = "| a |  |\n|---|---|\n|  | d |\n";
+        assert_eq!(shown(src, &Options::default()), ["a", "", "", "d", ""]);
+    }
+
+    #[test]
+    fn a_cell_holds_the_positions_at_its_text_edges() {
+        let src = "| ab | cd |\n|---|---|\n";
+        let d = map(src, &Options::default());
+        let b_end = src.find("b").unwrap() + 1;
+        let c = src.find("c").unwrap();
+        assert_eq!(
+            (d.to_shown(b_end).paragraph(), d.to_shown(b_end).offset()),
+            (0, 2)
+        );
+        assert_eq!((d.to_shown(c).paragraph(), d.to_shown(c).offset()), (1, 0));
+        assert_eq!(d.to_source(d.position(src, 1, 0)), c);
+        assert_eq!(d.to_source(d.position(src, 0, 2)), b_end);
+    }
+
+    #[test]
+    fn in_show_markdown_a_table_row_is_one_paragraph() {
+        let src = "| a | b |\n|---|---|\n";
+        let source = Options {
+            source_mode: true,
+            ..Options::default()
+        };
+        assert_eq!(shown(src, &source), ["| a | b |", "|---|---|", ""]);
+        assert!(
+            map(src, &source)
+                .paragraphs
+                .iter()
+                .all(|p| p.cell.is_none())
+        );
     }
 
     #[test]

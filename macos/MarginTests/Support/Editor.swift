@@ -41,7 +41,12 @@ final class Editor {
     /// The line the caret is drawn on, with `|` where it is.
     var caret: String {
         let c = caretRect
-        guard let line = drawnLines.first(where: { $0.top - 1 <= c.midY && c.midY <= $0.bottom + 1 }) else {
+        // Of the lines at its height (table cells side by side), the one
+        // it is on.
+        guard
+            let line = drawnLines.filter({ $0.top - 1 <= c.midY && c.midY <= $0.bottom + 1 })
+                .last(where: { $0.left <= c.minX + 1 })
+        else {
             return "no line at caret \(c)"
         }
         let before = line.glyphs.filter { $0.rect.midX < c.minX }
@@ -52,6 +57,13 @@ final class Editor {
     /// Whether the caret is in the part of the document the window shows.
     var caretInView: Bool {
         h.view.visibleRect.contains(caretRect.insetBy(dx: 0.5, dy: 0.5))
+    }
+
+    /// The shown characters drawn past the right edge of the text column,
+    /// in order.
+    var pastTheColumn: String {
+        let right = h.view.geometry.left + h.view.geometry.docWidth
+        return drawnLines.flatMap(\.glyphs).filter { $0.rect.maxX > right + 0.5 }.map(\.text).joined()
     }
 
     /// The file, once the editor has saved.
@@ -134,6 +146,12 @@ final class Editor {
     }
 
     /// A click at the end of the last line.
+    /// A click `below` lines under the start of shown text `s`.
+    func click(_ s: String, below: Int) {
+        guard let g = locate(s)?.first else { return XCTFail("\(s.debugDescription) not shown in \(lines)") }
+        mouse(at: NSPoint(x: g.rect.minX + 0.5, y: g.rect.midY + CGFloat(below) * g.rect.height))
+    }
+
     func clickAtEnd() {
         guard let last = drawnLines.last else { return XCTFail("nothing drawn") }
         mouse(at: NSPoint(x: (last.glyphs.last?.rect.maxX ?? last.left) + 30, y: (last.top + last.bottom) / 2))

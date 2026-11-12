@@ -4,5 +4,6 @@ pub mod display;
 pub mod doc;
 pub mod edit;
 pub mod search;
+pub mod table;
 
 pub use doc::*;

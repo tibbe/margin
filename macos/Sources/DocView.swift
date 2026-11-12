@@ -151,18 +151,16 @@ final class DocView: NSView, NSTextInputClient, NSViewToolTipOwner, NSMenuItemVa
     var layoutHeight: CGFloat = 0
     /// Per source line: whether it shows (isn't collapsed).
     var lineShown: [Bool] = []
-    /// Tables' grids by their source, for the next layout to reuse.
-    var tableCache: [String: (grid: TableGrid, gaps: [Int: CGFloat], start: Int)] = [:]
+    /// What table cells' text needs (see `measure`), by what their
+    /// typesetting depends on, for the next layout to reuse.
+    var cellMeasures: [TypesetKey: (word: CGFloat, line: CGFloat)] = [:]
     /// Paragraphs typeset by the last layouts, for the next to reuse.
     var typesetCache: [TypesetKey: Typeset] = [:]
     /// The last layout's paragraphs and their typesetting (nil where it
     /// can't be reused), for the same page.
-    var previous: (context: TypesetContext, shown: [ShownParagraph], typesets: [Typeset?], gaps: [Int: CGFloat]) = (
-        TypesetContext(width: 0, appearance: "", generation: 0), [], [], [:]
+    var previous: (context: TypesetContext, shown: [ShownParagraph], typesets: [Typeset?]) = (
+        TypesetContext(width: 0, appearance: "", generation: 0), [], []
     )
-    /// Where each table cell's text starts, from the text column's left
-    /// edge, by the source position of the gap before it.
-    var tableGaps: [Int: CGFloat] = [:]
     let caretView = NSTextInsertionIndicator()
 
     // MARK: Undo
@@ -231,7 +229,7 @@ final class DocView: NSView, NSTextInputClient, NSViewToolTipOwner, NSMenuItemVa
         lastEdit = nil
         restyled = nil
         typesetCache = [:]
-        tableCache = [:]
+        cellMeasures = [:]
         previous.shown = []
         undoManager?.removeAllActions(withTarget: self)
         typing = nil
@@ -329,7 +327,6 @@ final class DocView: NSView, NSTextInputClient, NSViewToolTipOwner, NSMenuItemVa
             reflow: reflowsParagraphs && !sourceMode, sourceMode: sourceMode,
             reveal: revealed.map { TextRange(start: UInt32($0.location), end: UInt32(NSMaxRange($0))) })
         shown = ShownParagraph.decode(projection.paragraphsPacked())
-        layOutTables()
         relayout()
     }
 
