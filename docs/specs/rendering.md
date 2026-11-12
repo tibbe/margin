@@ -15,9 +15,9 @@
 
 - CommonMark with GitHub tables, strikethrough and task lists, and YAML front
   matter.
-- Tables show as grids.
 - HTML, front matter and link reference definitions show as dimmed
-  monospace source; bare URLs and autolinks as links with the URL visible.
+  monospace source. A `<br>` in a table cell is an exception (see Tables).
+  Bare URLs and autolinks show as links, with the URL visible.
   Checked tasks are struck through and dimmed; Heading 6 is dimmed.
 - Bullets change shape with nesting depth. A code block sits on a tinted
   background and shows its language; a quote has a bar down its left side.
@@ -45,3 +45,39 @@
 - A selected image or diagram is tinted with the selection color.
 - Reflow Paragraphs is off by default, global and persisted. Show Markdown is
   per window and not persisted.
+
+## Tables
+
+A table shows as a grid. The grid fits the width of its block: the text
+column, less the indent of a list or a quote. The text in each cell wraps
+in its column, as in the automatic table layout of a browser.
+
+- **Natural widths.** If each column fits at the width of its widest cell,
+  each column has that width.
+- **Shared widths.** If the columns do not fit at those widths, the grid
+  fills the width of its block. Each column has at least the width of its
+  longest word. The columns divide the remaining width. The part of each
+  column is in proportion to the width that its text needs in addition to
+  fit on one line.
+- **Long words.** Sometimes the longest words of all columns do not fit
+  together. Then the width of each column is in proportion to the width of
+  its text on one line. A word that is too long for its column breaks
+  between two characters.
+- **Vertical position.** The text of a cell starts at the top of the cell.
+  A row is as tall as its tallest cell.
+- **Alignment.** The text of a cell has the alignment that the delimiter
+  row gives to its column. The text of a column without an alignment
+  starts at the start of the line.
+- **Short and long rows.** A row can have fewer or more cells than the
+  header. The grid has a column for each cell of its longest row. Where a
+  row has no cell for a column, the grid shows an empty cell.
+- **Line breaks.** A `<br>` tag in a cell shows as a line break. Margin
+  hides its source.
+- **Images.** An image alone in a cell shows as the image, as an image
+  alone in its paragraph does. The image is never wider than its column.
+  Its width counts in the width of its column on one line, but not as the
+  longest word of its column.
+- **Highlights.** The selection, comment highlights and find matches show
+  in a cell as in a paragraph with the width of the column. For example, a
+  selected line that continues on the next line of the cell goes to the
+  right edge of the cell.

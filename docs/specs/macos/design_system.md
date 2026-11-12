@@ -92,14 +92,10 @@ so there is no version history (Revert To ▸ Browse All Versions) and no
 ## Rendering
 
 - Code blocks' boxes have a 6pt radius; quote bars are rounded.
-- Tables are grids: the `|`s, the cells' padding and the delimiter row are
-  hidden, columns take their widest cell's width and the delimiter row's
-  alignment, separator-colored lines run between the rows and the columns,
-  and the header row is bold and tinted like a code block. A row stays on
-  one line.
+- Separator-colored lines go between the rows and the columns of a table
+  grid. The header row is bold.
 - The grid is in a box with a 6pt radius. Cells have 10pt of padding at the
-  sides and 6pt above and below. Text is at 94% of body size. A table wider
-  than the page is cut off at its right edge.
+  sides and 6pt above and below. Text is at 94% of body size.
 - An image path starting with `/` is from the file system's root.
 - Image placeholders and diagram error blocks have a 6pt radius, as code
   blocks' boxes do.
