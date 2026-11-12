@@ -308,7 +308,7 @@ pub struct Doc {
 
 /// The length of the `<br>` tag at `p` in `src`, in any of its spellings
 /// (`<br>`, `<br/>`, `<br />`, any case), if one is there.
-pub fn br_len(src: &str, p: usize) -> Option<usize> {
+fn br_len(src: &str, p: usize) -> Option<usize> {
     let rest = src.get(p..)?.as_bytes();
     if rest.len() < 4 || rest[0] != b'<' || !rest[1..3].eq_ignore_ascii_case(b"br") {
         return None;
@@ -1674,6 +1674,28 @@ fn is_closing_fence(text: &str, fence_char: u8, min_len: usize) -> bool {
 impl Doc {
     pub fn line_index(&self, pos: usize) -> usize {
         line_index(&self.lines, pos)
+    }
+
+    /// The `<br>` tags in table cell text `content`, which show as line
+    /// breaks: not in inline code, nor escaped.
+    pub fn breaks_in(&self, src: &str, content: Range<usize>) -> Vec<Range<usize>> {
+        let mut out = Vec::new();
+        let mut p = content.start;
+        while p < content.end {
+            let code = self
+                .inlines
+                .iter()
+                .any(|i| i.kind == InlineKind::Code && i.range().contains(&p));
+            let escaped = p > 0 && src.as_bytes()[p - 1] == b'\\';
+            match br_len(src, p).filter(|_| !code && !escaped) {
+                Some(n) if p + n <= content.end => {
+                    out.push(p..p + n);
+                    p += n;
+                }
+                _ => p += 1,
+            }
+        }
+        out
     }
 
     /// The table cell holding `pos`, when tables show as grids: of a table

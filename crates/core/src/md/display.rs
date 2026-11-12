@@ -12,7 +12,7 @@
 //! Positions are source byte offsets; offsets in a shown paragraph are byte
 //! offsets in its shown text.
 
-use super::doc::{Doc, LineKind, Style, br_len};
+use super::doc::{Doc, LineKind, Style};
 use std::ops::Range;
 use unicode_segmentation::UnicodeSegmentation;
 
@@ -421,15 +421,8 @@ fn decorations(src: &str, doc: &Doc, opts: &Options) -> Vec<(Range<usize>, Deco)
                     cells.push((cell.lead.clone(), kind));
                 }
                 // A `<br>` in a cell is a line break.
-                let mut p = cell.content.start;
-                while p < cell.content.end {
-                    match br_len(src, p) {
-                        Some(n) => {
-                            replaced.push((p..p + n, "\u{2028}"));
-                            p += n;
-                        }
-                        None => p += 1,
-                    }
+                for r in doc.breaks_in(src, cell.content.clone()) {
+                    replaced.push((r, "\u{2028}"));
                 }
             }
             hidden.push(row.trail.clone());
@@ -1001,6 +994,12 @@ mod tests {
             src.find('<').unwrap(),
             "one step over it"
         );
+    }
+
+    #[test]
+    fn a_br_in_code_or_escaped_is_text() {
+        let src = "| `x<br>y` | a\\<br>b |\n|---|---|\n";
+        assert_eq!(shown(src, &Options::default()), ["x<br>y", "a\\<br>b", ""]);
     }
 
     #[test]

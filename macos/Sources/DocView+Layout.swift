@@ -836,6 +836,13 @@ extension DocView {
     /// Where a click at a point puts the cursor, and on which line.
     func caret(at p: NSPoint) -> (position: Int, affinity: NSSelectionAffinity) {
         guard let pi = paragraph(at: p) else { return (0, .downstream) }
+        // In a missing cell of a short row: the end of the row's last cell.
+        if let c = laidOut[pi].cell, p.x > c.box.maxX, pi == row(containing: pi).upperBound,
+            let grid = tables.first(where: { $0.index == c.place.table }),
+            p.x < geometry.left + grid.columnX[0] + grid.width
+        {
+            return caret(paragraph: pi, line: laidOut[pi].lines.count - 1, offset: laidOut[pi].text.length)
+        }
         let li = laidOut[pi].lines.lastIndex { $0.top <= p.y } ?? 0
         return caret(paragraph: pi, line: li, x: p.x)
     }

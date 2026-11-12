@@ -375,8 +375,7 @@ fn break_start(src: &str, line: &super::doc::Line) -> usize {
 pub fn insert(_src: &str, doc: &Doc, pos: usize, text: &str) -> Plan {
     // A row stays one line: in a cell, a line break is a `<br>`.
     if doc.cell_at(pos).is_some() && text.contains('\n') {
-        let text = text.trim_end_matches('\n').replace('\n', "<br>");
-        return insert(_src, doc, pos, &text);
+        return insert(_src, doc, pos, &cell_text(text));
     }
     let li = doc.line_index(pos.min(doc.len));
     let line = &doc.lines[li];
@@ -489,15 +488,12 @@ fn table_edge(src: &str, doc: &Doc, pos: usize, forward: bool) -> Option<Plan> {
             return Some(Plan::cursor_only(pos));
         }
         // A `<br>` goes whole.
-        let br = (c.content.start..c.content.end).find_map(|p| {
-            let n = super::doc::br_len(src, p)?;
-            let r = p..p + n;
-            (if forward {
+        let br = doc.breaks_in(src, c.content.clone()).into_iter().find(|r| {
+            if forward {
                 r.start == pos
             } else {
                 r.end == pos
-            })
-            .then_some(r)
+            }
         });
         return br.map(|r| Plan::mapped(vec![Change::delete(r.clone())], r.start, false));
     }
@@ -553,15 +549,14 @@ fn table_last_line(t: &super::doc::Table) -> usize {
         .map_or(t.delimiter_line, |r| r.line.max(t.delimiter_line))
 }
 
-/// The lines a block command on `sel` changes: its first to its last, but
-/// with tables shown as grids, only the lines before the first table it
-/// reaches (blank lines before it left out), or from a table, the lines
-/// after it. None when that leaves none.
-fn outside_tables(doc: &Doc, sel: Range<usize>) -> Option<(usize, usize)> {
+/// The stretches of lines a block command on `sel` changes: its first to
+/// its last, but with tables shown as grids, those outside the tables, each
+/// without blank lines at its ends.
+fn outside_tables(doc: &Doc, sel: Range<usize>) -> Vec<(usize, usize)> {
     let first = doc.line_index(sel.start);
     let last = doc.line_index(sel.end.max(sel.start));
     if !doc.grid_tables {
-        return Some((first, last));
+        return vec![(first, last)];
     }
     let in_table = |li: usize| {
         doc.tables.iter().any(|t| {
@@ -572,18 +567,49 @@ fn outside_tables(doc: &Doc, sel: Range<usize>) -> Option<(usize, usize)> {
             a <= li && li <= table_last_line(t)
         })
     };
-    let (first, last) = if in_table(first) {
-        let from = (first..=last).find(|&l| !in_table(l))?;
-        (from, last)
-    } else {
-        let to = (first..=last).take_while(|&l| !in_table(l)).last()?;
-        (first, to)
-    };
-    let last = (first..=last)
-        .rev()
-        .find(|&l| doc.lines[l].kind != LineKind::Blank)
-        .unwrap_or(first);
-    Some((first, last))
+    let blank = |li: usize| doc.lines[li].kind == LineKind::Blank;
+    let mut out = Vec::new();
+    let mut li = first;
+    while li <= last {
+        if in_table(li) || blank(li) {
+            li += 1;
+            continue;
+        }
+        let start = li;
+        while li <= last && !in_table(li) {
+            li += 1;
+        }
+        let end = (start..li).rev().find(|&l| !blank(l)).unwrap_or(start);
+        out.push((start, end));
+    }
+    out
+}
+
+/// What a block command does across `runs` of lines (see `outside_tables`):
+/// `command` on each, together; nothing with none.
+fn each_run(
+    doc: &Doc,
+    sel: Range<usize>,
+    runs: &[(usize, usize)],
+    command: impl Fn(Range<usize>) -> Plan,
+) -> Plan {
+    let mut changes = Vec::new();
+    for &(a, b) in runs {
+        changes.extend(command(doc.lines[a].start..doc.lines[b].end).changes);
+    }
+    if changes.is_empty() {
+        return Plan {
+            changes,
+            cursor: sel.end,
+            selection: (!sel.is_empty()).then_some(sel),
+        };
+    }
+    Plan::mapped(changes, sel.end, false)
+}
+
+/// Text for a table cell: each line break a `<br>`.
+fn cell_text(text: &str) -> String {
+    text.replace('\n', "<br>")
 }
 
 /// An empty row for table `ti`, as the row on `line` writes its outer
@@ -1323,26 +1349,28 @@ fn table_delete(src: &str, doc: &Doc, range: Range<usize>) -> Option<Plan> {
                     let line = &doc.lines[row.line];
                     let mut gone = line.start..doc.line_end_incl(row.line);
                     let started_here = cursor >= gone.start && cursor < gone.end;
-                    let after = t
-                        .rows
-                        .get(ri + 1)
-                        .filter(|next| !(range.end >= text(next).end));
-                    if gone.end >= src.len() || (row.line == last_line && after.is_none()) {
-                        // Nothing follows in the table: from the end of the
-                        // row before.
-                        if started_here {
-                            cursor = t.rows[ri - 1]
+                    if started_here {
+                        // To the start of the line after the removed rows:
+                        // the next row left, else the line after the table;
+                        // with none, the end of the row before.
+                        let next = t.rows[ri + 1..]
+                            .iter()
+                            .find(|next| range.end < text(next).end);
+                        let after_table = doc.line_end_incl(last_line);
+                        cursor = match next {
+                            Some(r) => r
+                                .cells
+                                .first()
+                                .map_or(doc.lines[r.line].start, |c| c.content.start),
+                            None if after_table < src.len() => after_table,
+                            None => t.rows[ri - 1]
                                 .cells
                                 .last()
-                                .map_or(gone.start, |c| c.content.end);
-                        }
-                        if gone.end >= src.len() && !src.ends_with('\n') {
-                            gone.start = gone.start.saturating_sub(1);
-                        }
-                    } else if started_here {
-                        cursor = after
-                            .and_then(|r| r.cells.first())
-                            .map_or(gone.end, |c| c.content.start);
+                                .map_or(gone.start, |c| c.content.end),
+                        };
+                    }
+                    if gone.end >= src.len() && !src.ends_with('\n') {
+                        gone.start = gone.start.saturating_sub(1);
                     }
                     changes.push(Change::delete(gone));
                     continue;
@@ -1429,6 +1457,11 @@ fn delete_text(src: &str, doc: &Doc, range: Range<usize>) -> Plan {
 pub fn replace_range(src: &str, doc: &Doc, range: Range<usize>, text: &str) -> Plan {
     if range.is_empty() {
         return insert(src, doc, range.start, text);
+    }
+    // A row stays one line: in a cell, a line break is a `<br>`.
+    if doc.cell_at(range.start).is_some() && text.contains('\n') {
+        let text = cell_text(text);
+        return replace_range(src, doc, range, &text);
     }
     if let Some(p) = replace_plain(src, doc, range.clone(), text)
         && table_delete(src, doc, range.clone()).is_none()
@@ -1705,12 +1738,9 @@ fn line_syntax(src: &str, doc: &Doc, li: usize) -> LineSyntax {
 }
 
 pub fn set_block(src: &str, doc: &Doc, sel: Range<usize>, kind: BlockType) -> Plan {
-    let Some((first, last)) = outside_tables(doc, sel.clone()) else {
-        return Plan {
-            changes: Vec::new(),
-            cursor: sel.end,
-            selection: (!sel.is_empty()).then_some(sel),
-        };
+    let runs = outside_tables(doc, sel.clone());
+    let [(first, last)] = runs[..] else {
+        return each_run(doc, sel, &runs, |r| set_block(src, doc, r, kind));
     };
     let lines: Vec<usize> = (first..=last)
         .filter(|&l| {
@@ -1908,12 +1938,9 @@ fn toggle_code_block(src: &str, doc: &Doc, first: usize, last: usize, cursor: us
 
 /// Tab / Shift+Tab: nests list items or indents code.
 pub fn indent(src: &str, doc: &Doc, sel: Range<usize>, outdent: bool) -> Plan {
-    let Some((first, last)) = outside_tables(doc, sel.clone()) else {
-        return Plan {
-            changes: Vec::new(),
-            cursor: sel.end,
-            selection: (!sel.is_empty()).then_some(sel),
-        };
+    let runs = outside_tables(doc, sel.clone());
+    let [(first, last)] = runs[..] else {
+        return each_run(doc, sel, &runs, |r| indent(src, doc, r, outdent));
     };
     let mut changes = Vec::new();
     let mut handled = false;
@@ -2413,7 +2440,12 @@ mod tests {
         assert_eq!(
             grid_replace("| a | b |\n|---|---|\n| [c | d] |\n", ""),
             "| a | b‸ |\n|---|---|\n",
-            "the last row: the cursor goes to the row before"
+            "the last row, with nothing after: the cursor goes to the row before"
+        );
+        assert_eq!(
+            grid_replace("| a | b |\n|---|---|\n| [c | d] |\n\nx\n", ""),
+            "| a | b |\n|---|---|\n‸\nx\n",
+            "with a line after: to its start"
         );
     }
 
@@ -2455,7 +2487,11 @@ mod tests {
 
     #[test]
     fn a_line_break_pasted_into_a_cell_is_a_br() {
-        assert_eq!(grid("| a‸ |\n|---|\n", ""), "| a‸ |\n|---|\n");
+        assert_eq!(
+            grid_replace("| [a] |\n|---|\n", "x\ny"),
+            "| x<br>y‸ |\n|---|\n",
+            "over a selection"
+        );
         let mut doc = parse("| a |\n|---|\n");
         doc.grid_tables = true;
         let plan = insert("| a |\n|---|\n", &doc, 3, "x\ny");
@@ -2502,6 +2538,22 @@ mod tests {
         assert_eq!(
             set_block(src, &doc, 0..src.len(), BlockType::Code).apply(src),
             "```\na\n```\n\n| b |\n|---|\n"
+        );
+        let src = "a\n\n| b |\n|---|\n\nc\n";
+        let mut doc = parse(src);
+        doc.grid_tables = true;
+        assert_eq!(
+            set_block(src, &doc, 0..src.len(), BlockType::Quote).apply(src),
+            "> a\n\n| b |\n|---|\n\n> c\n",
+            "before and after it"
+        );
+        let src = "| a |\n|---|\n\nb\n\n| c |\n|---|\n";
+        let mut doc = parse(src);
+        doc.grid_tables = true;
+        assert_eq!(
+            set_block(src, &doc, 2..src.len() - 3, BlockType::Code).apply(src),
+            "| a |\n|---|\n\n```\nb\n```\n\n| c |\n|---|\n",
+            "between two tables"
         );
     }
 
