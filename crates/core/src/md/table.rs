@@ -70,7 +70,7 @@ mod tests {
     }
 
     #[test]
-    fn empty_columns_share_what_is_left() {
+    fn no_columns_or_empty_ones_take_no_width() {
         assert_eq!(
             column_widths(&[col(0.0, 0.0), col(0.0, 0.0)], 100.0),
             [0.0, 0.0]

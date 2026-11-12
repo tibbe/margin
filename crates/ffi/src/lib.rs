@@ -391,9 +391,7 @@ impl Analysis {
 impl Analysis {
     #[uniffi::constructor]
     pub fn new(text: String) -> Arc<Self> {
-        let doc = md::parse(&text);
-        let index = Utf16Index::new(&text);
-        Arc::new(Analysis { text, doc, index })
+        Analysis::shown(text, false)
     }
 
     /// From the text as UTF-8 bytes, which Foundation produces much faster
@@ -409,10 +407,7 @@ impl Analysis {
     pub fn from_utf8_shown(bytes: Vec<u8>, grid_tables: bool) -> Arc<Self> {
         let text = String::from_utf8(bytes)
             .unwrap_or_else(|e| String::from_utf8_lossy(e.as_bytes()).into_owned());
-        let mut doc = md::parse(&text);
-        doc.grid_tables = grid_tables;
-        let index = Utf16Index::new(&text);
-        Arc::new(Analysis { text, doc, index })
+        Analysis::shown(text, grid_tables)
     }
 
     pub fn length(&self) -> u32 {
@@ -730,7 +725,7 @@ impl Analysis {
         self.doc
             .images
             .iter()
-            .filter(|im| !im.in_cell || self.doc.grid_tables)
+            .filter(|im| self.doc.shows_image(im))
             .map(|im| ImageBlockInfo {
                 range: self.range(im.range.clone()),
                 line: im.line as u32,
@@ -886,6 +881,12 @@ impl Analysis {
         ))
     }
 
+    /// Whether `start`..`end` is all in one table shown as a grid, where
+    /// block commands do nothing.
+    pub fn in_one_table(&self, start: u32, end: u32) -> bool {
+        self.doc.in_one_table(self.bytes(start, end))
+    }
+
     /// Tab, or Shift+Tab (`back`): in a table shown as a grid, to the next
     /// or previous cell; elsewhere, as `indent`.
     pub fn tab(&self, start: u32, end: u32, back: bool) -> EditPlan {
@@ -951,11 +952,7 @@ impl Analysis {
         let first = matches.first()?.start;
         // Last to first, so earlier matches keep their offsets.
         let mut text = self.text.clone();
-        let parse = |text: &str| {
-            let mut doc = md::parse(text);
-            doc.grid_tables = self.doc.grid_tables;
-            doc
-        };
+        let parse = |text: &str| md::parse_with(text, self.doc.grid_tables());
         for r in matches.iter().rev() {
             let doc = parse(&text);
             let plan = match edit::replace_plain(&text, &doc, r.clone(), &with) {
@@ -2066,6 +2063,16 @@ pub struct Projection {
     /// Each paragraph's shown text, and the byte offset of each of its
     /// UTF-16 units (and one past its end).
     texts: Vec<(String, Vec<usize>)>,
+}
+
+impl Analysis {
+    /// The analysis of `text`, for an editor that shows tables as grids
+    /// when `grid_tables`.
+    fn shown(text: String, grid_tables: bool) -> Arc<Self> {
+        let doc = md::parse_with(&text, grid_tables);
+        let index = Utf16Index::new(&text);
+        Arc::new(Analysis { text, doc, index })
+    }
 }
 
 impl Projection {
