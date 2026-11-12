@@ -11,7 +11,7 @@
     reason = "deletions are lists of byte ranges, often of one range"
 )]
 
-use super::doc::{CellAt, Container, Doc, InlineKind, LineKind};
+use super::doc::{Cell, Container, Doc, InlineKind, LineKind};
 use std::ops::Range;
 use unicode_segmentation::UnicodeSegmentation;
 
@@ -75,6 +75,16 @@ impl Plan {
             changes: normalize(changes),
             cursor,
             selection: None,
+        }
+    }
+
+    /// Nothing done: the selection `sel`, or the cursor at its end, as it
+    /// was.
+    fn unchanged(sel: Range<usize>) -> Plan {
+        Plan {
+            changes: Vec::new(),
+            cursor: sel.end,
+            selection: (!sel.is_empty()).then_some(sel),
         }
     }
 
@@ -374,9 +384,13 @@ fn break_start(src: &str, line: &super::doc::Line) -> usize {
 
 pub fn insert(_src: &str, doc: &Doc, pos: usize, text: &str) -> Plan {
     // A row stays one line: in a cell, a line break is a `<br>`.
-    if doc.cell_at(pos).is_some() && text.contains('\n') {
-        return insert(_src, doc, pos, &cell_text(text));
-    }
+    let in_cell;
+    let text = if doc.cell_at(pos).is_some() && text.contains('\n') {
+        in_cell = cell_text(text);
+        &in_cell
+    } else {
+        text
+    };
     let li = doc.line_index(pos.min(doc.len));
     let line = &doc.lines[li];
     let mut p = insertion_point(doc, pos);
@@ -395,25 +409,30 @@ pub fn insert(_src: &str, doc: &Doc, pos: usize, text: &str) -> Plan {
 /// Enter in a table cell: to the end of the text of the cell below (the
 /// row's last, if it has none there), from the last row into a row added
 /// below. Shift+Enter writes `<br>`. A row stays one line.
-fn table_newline(src: &str, doc: &Doc, pos: usize, at: CellAt, soft: bool) -> Plan {
+fn table_newline(src: &str, doc: &Doc, pos: usize, at: Cell, soft: bool) -> Plan {
     if soft {
         return Plan::at(vec![Change::insert(pos, "<br>")], pos + "<br>".len());
     }
     let t = &doc.tables[at.table];
     if let Some(row) = t.rows.get(at.row + 1) {
-        let cell = row.cells.get(at.cell).or(row.cells.last());
+        let cell = row.cells.get(at.column).or(row.cells.last());
         return Plan::cursor_only(cell.map_or(doc.lines[row.line].end, |c| c.content.end));
     }
-    let row = &t.rows[at.row];
-    let (text, cells) = empty_row(src, doc, at.table, row.line);
+    add_row(src, doc, at, at.column)
+}
+
+/// A row added below the last of the table holding `at`, the cursor in
+/// its cell `cell` (its last, past it).
+fn add_row(src: &str, doc: &Doc, at: Cell, cell: usize) -> Plan {
+    let t = &doc.tables[at.table];
+    let (text, cells) = empty_row(src, doc, at.table, t.rows[at.row].line);
     // Below the delimiter row, under a header alone.
-    let last = row.line.max(t.delimiter_line);
+    let last = table_last_line(t);
     let end = doc.lines[last].end;
     let cont = continuation(src, doc, last);
-    let cell = cells[at.cell.min(cells.len() - 1)];
     Plan::at(
         vec![Change::insert(end, format!("\n{cont}{text}"))],
-        end + 1 + cont.len() + cell,
+        end + 1 + cont.len() + cells[cell.min(cells.len() - 1)],
     )
 }
 
@@ -434,7 +453,7 @@ pub fn tab(src: &str, doc: &Doc, sel: Range<usize>, back: bool) -> Plan {
         .collect();
     let i = order
         .iter()
-        .position(|&x| x == (at.row, at.cell))
+        .position(|&x| x == (at.row, at.column))
         .unwrap_or(0);
     let select = |(r, c): (usize, usize)| {
         let content = t.rows[r].cells[c].content.clone();
@@ -447,25 +466,13 @@ pub fn tab(src: &str, doc: &Doc, sel: Range<usize>, back: bool) -> Plan {
     if back {
         return match i.checked_sub(1) {
             Some(j) => select(order[j]),
-            None => Plan {
-                changes: Vec::new(),
-                cursor: sel.end,
-                selection: (!sel.is_empty()).then_some(sel),
-            },
+            None => Plan::unchanged(sel),
         };
     }
     if let Some(&next) = order.get(i + 1) {
         return select(next);
     }
-    let row = &t.rows[at.row];
-    let (text, cells) = empty_row(src, doc, at.table, row.line);
-    let last = row.line.max(t.delimiter_line);
-    let end = doc.lines[last].end;
-    let cont = continuation(src, doc, last);
-    Plan::at(
-        vec![Change::insert(end, format!("\n{cont}{text}"))],
-        end + 1 + cont.len() + cells[0],
-    )
+    add_row(src, doc, at, 0)
 }
 
 /// Backspace, or Delete (`forward`), at a table cell's edge or beside a
@@ -474,11 +481,11 @@ pub fn tab(src: &str, doc: &Doc, sel: Range<usize>, back: bool) -> Plan {
 /// table; an empty line it removes, putting the cursor in the table, unless
 /// that would join text to the table. None elsewhere.
 fn table_edge(src: &str, doc: &Doc, pos: usize, forward: bool) -> Option<Plan> {
-    if !doc.grid_tables || doc.lines.is_empty() {
+    if !doc.grid_tables() || doc.lines.is_empty() {
         return None;
     }
     if let Some(at) = doc.cell_at(pos) {
-        let c = &doc.tables[at.table].rows[at.row].cells[at.cell];
+        let c = &doc.tables[at.table].rows[at.row].cells[at.column];
         let edge = if forward {
             c.content.end
         } else {
@@ -541,6 +548,13 @@ fn table_edge(src: &str, doc: &Doc, pos: usize, forward: bool) -> Option<Plan> {
     })
 }
 
+/// A table's first line: its header's.
+fn table_first_line(t: &super::doc::Table) -> usize {
+    t.rows
+        .first()
+        .map_or(t.delimiter_line, |r| r.line.min(t.delimiter_line))
+}
+
 /// A table's last line: its last row's, or under a header alone, its
 /// delimiter row's.
 fn table_last_line(t: &super::doc::Table) -> usize {
@@ -555,17 +569,13 @@ fn table_last_line(t: &super::doc::Table) -> usize {
 fn outside_tables(doc: &Doc, sel: Range<usize>) -> Vec<(usize, usize)> {
     let first = doc.line_index(sel.start);
     let last = doc.line_index(sel.end.max(sel.start));
-    if !doc.grid_tables {
+    if !doc.grid_tables() {
         return vec![(first, last)];
     }
     let in_table = |li: usize| {
-        doc.tables.iter().any(|t| {
-            let a = t
-                .rows
-                .first()
-                .map_or(t.delimiter_line, |r| r.line.min(t.delimiter_line));
-            a <= li && li <= table_last_line(t)
-        })
+        doc.tables
+            .iter()
+            .any(|t| table_first_line(t) <= li && li <= table_last_line(t))
     };
     let blank = |li: usize| doc.lines[li].kind == LineKind::Blank;
     let mut out = Vec::new();
@@ -598,11 +608,7 @@ fn each_run(
         changes.extend(command(doc.lines[a].start..doc.lines[b].end).changes);
     }
     if changes.is_empty() {
-        return Plan {
-            changes,
-            cursor: sel.end,
-            selection: (!sel.is_empty()).then_some(sel),
-        };
+        return Plan::unchanged(sel);
     }
     Plan::mapped(changes, sel.end, false)
 }
@@ -1288,7 +1294,7 @@ pub fn delete_range(src: &str, doc: &Doc, range: Range<usize>) -> Plan {
 /// around it. The cursor stays where the selection started, or where the
 /// row it started in was. None for other selections.
 fn table_delete(src: &str, doc: &Doc, range: Range<usize>) -> Option<Plan> {
-    if !doc.grid_tables || range.is_empty() {
+    if !doc.grid_tables() || range.is_empty() {
         return None;
     }
     if let (Some(a), Some(b)) = (doc.cell_at(range.start), doc.cell_at(range.end))
@@ -1300,8 +1306,8 @@ fn table_delete(src: &str, doc: &Doc, range: Range<usize>) -> Option<Plan> {
         .tables
         .iter()
         .filter(|t| {
-            let (a, b) = table_span(doc, t);
-            range.start <= b && range.end >= a
+            let span = table_span(doc, t);
+            range.start <= span.end && range.end >= span.start
         })
         .filter(|t| !t.rows.is_empty())
         .collect();
@@ -1312,7 +1318,10 @@ fn table_delete(src: &str, doc: &Doc, range: Range<usize>) -> Option<Plan> {
     let mut cursor = range.start;
     let mut pos = range.start;
     for t in tables {
-        let (t_start, t_end) = table_span(doc, t);
+        let Range {
+            start: t_start,
+            end: t_end,
+        } = table_span(doc, t);
         // The text before the table, up to its line's end.
         if pos < t_start {
             let end = src[pos..t_start.min(range.end)]
@@ -1399,12 +1408,8 @@ fn table_delete(src: &str, doc: &Doc, range: Range<usize>) -> Option<Plan> {
 
 /// Where a table's source starts and ends: its first line's start, its last
 /// line's end.
-fn table_span(doc: &Doc, t: &super::doc::Table) -> (usize, usize) {
-    let first = t
-        .rows
-        .first()
-        .map_or(t.delimiter_line, |r| r.line.min(t.delimiter_line));
-    (doc.lines[first].start, doc.lines[table_last_line(t)].end)
+fn table_span(doc: &Doc, t: &super::doc::Table) -> Range<usize> {
+    doc.lines[table_first_line(t)].start..doc.lines[table_last_line(t)].end
 }
 
 /// Deletes `range` as text, keeping the Markdown around it well formed.
@@ -1470,8 +1475,7 @@ pub fn replace_range(src: &str, doc: &Doc, range: Range<usize>, text: &str) -> P
     }
     let deleted = delete_range(src, doc, range);
     let after = deleted.apply(src);
-    let mut doc_after = super::parse(&after);
-    doc_after.grid_tables = doc.grid_tables;
+    let doc_after = super::parse_with(&after, doc.grid_tables());
     let typed = insert(&after, &doc_after, deleted.cursor, text);
     let result = typed.apply(&after);
     Plan::at(crate::diff::diff_changes(src, &result), typed.cursor)
@@ -2235,8 +2239,7 @@ mod tests {
         let mut text = start.replacen('‸', "", 1);
         let mut selection = None;
         for k in keys.chars() {
-            let mut doc = parse(&text);
-            doc.grid_tables = !source;
+            let doc = super::super::parse_with(&text, !source);
             let plan = match k {
                 '⏎' => newline(&text, &doc, cursor, false),
                 '⇧' => newline(&text, &doc, cursor, true),
@@ -2411,8 +2414,7 @@ mod tests {
         let text = start.replacen('[', "", 1);
         let b = text.find(']').expect("selection end");
         let text = text.replacen(']', "", 1);
-        let mut doc = parse(&text);
-        doc.grid_tables = true;
+        let doc = super::super::parse_with(&text, true);
         let plan = if with.is_empty() {
             delete_range(&text, &doc, a..b)
         } else {
@@ -2492,8 +2494,7 @@ mod tests {
             "| x<br>y‸ |\n|---|\n",
             "over a selection"
         );
-        let mut doc = parse("| a |\n|---|\n");
-        doc.grid_tables = true;
+        let doc = super::super::parse_with("| a |\n|---|\n", true);
         let plan = insert("| a |\n|---|\n", &doc, 3, "x\ny");
         assert_eq!(plan.apply("| a |\n|---|\n"), "| ax<br>y |\n|---|\n");
     }
@@ -2501,8 +2502,7 @@ mod tests {
     #[test]
     fn block_commands_leave_a_tables_rows_alone() {
         let src = "| a |\n|---|\n";
-        let mut doc = parse(src);
-        doc.grid_tables = true;
+        let doc = super::super::parse_with(src, true);
         for kind in [
             BlockType::Paragraph,
             BlockType::Heading(1),
@@ -2517,8 +2517,7 @@ mod tests {
         assert_eq!(indent(src, &doc, 2..2, false).apply(src), src, "Indent");
         assert_eq!(indent(src, &doc, 2..2, true).apply(src), src, "Outdent");
         let src = "- | a |\n  |---|\n";
-        let mut doc = parse(src);
-        doc.grid_tables = true;
+        let doc = super::super::parse_with(src, true);
         assert_eq!(
             indent(src, &doc, 4..4, false).apply(src),
             src,
@@ -2529,8 +2528,7 @@ mod tests {
     #[test]
     fn block_commands_near_a_table_change_only_the_lines_outside_it() {
         let src = "a\n\n| b |\n|---|\n";
-        let mut doc = parse(src);
-        doc.grid_tables = true;
+        let doc = super::super::parse_with(src, true);
         assert_eq!(
             set_block(src, &doc, 0..src.len(), BlockType::Quote).apply(src),
             "> a\n\n| b |\n|---|\n"
@@ -2540,16 +2538,14 @@ mod tests {
             "```\na\n```\n\n| b |\n|---|\n"
         );
         let src = "a\n\n| b |\n|---|\n\nc\n";
-        let mut doc = parse(src);
-        doc.grid_tables = true;
+        let doc = super::super::parse_with(src, true);
         assert_eq!(
             set_block(src, &doc, 0..src.len(), BlockType::Quote).apply(src),
             "> a\n\n| b |\n|---|\n\n> c\n",
             "before and after it"
         );
         let src = "| a |\n|---|\n\nb\n\n| c |\n|---|\n";
-        let mut doc = parse(src);
-        doc.grid_tables = true;
+        let doc = super::super::parse_with(src, true);
         assert_eq!(
             set_block(src, &doc, 2..src.len() - 3, BlockType::Code).apply(src),
             "| a |\n|---|\n\n```\nb\n```\n\n| c |\n|---|\n",

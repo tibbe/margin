@@ -1351,10 +1351,7 @@ final class DocView: NSView, NSTextInputClient, NSViewToolTipOwner, NSMenuItemVa
     /// block commands do nothing.
     var selectionInTable: Bool {
         let sel = sourceSelection
-        guard let a = laid(sel.location), let b = laid(NSMaxRange(sel)),
-            let ca = laidOut[a.paragraph].cell?.place, let cb = laidOut[b.paragraph].cell?.place
-        else { return false }
-        return ca.table == cb.table
+        return analysis.inOneTable(start: UInt32(sel.location), end: UInt32(NSMaxRange(sel)))
     }
 
     private func validate(_ action: Selector?) -> Bool {

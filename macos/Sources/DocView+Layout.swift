@@ -112,6 +112,8 @@ struct TypesetKey: Hashable {
     let pieces: [UInt32]
     let styles: [Int]
     let width: CGFloat
+    /// Whether `width` is a table cell's, not the page's.
+    let cell: Bool
     let appearance: String
     let generation: Int
 }
@@ -439,7 +441,7 @@ extension DocView {
         }
         return TypesetKey(
             source: text.substring(with: NSRange(location: start, length: end - start)), pieces: pieces,
-            styles: styles, width: width.map { -$0 } ?? geometry.docWidth, appearance: appearance,
+            styles: styles, width: width ?? geometry.docWidth, cell: width != nil, appearance: appearance,
             generation: Theme.generation)
     }
 

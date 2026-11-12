@@ -12,7 +12,7 @@
 //! Positions are source byte offsets; offsets in a shown paragraph are byte
 //! offsets in its shown text.
 
-use super::doc::{Doc, LineKind, Style};
+use super::doc::{Cell, Doc, LineKind, Style};
 use std::ops::Range;
 use unicode_segmentation::UnicodeSegmentation;
 
@@ -63,15 +63,6 @@ impl Piece {
             Piece::Object(_) => OBJECT.len_utf8(),
         }
     }
-}
-
-/// Where a table cell is: its table in [`Doc::tables`], its row there
-/// (the header is row 0) and its column.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct Cell {
-    pub table: usize,
-    pub row: usize,
-    pub column: usize,
 }
 
 /// One shown paragraph: one source line, several joined by soft breaks, or
@@ -383,7 +374,7 @@ fn decorations(src: &str, doc: &Doc, opts: &Options) -> Vec<(Range<usize>, Deco)
     let mut objects: Vec<Range<usize>> = doc
         .images
         .iter()
-        .filter(|i| !i.in_cell || doc.grid_tables)
+        .filter(|i| doc.shows_image(i))
         .map(|i| {
             if i.in_cell {
                 i.range.clone()

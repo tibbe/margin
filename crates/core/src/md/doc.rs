@@ -301,9 +301,8 @@ pub struct Doc {
     /// render as spaces.
     pub soft_breaks: Vec<usize>,
     /// Whether the editor shows tables as grids, where the editing rules
-    /// for tables (the spec's Tables, in editing) hold. Not part of the
-    /// analysis: the editor sets it.
-    pub grid_tables: bool,
+    /// for tables (the spec's Tables, in editing) hold (see [`parse_with`]).
+    grid_tables: bool,
 }
 
 /// The length of the `<br>` tag at `p` in `src`, in any of its spellings
@@ -323,13 +322,13 @@ fn br_len(src: &str, p: usize) -> Option<usize> {
     (i < rest.len() && rest[i] == b'>').then_some(i + 1)
 }
 
-/// A table cell: its table in [`Doc::tables`], its row there (the header is
-/// row 0) and its index in the row.
+/// Where a table cell is: its table in [`Doc::tables`], its row there (the
+/// header is row 0) and its column, its index in the row.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct CellAt {
+pub struct Cell {
     pub table: usize,
     pub row: usize,
-    pub cell: usize,
+    pub column: usize,
 }
 
 // Vertical spacing at a 12pt (16px) body size, in pixels, within the range
@@ -390,6 +389,11 @@ struct Builder<'a> {
 }
 
 pub fn parse(src: &str) -> Doc {
+    parse_with(src, false)
+}
+
+/// [`parse`], for an editor that shows tables as grids when `grid_tables`.
+pub fn parse_with(src: &str, grid_tables: bool) -> Doc {
     let mut b = Builder {
         src,
         lines: split_lines(src),
@@ -420,7 +424,9 @@ pub fn parse(src: &str) -> Doc {
         b.event(event, range);
     }
     b.flush_implicit();
-    b.finish()
+    let mut doc = b.finish();
+    doc.grid_tables = grid_tables;
+    doc
 }
 
 fn split_lines(src: &str) -> Vec<Line> {
@@ -1672,6 +1678,17 @@ fn is_closing_fence(text: &str, fence_char: u8, min_len: usize) -> bool {
 }
 
 impl Doc {
+    /// Whether tables show as grids (see [`parse_with`]).
+    pub fn grid_tables(&self) -> bool {
+        self.grid_tables
+    }
+
+    /// Whether image block `im` shows as an image: one in a table cell
+    /// only where tables show as grids.
+    pub fn shows_image(&self, im: &ImageBlock) -> bool {
+        !im.in_cell || self.grid_tables
+    }
+
     pub fn line_index(&self, pos: usize) -> usize {
         line_index(&self.lines, pos)
     }
@@ -1698,11 +1715,17 @@ impl Doc {
         out
     }
 
+    /// Whether `range` is all in one table shown as a grid, where block
+    /// commands do nothing.
+    pub fn in_one_table(&self, range: Range<usize>) -> bool {
+        matches!((self.cell_at(range.start), self.cell_at(range.end)), (Some(a), Some(b)) if a.table == b.table)
+    }
+
     /// The table cell holding `pos`, when tables show as grids: of a table
     /// row's line, the last cell whose text starts at or before it (the
     /// first, before any). A cell's text's end is its own, not the next
     /// cell's.
-    pub fn cell_at(&self, pos: usize) -> Option<CellAt> {
+    pub fn cell_at(&self, pos: usize) -> Option<Cell> {
         if !self.grid_tables || self.lines.is_empty() {
             return None;
         }
@@ -1719,10 +1742,10 @@ impl Doc {
                         c.content.start <= pos && (c.lead.start < pos || c.lead.is_empty())
                     })
                     .unwrap_or(0);
-                return Some(CellAt {
+                return Some(Cell {
                     table: ti,
                     row: ri,
-                    cell: ci,
+                    column: ci,
                 });
             }
         }
@@ -1826,7 +1849,7 @@ impl Doc {
         let mut out: Vec<Range<usize>> = self
             .images
             .iter()
-            .filter(|im| !im.in_cell || self.grid_tables)
+            .filter(|im| self.shows_image(im))
             .map(|im| im.range.clone())
             .chain(self.diagrams.iter().map(|d| d.range.clone()))
             .collect();

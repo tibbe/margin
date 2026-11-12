@@ -43,7 +43,7 @@ fn shown_chars(
     // Tables shown as grids: their rows by line, and their delimiter rows.
     let mut rows: HashMap<usize, &TableRow> = HashMap::new();
     let mut delimiters: Vec<usize> = Vec::new();
-    if doc.grid_tables {
+    if doc.grid_tables() {
         for t in &doc.tables {
             delimiters.push(t.delimiter_line);
             rows.extend(t.rows.iter().map(|r| (r.line, r)));
@@ -210,8 +210,7 @@ mod tests {
     }
 
     fn found_in_grid<'a>(src: &'a str, needle: &str) -> Vec<&'a str> {
-        let mut doc = parse(src);
-        doc.grid_tables = true;
+        let doc = super::super::doc::parse_with(src, true);
         find_all(src, &doc, needle, false)
             .into_iter()
             .map(|r| &src[r])
