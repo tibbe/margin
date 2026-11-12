@@ -1,7 +1,7 @@
 //! Finding text as the reader sees it: hidden syntax is skipped, so
 //! searching for "bold text" finds `**bold** text`.
 
-use super::doc::{Doc, LineKind, TableRow, br_len};
+use super::doc::{Doc, LineKind, TableRow};
 use std::collections::HashMap;
 use std::ops::Range;
 
@@ -63,11 +63,12 @@ fn shown_chars(
                     // Between cells: what no needle holds.
                     out.push((CELL_BREAK, cell.lead.start));
                 }
+                let breaks = doc.breaks_in(src, cell.content.clone());
                 let mut p = cell.content.start;
                 while p < cell.content.end {
-                    if let Some(n) = br_len(src, p) {
+                    if let Some(r) = breaks.iter().find(|r| r.start == p) {
                         out.push((' ', p));
-                        p += n;
+                        p = r.end;
                         continue;
                     }
                     let c = src[p..].chars().next().expect("a character");

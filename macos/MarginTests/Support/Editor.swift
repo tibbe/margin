@@ -171,6 +171,15 @@ final class Editor {
         mouse(at: NSPoint(x: g.rect.minX + 0.5, y: g.rect.midY + CGFloat(below) * g.rect.height))
     }
 
+    /// A click under shown text `column`, beside shown text `row`: at the
+    /// start of the one, at the height of the other.
+    func click(under column: String, beside row: String) {
+        guard let x = locate(column)?.first, let y = locate(row)?.first else {
+            return XCTFail("\(column.debugDescription) or \(row.debugDescription) not shown in \(lines)")
+        }
+        mouse(at: NSPoint(x: x.rect.minX + 0.5, y: y.rect.midY))
+    }
+
     func clickAtEnd() {
         guard let last = drawnLines.last else { return XCTFail("nothing drawn") }
         mouse(at: NSPoint(x: (last.glyphs.last?.rect.maxX ?? last.left) + 30, y: (last.top + last.bottom) / 2))

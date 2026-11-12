@@ -166,6 +166,27 @@ final class EndToEndTests: XCTestCase {
     }
 
     @MainActor
+    func testAClickInAMissingCellGoesToTheEndOfTheRowsLastCell() throws {
+        let e = try Editor("| A | B | C |\n|---|---|---|\n| \(notes) |\n", width: 700)
+        defer { e.close() }
+        e.click(under: "C", beside: "word1")
+        e.type("Q")
+        XCTAssertTrue(e.file.contains("word30Q |"), e.file)
+    }
+
+    @MainActor
+    func testOptionBackspaceAtACellsStartDoesNothing() throws {
+        let e = try Editor("| A | B |\n|---|---|\n| x | y |\n")
+        defer { e.close() }
+        e.click("y")
+        e.key("opt-backspace")
+        XCTAssertEqual(e.file, "| A | B |\n|---|---|\n| x | y |\n")
+        e.click("x", offset: 1)
+        e.key("opt-delete")
+        XCTAssertEqual(e.file, "| A | B |\n|---|---|\n| x | y |\n", "nor Option-Delete at its end")
+    }
+
+    @MainActor
     func testEnterAndTabMoveBetweenCells() throws {
         let e = try Editor("| A | B |\n|---|---|\n| x | y |\n")
         defer { e.close() }
