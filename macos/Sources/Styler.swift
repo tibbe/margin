@@ -198,8 +198,6 @@ final class Styler {
         var mono = false
         var height: CGFloat = 1.5
         var charWrap = false
-        /// A table row laid out as a grid: one line, never wrapped.
-        var gridRow = false
         var indent: CGFloat = 0
         var above: CGFloat = 0
         var spacing: CGFloat = 0
@@ -225,7 +223,7 @@ final class Styler {
                 if sourceMode {
                     st.mono = true; st.size = 0.88; st.height = 1.2
                 } else {
-                    st.size = 0.94; st.height = 1.3; st.gridRow = true
+                    st.size = 0.94; st.height = 1.3
                 }
             case .htmlBlock:
                 st.mono = true; st.size = 0.85; st.height = 1.2
@@ -243,15 +241,7 @@ final class Styler {
         }
         let font = Theme.font(size: Theme.bodySize * st.size, weight: st.weight, mono: st.mono)
         st.spacing = max(0, (st.height * font.pointSize - Theme.naturalHeight(font)).rounded())
-        if st.gridRow {
-            // Cell padding: the text starts inside its cell, and the row
-            // has room above and below it for the grid's lines.
-            let pad = (Theme.tableRowPad * Theme.scale).rounded()
-            st.indent += Theme.tableCellPad * Theme.scale
-            st.above += pad
-            st.spacing += pad
-        }
-        let key = [st.indent, st.above, st.spacing, st.charWrap ? 1 : 0, st.gridRow ? 1 : 0]
+        let key = [st.indent, st.above, st.spacing, st.charWrap ? 1 : 0]
         if let p = paragraphs[key] {
             st.paragraph = p
         } else {
@@ -260,7 +250,7 @@ final class Styler {
             p.headIndent = st.indent
             p.paragraphSpacingBefore = st.above
             p.lineSpacing = st.spacing
-            p.lineBreakMode = st.gridRow ? .byClipping : st.charWrap ? .byCharWrapping : .byWordWrapping
+            p.lineBreakMode = st.charWrap ? .byCharWrapping : .byWordWrapping
             paragraphs[key] = p
             st.paragraph = p
         }

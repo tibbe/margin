@@ -18,6 +18,8 @@ struct ShownParagraph {
     var sourceEnd: UInt32
     var firstLine: UInt32
     var endLine: UInt32
+    /// The table cell it is, if it is one.
+    var cell: CellPlace?
     var pieces: [Piece]
 
     var shownLength: Int { pieces.last.map { Int($0.shownStart + $0.shownLen) } ?? 0 }
@@ -35,6 +37,8 @@ struct ShownParagraph {
             out.reserveCapacity(n)
             for _ in 0..<n {
                 let (a, b, f, e, count) = (next(), next(), next(), next(), Int(next()))
+                let (table, row, column) = (Int(next()), Int(next()), Int(next()))
+                let cell = table == 0 ? nil : CellPlace(table: table - 1, row: row, column: column)
                 var pieces: [Piece] = []
                 pieces.reserveCapacity(count)
                 for _ in 0..<count {
@@ -50,11 +54,20 @@ struct ShownParagraph {
                             kind: kind, sourceStart: next(), sourceEnd: next(), shownStart: next(), shownLen: next(),
                             character: next()))
                 }
-                out.append(ShownParagraph(sourceStart: a, sourceEnd: b, firstLine: f, endLine: e, pieces: pieces))
+                out.append(
+                    ShownParagraph(sourceStart: a, sourceEnd: b, firstLine: f, endLine: e, cell: cell, pieces: pieces))
             }
         }
         return out
     }
+}
+
+/// Where a table cell is: its table in `Analysis.tables`, its row there
+/// (the header is row 0) and its column.
+struct CellPlace: Equatable {
+    var table: Int
+    var row: Int
+    var column: Int
 }
 
 /// A shown paragraph laid out.
@@ -65,8 +78,12 @@ struct LaidParagraph {
     /// The composition in it: where, in `text`, and how long.
     let splice: (at: Int, length: Int)?
     let lines: [LaidLine]
+    /// Its top and bottom; a table cell's are its row's.
     let top: CGFloat
     let bottom: CGFloat
+    /// For a table cell, where it is and its box: its column's width, its
+    /// row's height.
+    var cell: (place: CellPlace, box: NSRect)? = nil
 }
 
 /// A line of a laid-out paragraph. String indices of `line` are offsets in
@@ -122,22 +139,28 @@ final class Typeset {
     let indent: CGFloat
     let above: CGFloat
     let spacing: CGFloat
+    /// The width its lines were broken at.
+    let width: CGFloat
 
-    init(text: NSAttributedString, lines: [Line], indent: CGFloat, above: CGFloat, spacing: CGFloat) {
+    init(text: NSAttributedString, lines: [Line], indent: CGFloat, above: CGFloat, spacing: CGFloat, width: CGFloat) {
         self.text = text
         self.lines = lines
         self.indent = indent
         self.above = above
         self.spacing = spacing
+        self.width = width
     }
 }
 
-/// A table laid out as a grid: its columns' left edges and widths, from the
-/// text column's left edge.
+/// A table laid out as a grid: its columns' left edges, from the text
+/// column's left edge, and their text's widths; its rows' tops and bottoms.
 struct TableGrid {
+    /// Its index in `Analysis.tables`.
+    var index: Int
     var info: TableInfo
     var columnX: [CGFloat]
     var columnWidths: [CGFloat]
+    var rows: [(top: CGFloat, bottom: CGFloat)]
     var width: CGFloat {
         columnWidths.reduce(0, +) + 2 * Theme.tableCellPad * Theme.scale * CGFloat(columnWidths.count)
     }
@@ -201,45 +224,126 @@ extension DocView {
         typesets.reserveCapacity(shown.count)
         // What was laid out before is reusable for the same page.
         let context = TypesetContext(width: geometry.docWidth, appearance: appearance, generation: Theme.generation)
-        if previous.context != context { previous = (context, [], [], [:]) }
+        if previous.context != context { previous = (context, [], []) }
+        layOutTables()
+        let pad = (Theme.tableRowPad * Theme.scale).rounded()
+        let cellPad = Theme.tableCellPad * Theme.scale
+        var grids: [Int: Int] = [:]
+        for (g, t) in tables.enumerated() { grids[t.index] = g }
+        /// The width of a cell's text: its column's.
+        func cellWidth(_ p: ShownParagraph) -> CGFloat? {
+            guard let c = p.cell, let g = grids[c.table], c.column < tables[g].columnWidths.count else { return nil }
+            return tables[g].columnWidths[c.column]
+        }
+        var typeset: [Typeset] = []
+        typeset.reserveCapacity(shown.count)
+        var splices: [(at: Int, length: Int)?] = []
         effectiveAppearance.performAsCurrentDrawingAppearance {
             for (i, p) in shown.enumerated() {
                 var splice: (at: Int, length: Int)?
                 if let m = composition, let c = composing, Int(c.paragraph) == i {
                     splice = (Int(c.offset), (m.text as NSString).length)
                 }
+                let width = cellWidth(p)
                 let t: Typeset
-                if splice == nil, let old = unchanged(i, p, paragraphDelta: shown.count - previous.shown.count) {
+                if splice == nil,
+                    let old = unchanged(i, p, paragraphDelta: shown.count - previous.shown.count, width: width)
+                {
                     t = old
                 } else {
-                    let key = splice == nil ? typesetKey(p, appearance: appearance) : nil
+                    let key = splice == nil ? typesetKey(p, appearance: appearance, width: width) : nil
                     if let key, let hit = typesetCache[key] {
                         t = hit
                     } else {
-                        t = typeset(i, p, splice: splice)
+                        t = self.typeset(i, p, splice: splice, cellWidth: width)
                     }
                     if let key { cache[key] = t }
                 }
                 typesets.append(splice == nil ? t : nil)
-                var lines: [LaidLine] = []
-                lines.reserveCapacity(t.lines.count)
-                let top = y
-                y += t.above
-                for tl in t.lines {
-                    let lineTop = lines.isEmpty ? top : y
-                    let baseline = (y + tl.ascent).rounded()
-                    let bottom = y + ceil(tl.ascent + tl.descent + tl.leading) + t.spacing
-                    lines.append(
-                        LaidLine(
-                            line: tl.line, range: tl.range, x: left + t.indent, top: lineTop, textTop: y,
-                            baseline: baseline, bottom: bottom, spacing: t.spacing, width: tl.width))
-                    y = bottom
-                }
-                out.append(LaidParagraph(text: t.text, splice: splice, lines: lines, top: top, bottom: y))
+                typeset.append(t)
+                splices.append(splice)
             }
         }
+        /// Paragraph `i`'s lines, from `y` down, at `x` and as wide as
+        /// `width` for its alignment, the first from `top`; and its bottom.
+        func place(_ t: Typeset, x: CGFloat, top: CGFloat, y y0: CGFloat, width: CGFloat?, align: TableAlign)
+            -> ([LaidLine], CGFloat)
+        {
+            var y = y0
+            var lines: [LaidLine] = []
+            lines.reserveCapacity(t.lines.count)
+            for tl in t.lines {
+                let lineTop = lines.isEmpty ? top : y
+                let baseline = (y + tl.ascent).rounded()
+                let bottom = y + ceil(tl.ascent + tl.descent + tl.leading) + t.spacing
+                var lx = x
+                if let width {
+                    switch align {
+                    case .right: lx += max(0, width - tl.width)
+                    case .center: lx += max(0, ((width - tl.width) / 2).rounded())
+                    default: break
+                    }
+                }
+                lines.append(
+                    LaidLine(
+                        line: tl.line, range: tl.range, x: lx, top: lineTop, textTop: y,
+                        baseline: baseline, bottom: bottom, spacing: t.spacing, width: tl.width))
+                y = bottom
+            }
+            return (lines, y)
+        }
+        var i = 0
+        while i < shown.count {
+            let p = shown[i]
+            let t = typeset[i]
+            guard let c = p.cell, let g = grids[c.table], cellWidth(p) != nil else {
+                let top = y
+                let (lines, bottom) = place(
+                    t, x: left + t.indent, top: top, y: y + t.above, width: nil, align: .none)
+                out.append(LaidParagraph(text: t.text, splice: splices[i], lines: lines, top: top, bottom: bottom))
+                y = bottom
+                i += 1
+                continue
+            }
+            // A table row: its cells side by side, as tall as the tallest.
+            var end = i + 1
+            while end < shown.count, let d = shown[end].cell, d.table == c.table, d.row == c.row,
+                cellWidth(shown[end]) != nil
+            {
+                end += 1
+            }
+            let grid = tables[g]
+            let top = y
+            let rowTop = y + t.above
+            var rowBottom = rowTop + pad
+            var cells: [(lines: [LaidLine], place: CellPlace)] = []
+            for j in i..<end {
+                let cj = shown[j].cell!
+                let width = grid.columnWidths[cj.column]
+                let x = left + grid.columnX[cj.column] + cellPad
+                let align = cj.column < grid.info.aligns.count ? grid.info.aligns[cj.column] : .none
+                let (lines, bottom) = place(
+                    typeset[j], x: x, top: top, y: rowTop + pad, width: width, align: align)
+                rowBottom = max(rowBottom, bottom)
+                cells.append((lines, cj))
+            }
+            rowBottom += pad
+            for (k, j) in (i..<end).enumerated() {
+                let cj = cells[k].place
+                let box = NSRect(
+                    x: left + grid.columnX[cj.column], y: rowTop,
+                    width: grid.columnWidths[cj.column] + 2 * cellPad, height: rowBottom - rowTop)
+                var laid = LaidParagraph(
+                    text: typeset[j].text, splice: splices[j], lines: cells[k].lines, top: top, bottom: rowBottom)
+                laid.cell = (cj, box)
+                out.append(laid)
+            }
+            if c.row < tables[g].rows.count { tables[g].rows[c.row] = (rowTop, rowBottom) }
+            y = rowBottom
+            i = end
+        }
         typesetCache = cache.merging(typesetCache.count < 4 * cache.count ? typesetCache : [:]) { new, _ in new }
-        previous = (context, shown, typesets, tableGaps)
+        previous = (context, shown, typesets)
         lastEdit = nil
         restyled = []
         laidOut = out
@@ -259,7 +363,7 @@ extension DocView {
     /// depends on changed: it is the same paragraph as before (before the
     /// last edit, or after it shifted by it), shown the same way, and none
     /// of its lines was restyled.
-    private func unchanged(_ i: Int, _ p: ShownParagraph, paragraphDelta: Int) -> Typeset? {
+    private func unchanged(_ i: Int, _ p: ShownParagraph, paragraphDelta: Int, width: CGFloat?) -> Typeset? {
         guard let restyled, !previous.shown.isEmpty else { return nil }
         let j: Int
         let shift: Int
@@ -276,7 +380,9 @@ extension DocView {
         } else {
             return nil
         }
-        guard j >= 0, j < previous.shown.count, let t = previous.typesets[j] else { return nil }
+        guard j >= 0, j < previous.shown.count, let t = previous.typesets[j],
+            width == nil || t.width == width, (width == nil) == (previous.shown[j].cell == nil)
+        else { return nil }
         let old = previous.shown[j]
         guard Int(old.sourceStart) + shift == Int(p.sourceStart),
             old.sourceEnd - old.sourceStart == p.sourceEnd - p.sourceStart,
@@ -286,12 +392,6 @@ extension DocView {
             if a.kind != b.kind || a.character != b.character || a.shownLen != b.shownLen
                 || a.sourceStart - old.sourceStart != b.sourceStart - p.sourceStart
                 || a.sourceEnd - old.sourceStart != b.sourceEnd - p.sourceStart || a.kind == .object
-            {
-                return nil
-            }
-            // A table cell's gap reaches the same column as before.
-            if a.kind == .replaced && a.character == 9
-                && previous.gaps[Int(a.sourceStart)] != tableGaps[Int(b.sourceStart)]
             {
                 return nil
             }
@@ -308,9 +408,10 @@ extension DocView {
         return t
     }
 
-    /// What paragraph `p`'s typesetting depends on; nil when it holds an
-    /// object or a table cell's gap, whose sizes come from elsewhere.
-    private func typesetKey(_ p: ShownParagraph, appearance: String) -> TypesetKey? {
+    /// What paragraph `p`'s typesetting depends on, at a table cell's
+    /// `width`; nil when it holds an object, whose size comes from
+    /// elsewhere.
+    private func typesetKey(_ p: ShownParagraph, appearance: String, width: CGFloat? = nil) -> TypesetKey? {
         let start = Int(p.sourceStart)
         let end = Int(p.sourceEnd)
         guard end <= text.length else { return nil }
@@ -322,10 +423,6 @@ extension DocView {
                 UInt32(piece.kind == .shown ? 0 : piece.kind == .hidden ? 1 : 2),
                 piece.sourceStart - p.sourceStart, piece.sourceEnd - p.sourceStart, piece.character,
             ])
-            // A table cell's gap: the column it reaches.
-            if piece.kind == .replaced && piece.character == 9 {
-                pieces.append(Float(tableGaps[Int(piece.sourceStart)] ?? -1).bitPattern)
-            }
         }
         // The styled lines it spans, by the signatures the styler leaves on
         // their first characters.
@@ -342,7 +439,8 @@ extension DocView {
         }
         return TypesetKey(
             source: text.substring(with: NSRange(location: start, length: end - start)), pieces: pieces,
-            styles: styles, width: geometry.docWidth, appearance: appearance, generation: Theme.generation)
+            styles: styles, width: width.map { -$0 } ?? geometry.docWidth, appearance: appearance,
+            generation: Theme.generation)
     }
 
     /// The source line holding position `p`.
@@ -356,8 +454,8 @@ extension DocView {
         return max(0, lo - 1)
     }
 
-    /// Typesets paragraph `i` for the page's width.
-    private func typeset(_ i: Int, _ p: ShownParagraph, splice: (at: Int, length: Int)?) -> Typeset {
+    /// The paragraph style and font paragraph `p` takes.
+    private func paragraphLook(_ p: ShownParagraph) -> (style: NSParagraphStyle?, font: NSFont) {
         let anchor = styleAnchor(p).flatMap { $0 < styled.length ? $0 : nil }
         let style =
             anchor.flatMap { styled.attribute(.paragraphStyle, at: $0, effectiveRange: nil) }
@@ -365,12 +463,21 @@ extension DocView {
         let font =
             anchor.flatMap { styled.attribute(.font, at: $0, effectiveRange: nil) as? NSFont }
             ?? Theme.font(size: Theme.bodySize)
-        let indent = style?.headIndent ?? 0
+        return (style, font)
+    }
+
+    /// Typesets paragraph `i` for the page's width, or a table cell's text
+    /// for its column's `cellWidth`.
+    private func typeset(_ i: Int, _ p: ShownParagraph, splice: (at: Int, length: Int)?, cellWidth: CGFloat?)
+        -> Typeset
+    {
+        let (style, font) = paragraphLook(p)
+        let indent = cellWidth == nil ? style?.headIndent ?? 0 : 0
         let above = style?.paragraphSpacingBefore ?? 0
         let spacing = style?.lineSpacing ?? max(0, (1.5 * font.pointSize - Theme.naturalHeight(font)).rounded())
-        let text = attributedText(i, p, indent: indent, splice: splice, font: font)
+        let text = attributedText(i, p, splice: splice, font: font)
         let ts = CTTypesetterCreateWithAttributedString(coreText(text))
-        let width = Double(max(1, geometry.docWidth - indent))
+        let width = Double(max(1, cellWidth ?? geometry.docWidth - indent))
         var lines: [Typeset.Line] = []
         var off = 0
         let n = text.length
@@ -401,7 +508,7 @@ extension DocView {
                     leading: leading, width: w))
             off += count
         } while off < n
-        return Typeset(text: text, lines: lines, indent: indent, above: above, spacing: spacing)
+        return Typeset(text: text, lines: lines, indent: indent, above: above, spacing: spacing, width: width)
     }
 
     /// Paragraph `i`'s shown text, with the styled source's attributes: what
@@ -409,14 +516,9 @@ extension DocView {
     /// one character as wide as they are drawn, table cells' gaps reaching
     /// their columns.
     private func attributedText(
-        _ i: Int, _ p: ShownParagraph, indent: CGFloat, splice: (at: Int, length: Int)?, font: NSFont
+        _ i: Int, _ p: ShownParagraph, splice: (at: Int, length: Int)?, font: NSFont
     ) -> NSAttributedString {
         let out = NSMutableAttributedString()
-        // How far the text has got, for table cells' gaps.
-        var x: CGFloat = 0
-        func width(_ s: NSAttributedString) -> CGFloat {
-            CGFloat(CTLineGetTypographicBounds(CTLineCreateWithAttributedString(coreText(s)), nil, nil, nil))
-        }
         for piece in p.pieces {
             let source = NSRange(from: piece.sourceStart, to: piece.sourceEnd)
             switch piece.kind {
@@ -424,26 +526,12 @@ extension DocView {
                 continue
             case .shown:
                 guard NSMaxRange(source) <= styled.length else { continue }
-                let s = styled.attributedSubstring(from: source)
-                if !tableGaps.isEmpty { x += width(s) }
-                out.append(s)
+                out.append(styled.attributedSubstring(from: source))
             case .replaced:
                 let t = String(Character(Unicode.Scalar(piece.character) ?? " "))
-                var attrs =
+                let attrs =
                     source.location < styled.length
                     ? styled.attributes(at: source.location, effectiveRange: nil) : [.font: font]
-                if t == "\t", let target = tableGaps[source.location] {
-                    // To the cell's column, from where the text has got to.
-                    // Laid out as an object character: Core Text sets a tab
-                    // at its own tab stops, whatever its run delegate says.
-                    let w = max(0, target - indent - x)
-                    attrs[.ctRunDelegate] = RunBox(ascent: 0, descent: 0, width: w).delegate()
-                    x += w
-                    out.append(NSAttributedString(string: "\u{FFFC}", attributes: attrs))
-                    continue
-                } else if !tableGaps.isEmpty {
-                    x += width(NSAttributedString(string: t, attributes: attrs))
-                }
                 out.append(NSAttributedString(string: t, attributes: attrs))
             case .object:
                 var attrs: [NSAttributedString.Key: Any] = [.font: font, .marginObject: true]
@@ -501,79 +589,76 @@ extension DocView {
 
     // MARK: - Tables
 
-    /// Sizes each table's columns to their widest cell, and sets where each
-    /// cell's text starts.
+    /// Sizes each table's columns for the page, by what their cells' text
+    /// needs (see `tableColumnWidths`).
     func layOutTables() {
         var grids: [TableGrid] = []
-        var gaps: [Int: CGFloat] = [:]
-        var cache: [String: (grid: TableGrid, gaps: [Int: CGFloat], start: Int)] = [:]
-        if !sourceMode {
-            let pad = Theme.tableCellPad * Theme.scale
-            for t in tableInfos {
-                let n = t.aligns.count
-                guard n > 0, let first = t.rows.first, Int(first.line) < lines.count else { continue }
-                // A table as before (its source, styled the same) keeps its
-                // grid; its gaps move with it.
-                guard Int(t.lastLine) < lines.count else { continue }
-                let start = Int(lines[Int(t.firstLine)].start)
-                let key =
-                    text.substring(with: NSRange(from: lines[Int(t.firstLine)].start, to: lines[Int(t.lastLine)].end))
-                    + "\(Theme.generation) \(lines[Int(first.line)].quotes) \(lines[Int(first.line)].items)"
-                if let hit = tableCache[key] {
-                    grids.append(TableGrid(info: t, columnX: hit.grid.columnX, columnWidths: hit.grid.columnWidths))
-                    for (k, v) in hit.gaps { gaps[k - hit.start + start] = v }
-                    cache[key] = hit
-                    continue
-                }
-                var tableGapsHere: [Int: CGFloat] = [:]
-                var widths = [CGFloat](repeating: 2 * pad, count: n)
-                var cellWidths: [[CGFloat]] = []
-                for row in t.rows {
-                    let ws = row.cells.prefix(n).map { shownWidth(NSRange($0.content)) }
-                    for (j, w) in ws.enumerated() { widths[j] = max(widths[j], w) }
-                    cellWidths.append(ws)
-                }
-                let l = lines[Int(first.line)]
-                var x = indent(quotes: l.quotes, items: l.items)
-                var columnX: [CGFloat] = []
-                for w in widths {
-                    columnX.append(x)
-                    x += w + 2 * pad
-                }
-                for (row, ws) in zip(t.rows, cellWidths) {
-                    for (j, cell) in row.cells.prefix(n).enumerated() where cell.lead.end > cell.lead.start {
-                        let slack = widths[j] - ws[j]
-                        let offset: CGFloat
-                        switch t.aligns[j] {
-                        case .right: offset = slack
-                        case .center: offset = (slack / 2).rounded()
-                        default: offset = 0
-                        }
-                        tableGapsHere[Int(cell.lead.end) - 1] = columnX[j] + pad + offset
-                    }
-                }
-                let grid = TableGrid(info: t, columnX: columnX, columnWidths: widths)
-                grids.append(grid)
-                gaps.merge(tableGapsHere) { a, _ in a }
-                cache[key] = (grid, tableGapsHere, start)
+        guard !sourceMode else {
+            tables = []
+            return
+        }
+        let pad = Theme.tableCellPad * Theme.scale
+        let appearance = effectiveAppearance.name.rawValue
+        // Each table's cells, as shown paragraphs.
+        var cells: [Int: [Int]] = [:]
+        for (i, p) in shown.enumerated() { if let c = p.cell { cells[c.table, default: []].append(i) } }
+        var measures: [TypesetKey: (word: CGFloat, line: CGFloat)] = [:]
+        for (ti, t) in tableInfos.enumerated() {
+            guard let first = t.rows.first, Int(first.line) < lines.count, let shownCells = cells[ti] else { continue }
+            let n = max(t.aligns.count, (shownCells.map { shown[$0].cell!.column }.max() ?? -1) + 1)
+            var columns = [ColumnText](repeating: ColumnText(longestWord: 0, oneLine: 0), count: n)
+            for i in shownCells {
+                let p = shown[i]
+                let key = typesetKey(p, appearance: appearance, width: 0)
+                let m = key.flatMap { cellMeasures[$0] } ?? measure(i, p)
+                if let key { measures[key] = m }
+                let col = p.cell!.column
+                columns[col].longestWord = max(columns[col].longestWord, Double(m.word))
+                columns[col].oneLine = max(columns[col].oneLine, Double(m.line))
             }
+            let l = lines[Int(first.line)]
+            let x0 = indent(quotes: l.quotes, items: l.items)
+            let available = max(0, geometry.docWidth - x0 - 2 * pad * CGFloat(n))
+            let widths = tableColumnWidths(columns: columns, available: Double(available)).map {
+                max(1, CGFloat($0).rounded(.down))
+            }
+            var columnX: [CGFloat] = []
+            var x = x0
+            for w in widths {
+                columnX.append(x)
+                x += w + 2 * pad
+            }
+            grids.append(
+                TableGrid(
+                    index: ti, info: t, columnX: columnX, columnWidths: widths,
+                    rows: Array(repeating: (0, 0), count: t.rows.count)))
         }
         tables = grids
-        tableGaps = gaps
-        tableCache = cache
+        cellMeasures = measures
     }
 
-    /// The width of a range's shown text.
-    private func shownWidth(_ r: NSRange) -> CGFloat {
-        guard r.length > 0, NSMaxRange(r) <= styled.length else { return 0 }
-        var w: CGFloat = 0
-        let at = projection.toShown(pos: UInt32(r.location))
-        guard Int(at.paragraph) < shown.count else { return 0 }
-        for piece in shown[Int(at.paragraph)].pieces where piece.kind == .shown {
-            let s = NSIntersectionRange(NSRange(from: piece.sourceStart, to: piece.sourceEnd), r)
-            if s.length > 0 { w += styled.attributedSubstring(from: s).size().width }
+    /// What a table cell's text needs: the width of its longest word, and
+    /// of all of it on one line.
+    private func measure(_ i: Int, _ p: ShownParagraph) -> (word: CGFloat, line: CGFloat) {
+        let text = coreText(attributedText(i, p, splice: nil, font: paragraphLook(p).font))
+        func width(_ r: NSRange) -> CGFloat {
+            let line = CTLineCreateWithAttributedString(text.attributedSubstring(from: r))
+            return CGFloat(CTLineGetTypographicBounds(line, nil, nil, nil))
         }
-        return ceil(w)
+        let s = text.string as NSString
+        var word: CGFloat = 0
+        var start: Int?
+        for k in 0...s.length {
+            let space =
+                k == s.length || CharacterSet.whitespacesAndNewlines.contains(UnicodeScalar(s.character(at: k)) ?? " ")
+            if space, let a = start {
+                word = max(word, width(NSRange(location: a, length: k - a)))
+                start = nil
+            } else if !space, start == nil {
+                start = k
+            }
+        }
+        return (ceil(word), ceil(width(NSRange(location: 0, length: s.length))))
     }
 
     // MARK: - Where things are
@@ -617,12 +702,19 @@ extension DocView {
             if lo > hi || (lo == hi && !(toEdge && last && b >= NSMaxRange(l.range))) { continue }
             let x0 = x(lo, on: l)
             var x1 = x(hi, on: l)
-            if toEdge && last && b >= NSMaxRange(l.range) { x1 = max(x1, geometry.left + geometry.docWidth) }
+            if toEdge && last && b >= NSMaxRange(l.range) { x1 = max(x1, rightEdge(pi)) }
             out.append(
                 NSRect(
                     x: min(x0, x1), y: l.textTop, width: abs(x1 - x0), height: l.bottom - l.spacing - l.textTop))
         }
         return out
+    }
+
+    /// Where paragraph `pi`'s text may reach: the text column's right edge,
+    /// or in a table, its cell's text's.
+    func rightEdge(_ pi: Int) -> CGFloat {
+        guard let c = laidOut[pi].cell else { return geometry.left + geometry.docWidth }
+        return c.box.maxX - Theme.tableCellPad * Theme.scale
     }
 
     /// Where a source range is drawn, a rectangle per line; with `toEdge`,
@@ -688,12 +780,44 @@ extension DocView {
         return lo
     }
 
+    /// The paragraph laid out at a point, or the nearest: in a table row,
+    /// the cell under it or the nearest.
+    func paragraph(at p: NSPoint) -> Int? {
+        guard let pi = paragraph(atY: p.y) else { return nil }
+        guard laidOut[pi].cell != nil else { return pi }
+        return cell(in: row(containing: pi), x: p.x)
+    }
+
+    /// The paragraphs of the table row paragraph `pi` is a cell of.
+    func row(containing pi: Int) -> ClosedRange<Int> {
+        guard let c = laidOut[pi].cell?.place else { return pi...pi }
+        func same(_ j: Int) -> Bool {
+            guard let d = laidOut[j].cell?.place else { return false }
+            return d.table == c.table && d.row == c.row
+        }
+        var a = pi
+        var b = pi
+        while a > 0 && same(a - 1) { a -= 1 }
+        while b < laidOut.count - 1 && same(b + 1) { b += 1 }
+        return a...b
+    }
+
+    /// The cell of a row nearest `x`: the one whose box holds it, else the
+    /// one it is closest to.
+    func cell(in row: ClosedRange<Int>, x: CGFloat) -> Int {
+        row.min { a, b in distance(x, laidOut[a].cell!.box) < distance(x, laidOut[b].cell!.box) } ?? row.lowerBound
+    }
+
+    private func distance(_ x: CGFloat, _ box: NSRect) -> CGFloat {
+        x < box.minX ? box.minX - x : x > box.maxX ? x - box.maxX : 0
+    }
+
     /// The source position nearest a point: where a click puts the cursor.
     func position(at p: NSPoint) -> Int { caret(at: p).position }
 
     /// Where a click at a point puts the cursor, and on which line.
     func caret(at p: NSPoint) -> (position: Int, affinity: NSSelectionAffinity) {
-        guard let pi = paragraph(atY: p.y) else { return (0, .downstream) }
+        guard let pi = paragraph(at: p) else { return (0, .downstream) }
         let li = laidOut[pi].lines.lastIndex { $0.top <= p.y } ?? 0
         return caret(paragraph: pi, line: li, x: p.x)
     }
@@ -779,6 +903,10 @@ extension DocView {
     func textBottom(line li: Int) -> CGFloat {
         guard let at = laid(Int(lines[li].end)) else { return 0 }
         let l = laidOut[at.paragraph].lines[at.line]
+        // A table row's: below its tallest cell.
+        if laidOut[at.paragraph].cell != nil {
+            return laidOut[at.paragraph].bottom - (Theme.tableRowPad * Theme.scale).rounded()
+        }
         return l.bottom - l.spacing
     }
 
@@ -837,7 +965,7 @@ extension DocView {
 
     /// The destination of the link under a point, if any.
     func link(at p: NSPoint) -> String? {
-        guard let pi = paragraph(atY: p.y) else { return nil }
+        guard let pi = paragraph(at: p) else { return nil }
         let ls = laidOut[pi].lines
         guard let l = ls.last(where: { $0.top <= p.y }), p.x >= l.x, p.x <= l.x + l.width, p.y <= l.bottom else {
             return nil
@@ -941,24 +1069,28 @@ extension DocView {
         var pi = at.paragraph
         var li = at.line
         while true {
+            var x = gx
             if down {
                 li += 1
                 if li >= laidOut[pi].lines.count {
-                    pi += 1
-                    li = 0
-                }
-                if pi >= laidOut.count {
-                    return moveHead(to: text.length, extending: extending)
+                    guard let next = paragraph(after: pi, down: true, x: gx) else {
+                        return moveHead(to: text.length, extending: extending)
+                    }
+                    (pi, li) = (next.paragraph, 0)
+                    if next.toEnd { (li, x) = (laidOut[pi].lines.count - 1, .greatestFiniteMagnitude) }
                 }
             } else {
                 li -= 1
                 if li < 0 {
-                    pi -= 1
-                    if pi < 0 { return moveHead(to: source(paragraph: 0, offset: 0), extending: extending) }
+                    guard let prev = paragraph(after: pi, down: false, x: gx) else {
+                        return moveHead(to: source(paragraph: 0, offset: 0), extending: extending)
+                    }
+                    pi = prev.paragraph
                     li = laidOut[pi].lines.count - 1
+                    if prev.toEnd { x = .greatestFiniteMagnitude }
                 }
             }
-            let (p, affinity) = caret(paragraph: pi, line: li, x: gx)
+            let (p, affinity) = caret(paragraph: pi, line: li, x: x)
             // Up and Down pass an image, keeping the column.
             if let obj = object(at: p), objects.contains(where: { $0.start == obj.start }) {
                 let only = laidOut[pi].text.string.trimmingCharacters(in: .whitespaces) == "\u{FFFC}"
@@ -967,6 +1099,27 @@ extension DocView {
             goalX = gx
             return moveHead(to: p, extending: extending, keepGoal: true, affinity: affinity)
         }
+    }
+
+    /// The paragraph Down (`down`) or Up goes to from paragraph `pi`'s
+    /// last or first line, at `x`: in a table, the cell below or above in
+    /// the same column, and past its last or first row, out of it. Into a
+    /// row, the cell nearest `x`; to a missing cell, the end of the row's
+    /// last cell (`toEnd`).
+    private func paragraph(after pi: Int, down: Bool, x: CGFloat) -> (paragraph: Int, toEnd: Bool)? {
+        let here = row(containing: pi)
+        let next = down ? here.upperBound + 1 : here.lowerBound - 1
+        guard next >= 0, next < laidOut.count else { return nil }
+        guard let c = laidOut[pi].cell?.place else {
+            return laidOut[next].cell == nil ? (next, false) : (cell(in: row(containing: next), x: x), false)
+        }
+        let to = row(containing: next)
+        guard let d = laidOut[next].cell?.place, d.table == c.table else {
+            // Out of the table, past rows of another table too.
+            return laidOut[next].cell == nil ? (next, false) : (cell(in: to, x: x), false)
+        }
+        if let same = to.first(where: { laidOut[$0].cell?.place.column == c.column }) { return (same, false) }
+        return (to.upperBound, true)
     }
 
     @objc override func moveUp(_ sender: Any?) { vertical(down: false, extending: false) }

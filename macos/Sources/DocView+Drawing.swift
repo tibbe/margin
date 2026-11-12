@@ -198,11 +198,7 @@ extension DocView {
     /// A table's grid: a rounded box, the header's fill, and lines between
     /// rows and columns.
     private func drawGrid(_ t: TableGrid, in rect: NSRect) {
-        let pad = (Theme.tableRowPad * Theme.scale).rounded()
-        let rows = t.info.rows.map { row -> (CGFloat, CGFloat) in
-            let li = Int(row.line)
-            return (textTop(line: li) - pad, textBottom(line: li) + pad)
-        }
+        let rows = t.rows.filter { $0.bottom > $0.top }
         guard let top = rows.first?.0, let bottom = rows.last?.1, bottom > rect.minY, top < rect.maxY else { return }
         let x0 = geometry.left + t.columnX[0]
         let box = NSRect(x: x0, y: top, width: t.width, height: bottom - top).insetBy(dx: 0.5, dy: 0.5)
@@ -456,7 +452,7 @@ extension DocView {
 
     /// The misspelled word under a point: it, and its range in the source.
     func misspelledWord(at p: NSPoint) -> (String, NSRange)? {
-        guard isContinuousSpellCheckingEnabled, let pi = laidOut.indices.last(where: { laidOut[$0].top <= p.y })
+        guard isContinuousSpellCheckingEnabled, let pi = paragraph(at: p)
         else { return nil }
         let par = laidOut[pi]
         guard let l = par.lines.last(where: { $0.top <= p.y }), p.y <= l.bottom else { return nil }

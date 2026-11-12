@@ -1985,6 +1985,39 @@ pub struct ShownParagraph {
     pub end_line: u32,
     pub text: String,
     pub pieces: Vec<ShownPiece>,
+    /// The table cell it is, if it is one.
+    pub cell: Option<ShownCell>,
+}
+
+/// Where a table cell is: its table in `Analysis::tables`, its row there
+/// (the header is row 0) and its column.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Record)]
+pub struct ShownCell {
+    pub table: u32,
+    pub row: u32,
+    pub column: u32,
+}
+
+/// What a table column's text needs, as an editor measured it: the width
+/// of its longest word, and of its widest cell on one line.
+#[derive(Debug, Clone, Copy, uniffi::Record)]
+pub struct ColumnText {
+    pub longest_word: f64,
+    pub one_line: f64,
+}
+
+/// The width of each table column's text, for a grid whose columns' text
+/// has `available` width in all (see `md::table::column_widths`).
+#[uniffi::export]
+pub fn table_column_widths(columns: Vec<ColumnText>, available: f64) -> Vec<f64> {
+    let columns: Vec<md::table::ColumnText> = columns
+        .iter()
+        .map(|c| md::table::ColumnText {
+            longest_word: c.longest_word,
+            one_line: c.one_line,
+        })
+        .collect();
+    md::table::column_widths(&columns, available)
 }
 
 /// A paragraph and a UTF-16 offset in its shown text.
@@ -2115,6 +2148,11 @@ impl Projection {
                     end_line: p.lines.end as u32,
                     text: self.texts[i].0.clone(),
                     pieces,
+                    cell: p.cell.map(|c| ShownCell {
+                        table: c.table as u32,
+                        row: c.row as u32,
+                        column: c.column as u32,
+                    }),
                 }
             })
             .collect()
@@ -2123,7 +2161,8 @@ impl Projection {
     /// [`Projection::paragraphs`] packed as little-endian `u32`s, which
     /// Swift reads far faster than records: the paragraph count, then per
     /// paragraph its source start and end, first and end line and piece
-    /// count, then per piece its kind (shown, hidden, replaced, object),
+    /// count, its table cell (its table plus one, 0 for none, then its row
+    /// and column), then per piece its kind (shown, hidden, replaced, object),
     /// source start and end, shown start and length, and for a replaced
     /// piece the character it shows as. Without the shown text, which is
     /// the source's but for those characters.
@@ -2140,6 +2179,10 @@ impl Projection {
                 p.lines.end as u32,
                 p.pieces.len() as u32,
             ]);
+            match p.cell {
+                Some(c) => out.extend([c.table as u32 + 1, c.row as u32, c.column as u32]),
+                None => out.extend([0, 0, 0]),
+            }
             let mut x = 0u32;
             for piece in &p.pieces {
                 let r = piece.source();

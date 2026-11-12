@@ -62,6 +62,70 @@ final class EndToEndTests: XCTestCase {
         XCTAssertEqual(e.lines.joined(), shown, "every word, once, in order")
     }
 
+    // MARK: - Tables
+
+    /// The words of a cell long enough to wrap in a narrow window.
+    private let notes = (1...30).map { "word\($0)" }.joined(separator: " ")
+
+    @MainActor
+    func testAWideTableWrapsItsCellsInsideTheColumn() throws {
+        let e = try Editor("| Name | Notes |\n|---|---|\n| short | \(notes) |\n", width: 700)
+        defer { e.close() }
+        XCTAssertEqual(e.pastTheColumn, "", "nothing is drawn past the text column")
+        XCTAssertGreaterThan(e.lines.count, 4, "the long cell wraps")
+        let words = e.lines.map { $0.trimmingCharacters(in: .whitespaces) }.joined(separator: " ")
+        XCTAssertEqual(words, "Name Notes short \(notes)", "every word, once, in order")
+    }
+
+    /// A table whose second column wraps over three lines at width 700.
+    private var table: String { "| A | B |\n|---|---|\n| x | \(notes) |\n| y | z |\n" }
+
+    @MainActor
+    func testUpAndDownMoveWithinACellThenToTheCellAboveOrBelow() throws {
+        let e = try Editor(table, width: 700)
+        defer { e.close() }
+        e.click("word2")
+        e.key("down")
+        XCTAssertTrue(e.caret.replacingOccurrences(of: "|", with: "").hasPrefix("word13"), e.caret)
+        e.key("down", "down")
+        XCTAssertEqual(e.caret, "z|", "from the cell's last line, to the cell below, keeping the column")
+        e.key("up")
+        XCTAssertTrue(e.caret.contains("word30"), e.caret)
+        e.key("up", "up", "up")
+        XCTAssertEqual(e.caret, "B|", "to the header")
+        e.click("x")
+        e.key("down")
+        XCTAssertEqual(e.caret, "|y", "a short cell's one line, then the cell below")
+    }
+
+    @MainActor
+    func testAClickBelowAShortCellPutsTheCaretInIt() throws {
+        let e = try Editor(table, width: 700)
+        defer { e.close() }
+        e.click("x", below: 2)
+        e.type("Q")
+        XCTAssertTrue(e.file.contains("| Qx | word1"), e.file)
+    }
+
+    @MainActor
+    func testATripleClickSelectsTheCell() throws {
+        let e = try Editor(table, width: 700)
+        defer { e.close() }
+        e.click("word5", count: 3)
+        e.type("Q")
+        XCTAssertEqual(e.file, "| A | B |\n|---|---|\n| x | Q |\n| y | z |\n")
+    }
+
+    @MainActor
+    func testCommandRightGoesToTheEndOfTheCellsLine() throws {
+        let e = try Editor(table, width: 700)
+        defer { e.close() }
+        e.click("word2")
+        e.key("cmd-right")
+        e.type("Q")
+        XCTAssertTrue(e.file.contains("word12Q word13"), e.file)
+    }
+
     // MARK: - The caret
 
     @MainActor
